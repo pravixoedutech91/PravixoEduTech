@@ -77,6 +77,28 @@ const tenantSchema = new mongoose.Schema(
       },
            
     },
+limits: {
+  maxCourses: {
+    type: Number,
+    default: 0,
+  },
+
+  maxTests: {
+    type: Number,
+    default: 0,
+  },
+
+  maxStudents: {
+    type: Number,
+    default: 0,
+  },
+
+  maxStorageMB: {
+    type: Number,
+    default: 0,
+  },
+},
+
   },
   {
     timestamps: true,
@@ -84,5 +106,5 @@ const tenantSchema = new mongoose.Schema(
 );
 
 
-tenantSchema.index({ slug: 1 });
+
 module.exports = mongoose.model("Tenant", tenantSchema);

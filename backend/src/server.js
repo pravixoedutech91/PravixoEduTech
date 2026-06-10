@@ -5,6 +5,7 @@ const connectDB = require("./config/db");
 const categoryRoutes = require("./routes/categoryRoutes");
 const contentRoutes = require("./routes/contentRoutes");
 const tenantRoutes = require("./routes/tenantRoutes");
+const authRoutes = require("./routes/authRoutes");
 
 dotenv.config();
 
@@ -17,7 +18,7 @@ app.use(express.json());
 app.use("/api/categories", categoryRoutes);
 app.use("/api/content", contentRoutes);
 app.use("/api/tenants", tenantRoutes);
-
+app.use("/api/auth", authRoutes);
 app.get("/", (req, res) => {
   res.json({
     success: true,
