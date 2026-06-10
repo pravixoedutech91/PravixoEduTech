@@ -142,9 +142,52 @@ const getMe = async (req, res) => {
     },
   });
 };
+// Create Initial Super Admin (Development Only)
+const createSuperAdmin = async (req, res) => {
+  try {
+    const existingAdmin = await User.findOne({
+      role: "super_admin",
+    });
 
+    if (existingAdmin) {
+      return res.status(400).json({
+        success: false,
+        message: "Super Admin already exists",
+      });
+    }
+
+    const admin = await User.create({
+      name: "Pravixo Super Admin",
+      mobile: "9999999999",
+      email: "admin@pravixo.com",
+      password: "Admin@123",
+      role: "super_admin",
+      tenantId: "pravixoedutech",
+      isEmailVerified: true,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Super Admin created successfully",
+      data: {
+        id: admin._id,
+        name: admin.name,
+        email: admin.email,
+        role: admin.role,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 module.exports = {
   registerUser,
   loginUser,
   getMe,
+  createSuperAdmin,
 };
