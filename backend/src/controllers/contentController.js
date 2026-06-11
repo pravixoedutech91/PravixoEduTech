@@ -1,5 +1,7 @@
 const Content = require("../models/Content");
-
+const {
+  getTenantFilter,
+} = require("../middleware/tenantMiddleware");
 // Create Content
 const createContent = async (req, res) => {
   try {
@@ -22,9 +24,11 @@ const createContent = async (req, res) => {
 // Get All Content
 const getAllContent = async (req, res) => {
   try {
-    const contents = await Content.find()
-      .populate("category", "name slug")
-      .sort({ createdAt: -1 });
+    const tenantFilter = getTenantFilter(req);
+
+    const contents = await Content.find(tenantFilter).sort({
+      createdAt: -1,
+    });
 
     res.status(200).json({
       success: true,
@@ -130,10 +134,34 @@ const deleteContent = async (req, res) => {
   }
 };
 
+// Admin Content Listing
+const getAdminContentList = async (req, res) => {
+  try {
+    const tenantFilter = getTenantFilter(req);
+
+    const contents = await Content.find(tenantFilter)
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: contents.length,
+      data: contents,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 module.exports = {
   createContent,
   getAllContent,
   getContentBySlug,
   updateContent,
   deleteContent,
+  getAdminContentList,
 };

@@ -6,6 +6,7 @@ const {
   registerUser,
   loginUser,
   getMe,
+  createTenantAdmin,
   //createSuperAdmin,
 } = require("../controllers/authController");
 
@@ -22,6 +23,13 @@ router.get("/me", protect, getMe);
 
 //create super Admin
 //router.post("/create-super-admin", createSuperAdmin);
+
+router.post(
+  "/create-tenant-admin",
+  protect,
+  authorize("super_admin"),
+  createTenantAdmin
+);
 
 router.get(
   "/super-admin-test",

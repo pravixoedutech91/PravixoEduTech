@@ -185,9 +185,66 @@ const createSuperAdmin = async (req, res) => {
     });
   }
 };
+
+// Create Tenant Admin
+const createTenantAdmin = async (req, res) => {
+  try {
+    const { name, mobile, email, password, tenantId } = req.body;
+
+    if (!tenantId) {
+      return res.status(400).json({
+        success: false,
+        message: "tenantId is required",
+      });
+    }
+
+    const existingUser = await User.findOne({
+      $or: [{ mobile }, { email }],
+    });
+
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: "User already exists with this mobile or email",
+      });
+    }
+
+    const tenantAdmin = await User.create({
+      name,
+      mobile,
+      email,
+      password,
+      tenantId,
+      role: "tenant_admin",
+      isEmailVerified: true,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Tenant Admin created successfully",
+      data: {
+        id: tenantAdmin._id,
+        name: tenantAdmin.name,
+        mobile: tenantAdmin.mobile,
+        email: tenantAdmin.email,
+        tenantId: tenantAdmin.tenantId,
+        role: tenantAdmin.role,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 module.exports = {
   registerUser,
   loginUser,
   getMe,
   createSuperAdmin,
+  createTenantAdmin
 };
