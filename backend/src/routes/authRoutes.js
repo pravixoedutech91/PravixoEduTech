@@ -12,8 +12,16 @@ const {
 
 const { protect, authorize } = require("../middleware/authMiddleware");
 
+const {
+  checkStudentLimit,
+} = require("../middleware/tenantLimitMiddleware");
+
 // Register
-router.post("/register", registerUser);
+router.post(
+  "/register",
+  checkStudentLimit,
+  registerUser
+);
  
 
 // Login
