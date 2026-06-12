@@ -17,6 +17,7 @@ const {
 
 const {
   ensureTenantAccess,
+  checkContentFeatureAccess,
 } = require("../middleware/tenantMiddleware");
 
 // Create Content
@@ -25,6 +26,7 @@ router.post(
   protect,
   authorize("super_admin", "tenant_admin", "content_admin"),
   ensureTenantAccess,
+  checkContentFeatureAccess,
   createContent
 );
 

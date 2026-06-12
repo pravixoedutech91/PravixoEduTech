@@ -41,7 +41,41 @@ const getAllTenants = async (req, res) => {
   }
 };
 
+// Update Tenant
+const updateTenant = async (req, res) => {
+  try {
+    const tenant = await Tenant.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!tenant) {
+      return res.status(404).json({
+        success: false,
+        message: "Tenant not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: tenant,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 module.exports = {
   createTenant,
   getAllTenants,
+  updateTenant,
 };
