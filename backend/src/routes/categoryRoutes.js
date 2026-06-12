@@ -1,53 +1,55 @@
 const express = require("express");
 const router = express.Router();
 
-const Category = require("../models/Category");
+const {
+  createCategory,
+  getAllCategories,
+  updateCategory,
+  deleteCategory,
+} = require("../controllers/categoryController");
+
+const {
+  protect,
+  authorize,
+} = require("../middleware/authMiddleware");
+
+const {
+  ensureTenantAccess,
+} = require("../middleware/tenantMiddleware");
 
 // Create Category
-router.post("/", async (req, res) => {
-  try {
-    console.log("Request Body:", req.body);
-
-    const { name, slug, description } = req.body;
-
-    const category = await Category.create({
-      name,
-      slug,
-      description,
-    });
-
-    res.status(201).json({
-      success: true,
-      data: category,
-    });
-  } catch (error) {
-    console.error(error);
-
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-});
+router.post(
+  "/",
+  protect,
+  authorize("super_admin", "tenant_admin", "content_admin"),
+  ensureTenantAccess,
+  createCategory
+);
 
 // Get All Categories
-router.get("/", async (req, res) => {
-  try {
-    const categories = await Category.find().sort({ createdAt: -1 });
+router.get(
+  "/",
+  protect,
+  authorize("super_admin", "tenant_admin", "content_admin"),
+  getAllCategories
+);
 
-    res.status(200).json({
-      success: true,
-      count: categories.length,
-      data: categories,
-    });
-  } catch (error) {
-    console.error(error);
+// Update Category
+router.put(
+  "/:id",
+  protect,
+  authorize("super_admin", "tenant_admin", "content_admin"),
+  ensureTenantAccess,
+  updateCategory
+);
 
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-});
+// Delete Category
+router.delete(
+  "/:id",
+  protect,
+  authorize("super_admin", "tenant_admin"),
+  ensureTenantAccess,
+  deleteCategory
+);
 
 module.exports = router;

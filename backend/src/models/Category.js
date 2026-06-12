@@ -2,6 +2,12 @@ const mongoose = require("mongoose");
 
 const categorySchema = new mongoose.Schema(
   {
+    tenantId: {
+      type: String,
+      default: "pravixoedutech",
+      index: true,
+    },
+
     name: {
       type: String,
       required: true,
@@ -11,8 +17,8 @@ const categorySchema = new mongoose.Schema(
     slug: {
       type: String,
       required: true,
-      unique: true,
       lowercase: true,
+      trim: true,
     },
 
     description: {
@@ -21,7 +27,7 @@ const categorySchema = new mongoose.Schema(
     },
 
     icon: {
-      type: String, // optional (for UI icons later)
+      type: String,
       default: "",
     },
 
@@ -31,6 +37,11 @@ const categorySchema = new mongoose.Schema(
     },
   },
   { timestamps: true }
+);
+
+categorySchema.index(
+  { tenantId: 1, slug: 1 },
+  { unique: true }
 );
 
 module.exports = mongoose.model("Category", categorySchema);
