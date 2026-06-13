@@ -6,6 +6,7 @@ const categoryRoutes = require("./routes/categoryRoutes");
 const contentRoutes = require("./routes/contentRoutes");
 const tenantRoutes = require("./routes/tenantRoutes");
 const authRoutes = require("./routes/authRoutes");
+const examPatternRoutes = require("./routes/examPatternRoutes");
 
 dotenv.config();
 
@@ -19,6 +20,7 @@ app.use("/api/categories", categoryRoutes);
 app.use("/api/content", contentRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/exam-patterns", examPatternRoutes);
 app.get("/", (req, res) => {
   res.json({
     success: true,
