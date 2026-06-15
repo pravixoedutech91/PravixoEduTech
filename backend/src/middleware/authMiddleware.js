@@ -20,7 +20,7 @@ const protect = async (req, res, next) => {
       });
     }
 
-    console.log("TOKEN RECEIVED:", token);
+    //console.log("TOKEN RECEIVED:", token);
 
     const decoded = jwt.verify(
       token,
