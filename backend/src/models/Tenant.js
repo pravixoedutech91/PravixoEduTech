@@ -32,9 +32,9 @@ const tenantSchema = new mongoose.Schema(
     },
 
     plan: {
-     type: String,
-     default: "custom",
-    }, 
+      type: String,
+      default: "custom",
+    },
     features: {
       articles: {
         type: Boolean,
@@ -75,29 +75,58 @@ const tenantSchema = new mongoose.Schema(
         type: Boolean,
         default: false,
       },
-           
+
+      questionGroups: {
+        type: Boolean,
+        default: false,
+      },
+
+      richQuestionContent: {
+        type: Boolean,
+        default: false,
+      },
+
+      numericalQuestions: {
+        type: Boolean,
+        default: false,
+      },
+
+      multiCorrectQuestions: {
+        type: Boolean,
+        default: false,
+      },
+
+      descriptiveTests: {
+        type: Boolean,
+        default: false,
+      },
+
+      typingTests: {
+        type: Boolean,
+        default: false,
+      },
     },
-limits: {
-  maxCourses: {
-    type: Number,
-    default: 0,
-  },
+    limits: {
+      maxCourses: {
+        type: Number,
+        default: 0,
+      },
 
-  maxTests: {
-    type: Number,
-    default: 0,
-  },
+      maxTests: {
+        type: Number,
+        default: 0,
+      },
 
-  maxStudents: {
-    type: Number,
-    default: 0,
-  },
+      maxStudents: {
+        type: Number,
+        default: 0,
+      },
 
-  maxStorageMB: {
-    type: Number,
-    default: 0,
-  },
-},
+      maxStorageMB: {
+        type: Number,
+        default: 0,
+      },
+    },
 
   },
   {
