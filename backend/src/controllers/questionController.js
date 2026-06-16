@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const Question = require("../models/Question");
+const QuestionGroup = require("../models/QuestionGroup");
 const Category = require("../models/Category");
 const { getTenantFilter } = require("../middleware/tenantMiddleware");
 
@@ -115,6 +116,75 @@ const validateCategoryAccess = async (categoryId, tenantId) => {
   };
 };
 
+const sanitizeQuestionGroupFields = (questionData) => {
+  if (questionData.questionGroupId === "") {
+    questionData.questionGroupId = null;
+  }
+
+  if (questionData.groupQuestionOrder === "") {
+    questionData.groupQuestionOrder = null;
+  }
+
+  if (questionData.questionGroupId === null) {
+    questionData.groupQuestionOrder = null;
+  }
+};
+
+const validateQuestionGroupAccess = async (questionData, tenantId) => {
+  const questionGroupId = questionData.questionGroupId;
+
+  if (!questionGroupId) {
+    if (
+      questionData.groupQuestionOrder !== undefined &&
+      questionData.groupQuestionOrder !== null
+    ) {
+      return {
+        success: false,
+        message: "questionGroupId is required when groupQuestionOrder is provided",
+      };
+    }
+
+    return {
+      success: true,
+    };
+  }
+
+  if (!mongoose.Types.ObjectId.isValid(questionGroupId)) {
+    return {
+      success: false,
+      message: "Invalid question group ID",
+    };
+  }
+
+  const groupQuestionOrder = Number(questionData.groupQuestionOrder);
+
+  if (!Number.isInteger(groupQuestionOrder) || groupQuestionOrder < 1) {
+    return {
+      success: false,
+      message: "groupQuestionOrder must be a positive integer",
+    };
+  }
+
+  questionData.groupQuestionOrder = groupQuestionOrder;
+
+  const questionGroup = await QuestionGroup.findOne({
+    _id: questionGroupId,
+    tenantId,
+    isActive: true,
+  });
+
+  if (!questionGroup) {
+    return {
+      success: false,
+      message: "Question group not found, inactive, or access denied",
+    };
+  }
+
+  return {
+    success: true,
+  };
+};
+
 // Create Question
 const createQuestion = async (req, res) => {
   try {
@@ -125,6 +195,8 @@ const createQuestion = async (req, res) => {
       tenantId,
       createdBy: req.user._id,
     };
+
+    sanitizeQuestionGroupFields(questionData);
 
     const contentError = validateQuestionContent(questionData);
 
@@ -156,7 +228,25 @@ const createQuestion = async (req, res) => {
       });
     }
 
+    const questionGroupValidation = await validateQuestionGroupAccess(
+      questionData,
+      tenantId
+    );
+
+    if (!questionGroupValidation.success) {
+      return res.status(400).json({
+        success: false,
+        message: questionGroupValidation.message,
+      });
+    }
+
     const question = await Question.create(questionData);
+
+    await question.populate("categoryId", "name slug");
+    await question.populate(
+      "questionGroupId",
+      "title slug groupType displayMode isActive"
+    );
 
     res.status(201).json({
       success: true,
@@ -185,6 +275,17 @@ const getAllQuestions = async (req, res) => {
       filter.categoryId = req.query.categoryId;
     }
 
+    if (req.query.questionGroupId) {
+      if (!mongoose.Types.ObjectId.isValid(req.query.questionGroupId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid question group ID",
+        });
+      }
+
+      filter.questionGroupId = req.query.questionGroupId;
+    }
+
     if (req.query.questionType) {
       filter.questionType = req.query.questionType;
     }
@@ -203,6 +304,7 @@ const getAllQuestions = async (req, res) => {
 
     const questions = await Question.find(filter)
       .populate("categoryId", "name slug")
+      .populate("questionGroupId", "title slug groupType displayMode isActive")
       .sort({
         createdAt: -1,
       });
@@ -247,6 +349,8 @@ const updateQuestion = async (req, res) => {
     delete updateData.tenantId;
     delete updateData.createdBy;
 
+    sanitizeQuestionGroupFields(updateData);
+
     const mergedQuestionData = {
       ...existingQuestion.toObject(),
       ...updateData,
@@ -284,6 +388,18 @@ const updateQuestion = async (req, res) => {
       }
     }
 
+    const questionGroupValidation = await validateQuestionGroupAccess(
+      mergedQuestionData,
+      existingQuestion.tenantId
+    );
+
+    if (!questionGroupValidation.success) {
+      return res.status(400).json({
+        success: false,
+        message: questionGroupValidation.message,
+      });
+    }
+
     const question = await Question.findOneAndUpdate(
       {
         _id: req.params.id,
@@ -294,7 +410,9 @@ const updateQuestion = async (req, res) => {
         new: true,
         runValidators: true,
       }
-    ).populate("categoryId", "name slug");
+    )
+      .populate("categoryId", "name slug")
+      .populate("questionGroupId", "title slug groupType displayMode isActive");
 
     res.status(200).json({
       success: true,

@@ -41,6 +41,18 @@ const questionSchema = new mongoose.Schema(
       ref: "Category",
     },
 
+    questionGroupId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "QuestionGroup",
+      default: null,
+    },
+
+    groupQuestionOrder: {
+      type: Number,
+      default: null,
+      min: 1,
+    },
+
     subject: {
       type: String,
       default: "",
@@ -187,5 +199,7 @@ questionSchema.index({ tenantId: 1, categoryId: 1 });
 questionSchema.index({ tenantId: 1, questionType: 1 });
 questionSchema.index({ tenantId: 1, sourceType: 1 });
 questionSchema.index({ tenantId: 1, difficulty: 1 });
+questionSchema.index({ tenantId: 1, questionGroupId: 1 });
+questionSchema.index({ tenantId: 1, questionGroupId: 1, groupQuestionOrder: 1 });
 
 module.exports = mongoose.model("Question", questionSchema);
