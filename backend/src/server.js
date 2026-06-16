@@ -9,6 +9,7 @@ const authRoutes = require("./routes/authRoutes");
 const examPatternRoutes = require("./routes/examPatternRoutes");
 const questionRoutes = require("./routes/questionRoutes");
 const mockTestRoutes = require("./routes/mockTestRoutes");
+const questionGroupRoutes = require("./routes/questionGroupRoutes");
 dotenv.config();
 
 connectDB();
@@ -24,6 +25,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/exam-patterns", examPatternRoutes);
 app.use("/api/questions", questionRoutes);
 app.use("/api/mock-tests", mockTestRoutes);
+app.use("/api/question-groups", questionGroupRoutes);
 app.get("/", (req, res) => {
   res.json({
     success: true,
