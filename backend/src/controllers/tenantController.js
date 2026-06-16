@@ -44,21 +44,56 @@ const getAllTenants = async (req, res) => {
 // Update Tenant
 const updateTenant = async (req, res) => {
   try {
-    const tenant = await Tenant.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
+    const existingTenant = await Tenant.findById(req.params.id);
 
-    if (!tenant) {
+    if (!existingTenant) {
       return res.status(404).json({
         success: false,
         message: "Tenant not found",
       });
     }
+
+    const updateData = {
+      ...req.body,
+    };
+
+    delete updateData._id;
+    delete updateData.__v;
+    delete updateData.createdAt;
+    delete updateData.updatedAt;
+
+    if (updateData.features) {
+      const existingFeatures =
+        existingTenant.features && existingTenant.features.toObject
+          ? existingTenant.features.toObject()
+          : existingTenant.features || {};
+
+      updateData.features = {
+        ...existingFeatures,
+        ...updateData.features,
+      };
+    }
+
+    if (updateData.limits) {
+      const existingLimits =
+        existingTenant.limits && existingTenant.limits.toObject
+          ? existingTenant.limits.toObject()
+          : existingTenant.limits || {};
+
+      updateData.limits = {
+        ...existingLimits,
+        ...updateData.limits,
+      };
+    }
+
+    const tenant = await Tenant.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
 
     res.status(200).json({
       success: true,
