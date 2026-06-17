@@ -28,11 +28,245 @@ const optionSnapshotSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const contentBlockSnapshotSchema = new mongoose.Schema(
+  {
+    blockType: {
+      type: String,
+      enum: ["text", "instruction", "passage", "image", "table", "math"],
+      required: true,
+    },
+
+    textEn: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    textHi: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    imageUrl: {
+      type: String,
+      default: "",
+    },
+
+    imagePublicId: {
+      type: String,
+      default: "",
+    },
+
+    altText: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    captionEn: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    captionHi: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    latex: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    tableData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+
+    order: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+
+    isVisible: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  { _id: false }
+);
+
+const questionGroupSnapshotSchema = new mongoose.Schema(
+  {
+    questionGroupId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "QuestionGroup",
+    },
+
+    title: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    slug: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    description: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    groupType: {
+      type: String,
+      enum: [
+        "passage",
+        "cloze",
+        "reasoning_set",
+        "di_set",
+        "match_column",
+        "instruction_set",
+        "statement_set",
+        "caselet",
+        "science_diagram",
+        "math_set",
+        "other",
+      ],
+      default: "instruction_set",
+    },
+
+    subject: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    topic: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    subTopic: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    instructionEn: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    instructionHi: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    passageEn: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    passageHi: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    contentBlocks: {
+      type: [contentBlockSnapshotSchema],
+      default: [],
+    },
+
+    displayMode: {
+      type: String,
+      enum: ["auto", "sticky", "split", "full_width", "collapsible"],
+      default: "auto",
+    },
+
+    expectedQuestionCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    sourceType: {
+      type: String,
+      enum: ["original", "pyq", "imported"],
+      default: "original",
+    },
+
+    pyqDetails: {
+      examName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      year: {
+        type: Number,
+        default: null,
+      },
+
+      shift: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      paperCode: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+    },
+
+    difficulty: {
+      type: String,
+      enum: ["easy", "medium", "hard"],
+      default: "medium",
+    },
+
+    tags: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
+  },
+  { _id: false }
+);
+
 const questionSnapshotSchema = new mongoose.Schema(
   {
     questionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Question",
+    },
+
+    questionGroupId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "QuestionGroup",
+      default: null,
+    },
+
+    groupQuestionOrder: {
+      type: Number,
+      default: null,
+      min: 1,
     },
 
     questionType: {
@@ -191,6 +425,11 @@ const sectionSnapshotSchema = new mongoose.Schema(
       type: Number,
       required: true,
       min: 1,
+    },
+
+    questionGroups: {
+      type: [questionGroupSnapshotSchema],
+      default: [],
     },
 
     questions: {

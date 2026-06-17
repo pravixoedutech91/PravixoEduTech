@@ -7,6 +7,7 @@ const MockTest = require("../models/MockTest");
 const MockTestVersion = require("../models/MockTestVersion");
 const ExamPattern = require("../models/ExamPattern");
 const Question = require("../models/Question");
+const QuestionGroup = require("../models/QuestionGroup");
 const Category = require("../models/Category");
 
 const { getTenantFilter } = require("../middleware/tenantMiddleware");
@@ -16,23 +17,23 @@ const hasText = (value) => {
 };
 
 const createSlugFromText = (value) => {
-  if (!hasText(value)) {
-    return "";
-  }
+    if (!hasText(value)) {
+        return "";
+    }
 
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    return value
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
 };
 
 const getPatternSectionKey = (section) => {
-  return (
-    section.slug ||
-    section.sectionSlug ||
-    createSlugFromText(section.name)
-  );
+    return (
+        section.slug ||
+        section.sectionSlug ||
+        createSlugFromText(section.name)
+    );
 };
 
 const getRequestTenantId = (req) => {
@@ -259,60 +260,60 @@ const validateCategoryAccess = async (categoryId, tenantId) => {
 };
 
 const validateSectionsAgainstPattern = (sections, examPattern) => {
-  const patternSections = examPattern.sections || [];
+    const patternSections = examPattern.sections || [];
 
-  if (sections.length !== patternSections.length) {
-    return "Mock test sections must match selected exam pattern sections";
-  }
-
-  const patternSectionMap = new Map();
-
-  for (const patternSection of patternSections) {
-    const patternSectionKey = getPatternSectionKey(patternSection);
-
-    if (!patternSectionKey) {
-      return "Every exam pattern section must have name, slug, or sectionSlug";
+    if (sections.length !== patternSections.length) {
+        return "Mock test sections must match selected exam pattern sections";
     }
 
-    if (patternSectionMap.has(patternSectionKey)) {
-      return "Exam pattern has duplicate section names/slugs";
+    const patternSectionMap = new Map();
+
+    for (const patternSection of patternSections) {
+        const patternSectionKey = getPatternSectionKey(patternSection);
+
+        if (!patternSectionKey) {
+            return "Every exam pattern section must have name, slug, or sectionSlug";
+        }
+
+        if (patternSectionMap.has(patternSectionKey)) {
+            return "Exam pattern has duplicate section names/slugs";
+        }
+
+        patternSectionMap.set(patternSectionKey, patternSection);
     }
 
-    patternSectionMap.set(patternSectionKey, patternSection);
-  }
+    for (const section of sections) {
+        const sectionKey = createSlugFromText(section.sectionSlug);
+        const patternSection = patternSectionMap.get(sectionKey);
 
-  for (const section of sections) {
-    const sectionKey = createSlugFromText(section.sectionSlug);
-    const patternSection = patternSectionMap.get(sectionKey);
+        if (!patternSection) {
+            return `Section ${section.sectionSlug} does not exist in selected exam pattern`;
+        }
 
-    if (!patternSection) {
-      return `Section ${section.sectionSlug} does not exist in selected exam pattern`;
+        if (
+            Number(section.durationMinutes) !==
+            Number(patternSection.durationMinutes)
+        ) {
+            return `Section ${section.sectionSlug} duration must match exam pattern`;
+        }
+
+        if (Number(section.questionCount) !== Number(patternSection.questionCount)) {
+            return `Section ${section.sectionSlug} question count must match exam pattern`;
+        }
+
+        if (
+            Number(section.marksPerQuestion) !==
+            Number(patternSection.marksPerQuestion)
+        ) {
+            return `Section ${section.sectionSlug} marks must match exam pattern`;
+        }
+
+        if (Number(section.negativeMarks) !== Number(patternSection.negativeMarks)) {
+            return `Section ${section.sectionSlug} negative marks must match exam pattern`;
+        }
     }
 
-    if (
-      Number(section.durationMinutes) !==
-      Number(patternSection.durationMinutes)
-    ) {
-      return `Section ${section.sectionSlug} duration must match exam pattern`;
-    }
-
-    if (Number(section.questionCount) !== Number(patternSection.questionCount)) {
-      return `Section ${section.sectionSlug} question count must match exam pattern`;
-    }
-
-    if (
-      Number(section.marksPerQuestion) !==
-      Number(patternSection.marksPerQuestion)
-    ) {
-      return `Section ${section.sectionSlug} marks must match exam pattern`;
-    }
-
-    if (Number(section.negativeMarks) !== Number(patternSection.negativeMarks)) {
-      return `Section ${section.sectionSlug} negative marks must match exam pattern`;
-    }
-  }
-
-  return null;
+    return null;
 };
 
 
@@ -329,6 +330,7 @@ const validateQuestionAccess = async (sections, tenantId) => {
         return {
             success: true,
             questionMap: new Map(),
+            questionGroupMap: new Map(),
         };
     }
 
@@ -348,14 +350,52 @@ const validateQuestionAccess = async (sections, tenantId) => {
     }
 
     const questionMap = new Map();
+    const questionGroupIds = [];
 
     for (const question of questions) {
         questionMap.set(String(question._id), question);
+
+        if (question.questionGroupId) {
+            const groupQuestionOrder = Number(question.groupQuestionOrder);
+
+            if (!Number.isInteger(groupQuestionOrder) || groupQuestionOrder < 1) {
+                return {
+                    success: false,
+                    message:
+                        "One or more grouped questions are missing valid groupQuestionOrder",
+                };
+            }
+
+            questionGroupIds.push(String(question.questionGroupId));
+        }
+    }
+    const uniqueQuestionGroupIds = [...new Set(questionGroupIds)];
+    const questionGroupMap = new Map();
+
+    if (uniqueQuestionGroupIds.length > 0) {
+        const questionGroups = await QuestionGroup.find({
+            _id: { $in: uniqueQuestionGroupIds },
+            tenantId,
+            isActive: true,
+        });
+
+        if (questionGroups.length !== uniqueQuestionGroupIds.length) {
+            return {
+                success: false,
+                message:
+                    "One or more question groups were not found, are inactive, or access was denied",
+            };
+        }
+
+        for (const questionGroup of questionGroups) {
+            questionGroupMap.set(String(questionGroup._id), questionGroup);
+        }
     }
 
     return {
         success: true,
         questionMap,
+        questionGroupMap,
     };
 };
 
@@ -369,9 +409,48 @@ const validatePublishReady = (mockTest) => {
     return null;
 };
 
+const buildQuestionGroupSnapshot = (questionGroup) => {
+    return {
+        questionGroupId: questionGroup._id,
+        title: questionGroup.title,
+        slug: questionGroup.slug,
+        description: questionGroup.description,
+        groupType: questionGroup.groupType,
+        subject: questionGroup.subject,
+        topic: questionGroup.topic,
+        subTopic: questionGroup.subTopic,
+        instructionEn: questionGroup.instructionEn,
+        instructionHi: questionGroup.instructionHi,
+        passageEn: questionGroup.passageEn,
+        passageHi: questionGroup.passageHi,
+        contentBlocks: (questionGroup.contentBlocks || []).map((block) => ({
+            blockType: block.blockType,
+            textEn: block.textEn,
+            textHi: block.textHi,
+            imageUrl: block.imageUrl,
+            imagePublicId: block.imagePublicId,
+            altText: block.altText,
+            captionEn: block.captionEn,
+            captionHi: block.captionHi,
+            latex: block.latex,
+            tableData: block.tableData,
+            order: block.order,
+            isVisible: block.isVisible,
+        })),
+        displayMode: questionGroup.displayMode,
+        expectedQuestionCount: questionGroup.expectedQuestionCount,
+        sourceType: questionGroup.sourceType,
+        pyqDetails: questionGroup.pyqDetails,
+        difficulty: questionGroup.difficulty,
+        tags: questionGroup.tags,
+    };
+};
+
 const buildQuestionSnapshot = (question, section, order) => {
     return {
         questionId: question._id,
+        questionGroupId: question.questionGroupId || null,
+        groupQuestionOrder: question.groupQuestionOrder || null,
         questionType: question.questionType,
         sourceType: question.sourceType,
         subject: question.subject,
@@ -408,12 +487,36 @@ const buildExamPatternSnapshot = (examPattern) => {
     };
 };
 
-const buildSectionSnapshots = (mockTest, questionMap) => {
+const buildSectionSnapshots = (mockTest, questionMap, questionGroupMap) => {
     return mockTest.sections
         .map((section) => {
             const sortedQuestions = [...section.questions].sort(
                 (a, b) => Number(a.order || 1) - Number(b.order || 1)
             );
+
+            const questionGroups = [];
+            const addedQuestionGroupIds = new Set();
+
+            for (const questionItem of sortedQuestions) {
+                const question = questionMap.get(String(questionItem.questionId));
+
+                if (!question || !question.questionGroupId) {
+                    continue;
+                }
+
+                const questionGroupId = String(question.questionGroupId);
+
+                if (addedQuestionGroupIds.has(questionGroupId)) {
+                    continue;
+                }
+
+                const questionGroup = questionGroupMap.get(questionGroupId);
+
+                if (questionGroup) {
+                    questionGroups.push(buildQuestionGroupSnapshot(questionGroup));
+                    addedQuestionGroupIds.add(questionGroupId);
+                }
+            }
 
             return {
                 sectionSlug: section.sectionSlug,
@@ -424,6 +527,7 @@ const buildSectionSnapshots = (mockTest, questionMap) => {
                 marksPerQuestion: section.marksPerQuestion,
                 negativeMarks: section.negativeMarks,
                 order: section.order,
+                questionGroups,
                 questions: sortedQuestions.map((questionItem, index) => {
                     const question = questionMap.get(String(questionItem.questionId));
 
@@ -1005,7 +1109,7 @@ const publishMockTest = async (req, res) => {
             examPatternSnapshot: buildExamPatternSnapshot(
                 examPatternValidation.examPattern
             ),
-            sections: buildSectionSnapshots(mockTest, questionValidation.questionMap),
+            sections: buildSectionSnapshots(mockTest, questionValidation.questionMap, questionValidation.questionGroupMap),
             settings,
             publishedBy: req.user._id,
         });
