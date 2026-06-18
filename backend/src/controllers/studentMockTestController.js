@@ -231,13 +231,13 @@ const calculateTotalDurationSeconds = (mockTestVersion) => {
 };
 
 const getInProgressDetailExpiresAt = (attemptExpiresAt) => {
-  if (!attemptExpiresAt) {
-    return null;
-  }
+    if (!attemptExpiresAt) {
+        return null;
+    }
 
-  return new Date(
-    new Date(attemptExpiresAt).getTime() + 24 * 60 * 60 * 1000
-  );
+    return new Date(
+        new Date(attemptExpiresAt).getTime() + 24 * 60 * 60 * 1000
+    );
 };
 
 const buildInitialAnswersFromVersion = (mockTestVersion) => {
@@ -289,15 +289,15 @@ const getOrCreateAttemptDetail = async (tenantId, attempt, mockTestVersion) => {
     });
 
     if (existingDetail) {
-    const fallbackExpiresAt = getInProgressDetailExpiresAt(attempt.expiresAt);
+        const fallbackExpiresAt = getInProgressDetailExpiresAt(attempt.expiresAt);
 
-    if (!existingDetail.expiresAt && fallbackExpiresAt) {
-        existingDetail.expiresAt = fallbackExpiresAt;
-        await existingDetail.save();
+        if (!existingDetail.expiresAt && fallbackExpiresAt) {
+            existingDetail.expiresAt = fallbackExpiresAt;
+            await existingDetail.save();
+        }
+
+        return existingDetail;
     }
-
-    return existingDetail;
-}
 
     return TestAttemptDetail.create({
         tenantId,
@@ -326,6 +326,85 @@ const buildAttemptPayload = (attempt, mockTestVersion, resumed) => {
             review: attempt.review,
         },
         test: buildSanitizedTestForStudent(mockTestVersion),
+    };
+};
+const findQuestionInVersionBySnapshotId = (mockTestVersion, questionSnapshotId) => {
+    const targetQuestionSnapshotId = String(questionSnapshotId);
+
+    for (const section of mockTestVersion.sections || []) {
+        for (const question of section.questions || []) {
+            if (String(question._id) === targetQuestionSnapshotId) {
+                return question;
+            }
+        }
+    }
+
+    return null;
+};
+
+const normalizeSelectedOptionId = (selectedOptionId) => {
+    if (selectedOptionId === undefined) {
+        return undefined;
+    }
+
+    if (selectedOptionId === null || selectedOptionId === "") {
+        return null;
+    }
+
+    return String(selectedOptionId).trim().toUpperCase();
+};
+
+const buildAnswerStatus = ({ selectedOptionId, markedForReview, visited }) => {
+    if (selectedOptionId && markedForReview) {
+        return "answered_and_marked";
+    }
+
+    if (selectedOptionId) {
+        return "answered";
+    }
+
+    if (markedForReview) {
+        return "marked_for_review";
+    }
+
+    if (visited) {
+        return "not_answered";
+    }
+
+    return "not_visited";
+};
+
+const sumAnswerTimeSpentSeconds = (answers) => {
+    return (answers || []).reduce((total, answer) => {
+        return total + toNumber(answer.timeSpentSeconds, 0);
+    }, 0);
+};
+
+const buildSavedAnswerPayload = (attempt, answer) => {
+    return {
+        serverTime: new Date(),
+        attempt: {
+            _id: attempt._id,
+            status: attempt.status,
+            lastActivityAt: attempt.lastActivityAt,
+            expiresAt: attempt.expiresAt,
+            timeSpentSeconds: attempt.timeSpentSeconds,
+        },
+        answer: {
+            sectionSlug: answer.sectionSlug,
+            questionId: answer.questionId,
+            questionSnapshotId: answer.questionSnapshotId,
+            questionGroupId: answer.questionGroupId || null,
+            groupQuestionOrder: answer.groupQuestionOrder || null,
+            questionOrder: answer.questionOrder,
+            selectedOptionId: answer.selectedOptionId || null,
+            status: answer.status,
+            visited: answer.visited,
+            markedForReview: answer.markedForReview,
+            confidenceLevel: answer.confidenceLevel,
+            timeSpentSeconds: answer.timeSpentSeconds,
+            answeredAt: answer.answeredAt,
+        },
     };
 };
 
@@ -560,7 +639,225 @@ const startMockTestAttempt = async (req, res) => {
     }
 };
 
+const saveMockTestAnswer = async (req, res) => {
+    try {
+        const tenantId = getStudentTenantId(req);
+        const studentId = req.user._id;
+        const { attemptId } = req.params;
+
+        const {
+            questionSnapshotId,
+            selectedOptionId,
+            markedForReview,
+            confidenceLevel,
+            timeSpentSeconds,
+        } = req.body || {};
+
+        if (!mongoose.Types.ObjectId.isValid(attemptId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid attempt ID",
+            });
+        }
+
+        if (!mongoose.Types.ObjectId.isValid(questionSnapshotId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid question snapshot ID",
+            });
+        }
+
+        if (
+            markedForReview !== undefined &&
+            typeof markedForReview !== "boolean"
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "markedForReview must be true or false",
+            });
+        }
+
+        const allowedConfidenceLevels = [
+            "not_marked",
+            "sure",
+            "doubtful",
+            "guess",
+        ];
+
+        if (
+            confidenceLevel !== undefined &&
+            !allowedConfidenceLevels.includes(confidenceLevel)
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid confidence level",
+            });
+        }
+
+        const attempt = await TestAttempt.findOne({
+            _id: attemptId,
+            tenantId,
+            studentId,
+            isActive: true,
+        });
+
+        if (!attempt) {
+            return res.status(404).json({
+                success: false,
+                message: "Attempt not found or access denied",
+            });
+        }
+
+        if (attempt.status !== "in_progress") {
+            return res.status(403).json({
+                success: false,
+                message: "Only in-progress attempts can be updated",
+            });
+        }
+
+        const now = new Date();
+
+        if (attempt.expiresAt && attempt.expiresAt <= now) {
+            attempt.status = "expired";
+            attempt.lastActivityAt = now;
+            await attempt.save();
+
+            return res.status(403).json({
+                success: false,
+                message: "Attempt has expired",
+            });
+        }
+
+        const mockTestVersion = await MockTestVersion.findOne({
+            _id: attempt.mockTestVersionId,
+            tenantId,
+            isActive: true,
+        });
+
+        if (!mockTestVersion) {
+            return res.status(404).json({
+                success: false,
+                message: "Mock test version not found",
+            });
+        }
+
+        const question = findQuestionInVersionBySnapshotId(
+            mockTestVersion,
+            questionSnapshotId
+        );
+
+        if (!question) {
+            return res.status(404).json({
+                success: false,
+                message: "Question not found in this attempt version",
+            });
+        }
+
+        const attemptDetail = await getOrCreateAttemptDetail(
+            tenantId,
+            attempt,
+            mockTestVersion
+        );
+
+        const answer = attemptDetail.answers.find((answerItem) => {
+            return String(answerItem.questionSnapshotId) === String(questionSnapshotId);
+        });
+
+        if (!answer) {
+            return res.status(404).json({
+                success: false,
+                message: "Question not found in attempt detail",
+            });
+        }
+
+        const normalizedSelectedOptionId =
+            normalizeSelectedOptionId(selectedOptionId);
+
+        if (
+            normalizedSelectedOptionId !== undefined &&
+            normalizedSelectedOptionId !== null
+        ) {
+            const validOptionIds = (question.options || []).map((option) => {
+                return option.optionId;
+            });
+
+            if (!validOptionIds.includes(normalizedSelectedOptionId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Selected option does not belong to this question",
+                });
+            }
+
+            answer.selectedOptionId = normalizedSelectedOptionId;
+            answer.answeredAt = now;
+        }
+
+        if (normalizedSelectedOptionId === null) {
+            answer.selectedOptionId = undefined;
+            answer.answeredAt = null;
+        }
+
+        answer.visited = true;
+
+        if (markedForReview !== undefined) {
+            answer.markedForReview = markedForReview;
+        }
+
+        if (confidenceLevel !== undefined) {
+            answer.confidenceLevel = confidenceLevel;
+        }
+
+        if (timeSpentSeconds !== undefined) {
+            const safeTimeSpentSeconds = Math.max(
+                toNumber(timeSpentSeconds, 0),
+                0
+            );
+
+            answer.timeSpentSeconds = Math.max(
+                toNumber(answer.timeSpentSeconds, 0),
+                safeTimeSpentSeconds
+            );
+        }
+
+        answer.status = buildAnswerStatus({
+            selectedOptionId: Boolean(answer.selectedOptionId),
+            markedForReview: answer.markedForReview,
+            visited: answer.visited,
+        });
+
+        attemptDetail.lastSyncedAt = now;
+        attemptDetail.markModified("answers");
+        await attemptDetail.save();
+
+        const totalTimeSpentSeconds = sumAnswerTimeSpentSeconds(
+            attemptDetail.answers
+        );
+
+        attempt.lastActivityAt = now;
+        attempt.timeSpentSeconds =
+            attempt.totalDurationSeconds > 0
+                ? Math.min(totalTimeSpentSeconds, attempt.totalDurationSeconds)
+                : totalTimeSpentSeconds;
+
+        await attempt.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Answer saved successfully",
+            data: buildSavedAnswerPayload(attempt, answer),
+        });
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+
 module.exports = {
     getPublishedMockTestsForStudent,
     startMockTestAttempt,
+    saveMockTestAnswer,
 };

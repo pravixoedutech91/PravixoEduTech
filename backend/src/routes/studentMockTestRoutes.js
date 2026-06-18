@@ -4,6 +4,7 @@ const router = express.Router();
 const {
   getPublishedMockTestsForStudent,
   startMockTestAttempt,
+  saveMockTestAnswer,
 } = require("../controllers/studentMockTestController");
 
 const { protect, authorize } = require("../middleware/authMiddleware");
@@ -26,6 +27,15 @@ router.post(
   authorize("student"),
   checkFeatureAccess("mockTests"),
   startMockTestAttempt
+);
+
+// Student: Save or update answer during attempt
+router.patch(
+  "/attempts/:attemptId/answer",
+  protect,
+  authorize("student"),
+  checkFeatureAccess("mockTests"),
+  saveMockTestAnswer
 );
 
 module.exports = router;
