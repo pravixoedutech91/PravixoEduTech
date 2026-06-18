@@ -7,6 +7,7 @@ const {
   saveMockTestAnswer,
   submitMockTestAttempt,
   getMockTestResult,
+  getMockTestReview,
 
 } = require("../controllers/studentMockTestController");
 
@@ -57,6 +58,15 @@ router.get(
   authorize("student"),
   checkFeatureAccess("mockTests"),
   getMockTestResult
+);
+
+// Student: Get submitted attempt review
+router.get(
+  "/attempts/:attemptId/review",
+  protect,
+  authorize("student"),
+  checkFeatureAccess("mockTests"),
+  getMockTestReview
 );
 
 module.exports = router;

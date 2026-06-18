@@ -1156,6 +1156,170 @@ const buildResultPayload = (attempt, mockTestVersion) => {
     };
 };
 
+const buildReviewAnswerMap = (attemptDetail) => {
+    const answerMap = new Map();
+
+    for (const answer of attemptDetail.answers || []) {
+        answerMap.set(String(answer.questionSnapshotId), answer);
+    }
+
+    return answerMap;
+};
+
+const getDetailedReviewAccess = (attempt, now) => {
+    const review = attempt.review || {};
+    const solutionVisibility = review.solutionVisibility || "after_submit";
+
+    if (solutionVisibility === "never") {
+        return {
+            allowed: false,
+            message: "Detailed review is not available for this test",
+        };
+    }
+
+    if (
+        review.detailedReviewExpiresAt &&
+        new Date(review.detailedReviewExpiresAt) <= now
+    ) {
+        return {
+            allowed: false,
+            message: "Detailed review has expired",
+        };
+    }
+
+    if (!review.isDetailedReviewAvailable) {
+        return {
+            allowed: false,
+            message: "Detailed review is not available yet",
+        };
+    }
+
+    if (solutionVisibility === "after_submit") {
+        return {
+            allowed: true,
+            message: "Detailed review available",
+        };
+    }
+
+    if (solutionVisibility === "after_test_end") {
+        if (attempt.expiresAt && new Date(attempt.expiresAt) <= now) {
+            return {
+                allowed: true,
+                message: "Detailed review available",
+            };
+        }
+
+        return {
+            allowed: false,
+            message: "Detailed review will be available after test end",
+        };
+    }
+
+    return {
+        allowed: false,
+        message: "Detailed review is not available",
+    };
+};
+
+const buildReviewQuestionPayload = (question, answer) => {
+    return {
+        _id: question._id,
+        questionId: question.questionId,
+        questionGroupId: question.questionGroupId || null,
+        groupQuestionOrder: question.groupQuestionOrder || null,
+        questionType: question.questionType,
+        sourceType: question.sourceType,
+        subject: question.subject,
+        topic: question.topic,
+        subTopic: question.subTopic,
+        questionTextEn: question.questionTextEn,
+        questionTextHi: question.questionTextHi,
+        questionImageUrl: question.questionImageUrl,
+        options: (question.options || []).map(sanitizeOptionForStudent),
+
+        correctOptionId: question.correctOptionId,
+        explanationEn: question.explanationEn,
+        explanationHi: question.explanationHi,
+        explanationImageUrl: question.explanationImageUrl,
+
+        marks: question.marks,
+        negativeMarks: question.negativeMarks,
+        difficulty: question.difficulty,
+        tags: question.tags,
+        order: question.order,
+
+        studentAnswer: {
+            selectedOptionId: answer?.selectedOptionId || null,
+            isCorrect: answer?.isCorrect ?? null,
+            marksAwarded: answer?.marksAwarded || 0,
+            negativeMarksApplied: answer?.negativeMarksApplied || 0,
+            timeSpentSeconds: answer?.timeSpentSeconds || 0,
+            confidenceLevel: answer?.confidenceLevel || "not_marked",
+            status: answer?.status || "not_visited",
+            visited: answer?.visited || false,
+            markedForReview: answer?.markedForReview || false,
+            answeredAt: answer?.answeredAt || null,
+        },
+    };
+};
+
+const buildReviewSectionPayload = (section, answerMap) => {
+    return {
+        sectionSlug: section.sectionSlug,
+        name: section.name,
+        sectionType: section.sectionType,
+        durationMinutes: section.durationMinutes,
+        questionCount: section.questionCount,
+        marksPerQuestion: section.marksPerQuestion,
+        negativeMarks: section.negativeMarks,
+        order: section.order,
+        questionGroups: (section.questionGroups || []).map(
+            sanitizeQuestionGroupForStudent
+        ),
+        questions: [...(section.questions || [])]
+            .sort((a, b) => Number(a.order || 1) - Number(b.order || 1))
+            .map((question) => {
+                const answer = answerMap.get(String(question._id));
+                return buildReviewQuestionPayload(question, answer);
+            }),
+    };
+};
+
+const buildReviewPayload = (attempt, mockTestVersion, attemptDetail) => {
+    const answerMap = buildReviewAnswerMap(attemptDetail);
+
+    return {
+        serverTime: new Date(),
+        test: {
+            _id: mockTestVersion._id,
+            mockTestId: mockTestVersion.mockTestId,
+            versionNumber: mockTestVersion.versionNumber,
+            title: mockTestVersion.title,
+            slug: mockTestVersion.slug,
+            testType: mockTestVersion.testType,
+            accessType: mockTestVersion.accessType,
+        },
+        attempt: {
+            _id: attempt._id,
+            attemptNumber: attempt.attemptNumber,
+            status: attempt.status,
+            startedAt: attempt.startedAt,
+            submittedAt: attempt.submittedAt,
+            expiresAt: attempt.expiresAt,
+            totalDurationSeconds: attempt.totalDurationSeconds,
+            timeSpentSeconds: attempt.timeSpentSeconds,
+            scoreSummary: attempt.scoreSummary,
+            sectionSummaries: attempt.sectionSummaries,
+            topicSummaries: attempt.topicSummaries,
+            difficultySummaries: attempt.difficultySummaries,
+            review: attempt.review,
+        },
+        sections: (mockTestVersion.sections || [])
+            .map((section) => buildReviewSectionPayload(section, answerMap))
+            .sort((a, b) => Number(a.order || 1) - Number(b.order || 1)),
+    };
+};
+
 const submitMockTestAttempt = async (req, res) => {
     try {
         const tenantId = getStudentTenantId(req);
@@ -1362,10 +1526,96 @@ const getMockTestResult = async (req, res) => {
     }
 };
 
+const getMockTestReview = async (req, res) => {
+    try {
+        const tenantId = getStudentTenantId(req);
+        const studentId = req.user._id;
+        const { attemptId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(attemptId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid attempt ID",
+            });
+        }
+
+        const attempt = await TestAttempt.findOne({
+            _id: attemptId,
+            tenantId,
+            studentId,
+            isActive: true,
+        });
+
+        if (!attempt) {
+            return res.status(404).json({
+                success: false,
+                message: "Attempt not found or access denied",
+            });
+        }
+
+        if (attempt.status !== "submitted") {
+            return res.status(403).json({
+                success: false,
+                message: "Review is available only after submission",
+            });
+        }
+
+        const now = new Date();
+        const reviewAccess = getDetailedReviewAccess(attempt, now);
+
+        if (!reviewAccess.allowed) {
+            return res.status(403).json({
+                success: false,
+                message: reviewAccess.message,
+            });
+        }
+
+        const mockTestVersion = await MockTestVersion.findOne({
+            _id: attempt.mockTestVersionId,
+            tenantId,
+            isActive: true,
+        });
+
+        if (!mockTestVersion) {
+            return res.status(404).json({
+                success: false,
+                message: "Mock test version not found",
+            });
+        }
+
+        const attemptDetail = await TestAttemptDetail.findOne({
+            tenantId,
+            attemptId: attempt._id,
+            studentId,
+        });
+
+        if (!attemptDetail) {
+            return res.status(404).json({
+                success: false,
+                message: "Review details not found or already expired",
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Review fetched successfully",
+            data: buildReviewPayload(attempt, mockTestVersion, attemptDetail),
+        });
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+
 module.exports = {
     getPublishedMockTestsForStudent,
     startMockTestAttempt,
     saveMockTestAnswer,
     submitMockTestAttempt,
     getMockTestResult,
+    getMockTestReview,
 };
