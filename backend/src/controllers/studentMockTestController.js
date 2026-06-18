@@ -856,8 +856,391 @@ const saveMockTestAnswer = async (req, res) => {
     }
 };
 
+const roundToTwo = (value) => {
+    return Math.round((toNumber(value, 0) + Number.EPSILON) * 100) / 100;
+};
+
+const calculatePercentage = (score, maxScore) => {
+    if (maxScore <= 0) {
+        return 0;
+    }
+
+    return roundToTwo(Math.max(0, Math.min(100, (score / maxScore) * 100)));
+};
+
+const calculateAccuracy = (correct, attempted) => {
+    if (attempted <= 0) {
+        return 0;
+    }
+
+    return roundToTwo((correct / attempted) * 100);
+};
+
+const getSubmittedDetailExpiresAt = (baseDate, reviewRetentionDays) => {
+    const safeRetentionDays = Math.max(
+        toNumber(reviewRetentionDays, REVIEW_RETENTION_DAYS),
+        1
+    );
+
+    return new Date(
+        new Date(baseDate).getTime() + safeRetentionDays * 24 * 60 * 60 * 1000
+    );
+};
+
+const createBasePerformanceSummary = () => {
+    return {
+        totalQuestions: 0,
+        attempted: 0,
+        correct: 0,
+        wrong: 0,
+        skipped: 0,
+        score: 0,
+        maxScore: 0,
+        percentage: 0,
+        accuracy: 0,
+        timeSpentSeconds: 0,
+    };
+};
+
+const finalizePerformanceSummary = (summary) => {
+    summary.skipped = Math.max(summary.totalQuestions - summary.attempted, 0);
+    summary.score = roundToTwo(summary.score);
+    summary.maxScore = roundToTwo(summary.maxScore);
+    summary.percentage = calculatePercentage(summary.score, summary.maxScore);
+    summary.accuracy = calculateAccuracy(summary.correct, summary.attempted);
+    summary.timeSpentSeconds = Math.max(
+        toNumber(summary.timeSpentSeconds, 0),
+        0
+    );
+
+    return summary;
+};
+
+const getOrCreateSummaryFromMap = (map, key, baseData) => {
+    if (!map.has(key)) {
+        map.set(key, {
+            ...baseData,
+            ...createBasePerformanceSummary(),
+        });
+    }
+
+    return map.get(key);
+};
+
+const buildSubmittedAttemptSummaries = (mockTestVersion, attemptDetail) => {
+    const answerBySnapshotId = new Map();
+
+    for (const answer of attemptDetail.answers || []) {
+        answerBySnapshotId.set(String(answer.questionSnapshotId), answer);
+    }
+
+    const scoreSummary = {
+        totalQuestions: 0,
+        attempted: 0,
+        correct: 0,
+        wrong: 0,
+        skipped: 0,
+        score: 0,
+        maxScore: 0,
+        percentage: 0,
+        accuracy: 0,
+        negativeMarks: 0,
+    };
+
+    const sectionMap = new Map();
+    const topicMap = new Map();
+    const difficultyMap = new Map();
+
+    for (const section of mockTestVersion.sections || []) {
+        const sectionSummary = getOrCreateSummaryFromMap(
+            sectionMap,
+            section.sectionSlug,
+            {
+                sectionSlug: section.sectionSlug,
+                name: section.name,
+                sectionType: section.sectionType,
+            }
+        );
+
+        for (const question of section.questions || []) {
+            const answer = answerBySnapshotId.get(String(question._id));
+            const marks = toNumber(question.marks, 0);
+            const negativeMarks = toNumber(question.negativeMarks, 0);
+            const selectedOptionId = answer?.selectedOptionId || null;
+            const questionTimeSpentSeconds = toNumber(
+                answer?.timeSpentSeconds,
+                0
+            );
+
+            const topicKey = [
+                question.subject || "",
+                question.topic || "",
+                question.subTopic || "",
+            ].join("|");
+
+            const topicSummary = getOrCreateSummaryFromMap(topicMap, topicKey, {
+                subject: question.subject || "",
+                topic: question.topic || "",
+                subTopic: question.subTopic || "",
+            });
+
+            const difficulty = question.difficulty || "medium";
+
+            const difficultySummary = getOrCreateSummaryFromMap(
+                difficultyMap,
+                difficulty,
+                {
+                    difficulty,
+                }
+            );
+
+            const summariesToUpdate = [
+                sectionSummary,
+                topicSummary,
+                difficultySummary,
+            ];
+
+            scoreSummary.totalQuestions += 1;
+            scoreSummary.maxScore += marks;
+
+            for (const summary of summariesToUpdate) {
+                summary.totalQuestions += 1;
+                summary.maxScore += marks;
+                summary.timeSpentSeconds += questionTimeSpentSeconds;
+            }
+
+            if (!answer) {
+                continue;
+            }
+
+            answer.timeSpentSeconds = Math.max(questionTimeSpentSeconds, 0);
+
+            if (!selectedOptionId) {
+                answer.isCorrect = null;
+                answer.marksAwarded = 0;
+                answer.negativeMarksApplied = 0;
+                continue;
+            }
+
+            const isCorrect = selectedOptionId === question.correctOptionId;
+            const marksAwarded = isCorrect ? marks : 0;
+            const negativeMarksApplied = isCorrect ? 0 : negativeMarks;
+
+            answer.isCorrect = isCorrect;
+            answer.marksAwarded = marksAwarded;
+            answer.negativeMarksApplied = negativeMarksApplied;
+
+            scoreSummary.attempted += 1;
+            scoreSummary.score += marksAwarded - negativeMarksApplied;
+            scoreSummary.negativeMarks += negativeMarksApplied;
+
+            if (isCorrect) {
+                scoreSummary.correct += 1;
+            } else {
+                scoreSummary.wrong += 1;
+            }
+
+            for (const summary of summariesToUpdate) {
+                summary.attempted += 1;
+                summary.score += marksAwarded - negativeMarksApplied;
+
+                if (isCorrect) {
+                    summary.correct += 1;
+                } else {
+                    summary.wrong += 1;
+                }
+            }
+        }
+    }
+
+    scoreSummary.skipped = Math.max(
+        scoreSummary.totalQuestions - scoreSummary.attempted,
+        0
+    );
+    scoreSummary.score = roundToTwo(scoreSummary.score);
+    scoreSummary.maxScore = roundToTwo(scoreSummary.maxScore);
+    scoreSummary.negativeMarks = roundToTwo(scoreSummary.negativeMarks);
+    scoreSummary.percentage = calculatePercentage(
+        scoreSummary.score,
+        scoreSummary.maxScore
+    );
+    scoreSummary.accuracy = calculateAccuracy(
+        scoreSummary.correct,
+        scoreSummary.attempted
+    );
+
+    return {
+        scoreSummary,
+        sectionSummaries: Array.from(sectionMap.values()).map(
+            finalizePerformanceSummary
+        ),
+        topicSummaries: Array.from(topicMap.values()).map(
+            finalizePerformanceSummary
+        ),
+        difficultySummaries: Array.from(difficultyMap.values()).map(
+            finalizePerformanceSummary
+        ),
+    };
+};
+
+const buildSubmitAttemptPayload = (attempt) => {
+    return {
+        serverTime: new Date(),
+        attempt: {
+            _id: attempt._id,
+            attemptNumber: attempt.attemptNumber,
+            status: attempt.status,
+            startedAt: attempt.startedAt,
+            submittedAt: attempt.submittedAt,
+            expiresAt: attempt.expiresAt,
+            totalDurationSeconds: attempt.totalDurationSeconds,
+            timeSpentSeconds: attempt.timeSpentSeconds,
+            scoreSummary: attempt.scoreSummary,
+            sectionSummaries: attempt.sectionSummaries,
+            topicSummaries: attempt.topicSummaries,
+            difficultySummaries: attempt.difficultySummaries,
+            review: attempt.review,
+        },
+    };
+};
+
+const submitMockTestAttempt = async (req, res) => {
+    try {
+        const tenantId = getStudentTenantId(req);
+        const studentId = req.user._id;
+        const { attemptId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(attemptId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid attempt ID",
+            });
+        }
+
+        const attempt = await TestAttempt.findOne({
+            _id: attemptId,
+            tenantId,
+            studentId,
+            isActive: true,
+        });
+
+        if (!attempt) {
+            return res.status(404).json({
+                success: false,
+                message: "Attempt not found or access denied",
+            });
+        }
+
+        if (attempt.status === "submitted") {
+            return res.status(400).json({
+                success: false,
+                message: "Attempt already submitted",
+            });
+        }
+
+        if (!["in_progress", "expired"].includes(attempt.status)) {
+            return res.status(403).json({
+                success: false,
+                message: "Only in-progress or expired attempts can be submitted",
+            });
+        }
+
+        const mockTestVersion = await MockTestVersion.findOne({
+            _id: attempt.mockTestVersionId,
+            tenantId,
+            isActive: true,
+        });
+
+        if (!mockTestVersion) {
+            return res.status(404).json({
+                success: false,
+                message: "Mock test version not found",
+            });
+        }
+
+        const attemptDetail = await TestAttemptDetail.findOne({
+            tenantId,
+            attemptId: attempt._id,
+            studentId,
+        });
+
+        if (!attemptDetail) {
+            return res.status(404).json({
+                success: false,
+                message: "Attempt detail not found or already expired",
+            });
+        }
+
+        const now = new Date();
+
+        const {
+            scoreSummary,
+            sectionSummaries,
+            topicSummaries,
+            difficultySummaries,
+        } = buildSubmittedAttemptSummaries(mockTestVersion, attemptDetail);
+
+        const totalTimeSpentSeconds = sumAnswerTimeSpentSeconds(
+            attemptDetail.answers
+        );
+
+        const reviewRetentionDays =
+            attempt.review?.reviewRetentionDays || REVIEW_RETENTION_DAYS;
+
+        const solutionVisibility =
+            attempt.review?.solutionVisibility ||
+            mockTestVersion.settings?.solutionVisibility ||
+            "after_submit";
+
+        const detailedReviewExpiresAt = getSubmittedDetailExpiresAt(
+            now,
+            reviewRetentionDays
+        );
+
+        attempt.status = "submitted";
+        attempt.submittedAt = now;
+        attempt.lastActivityAt = now;
+        attempt.timeSpentSeconds =
+            attempt.totalDurationSeconds > 0
+                ? Math.min(totalTimeSpentSeconds, attempt.totalDurationSeconds)
+                : totalTimeSpentSeconds;
+
+        attempt.scoreSummary = scoreSummary;
+        attempt.sectionSummaries = sectionSummaries;
+        attempt.topicSummaries = topicSummaries;
+        attempt.difficultySummaries = difficultySummaries;
+        attempt.review = {
+            isDetailedReviewAvailable: solutionVisibility === "after_submit",
+            detailedReviewExpiresAt,
+            solutionVisibility,
+            reviewRetentionDays,
+        };
+
+        attemptDetail.lastSyncedAt = now;
+        attemptDetail.expiresAt = detailedReviewExpiresAt;
+        attemptDetail.markModified("answers");
+
+        await attemptDetail.save();
+        await attempt.save();
+
+        res.status(200).json({
+            success: true,
+            message: "Attempt submitted successfully",
+            data: buildSubmitAttemptPayload(attempt),
+        });
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+
 module.exports = {
     getPublishedMockTestsForStudent,
     startMockTestAttempt,
     saveMockTestAnswer,
+    submitMockTestAttempt,
 };

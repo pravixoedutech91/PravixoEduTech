@@ -5,6 +5,8 @@ const {
   getPublishedMockTestsForStudent,
   startMockTestAttempt,
   saveMockTestAnswer,
+  submitMockTestAttempt,
+
 } = require("../controllers/studentMockTestController");
 
 const { protect, authorize } = require("../middleware/authMiddleware");
@@ -38,4 +40,12 @@ router.patch(
   saveMockTestAnswer
 );
 
+// Student: Submit mock test attempt
+router.post(
+  "/attempts/:attemptId/submit",
+  protect,
+  authorize("student"),
+  checkFeatureAccess("mockTests"),
+  submitMockTestAttempt
+);
 module.exports = router;
