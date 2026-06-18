@@ -436,8 +436,10 @@ const getPublishedMockTestsForStudent = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            count: mockTests.length,
-            data: mockTests.map(buildStudentMockTestListItem),
+            message: resultAvailableImmediately
+                ? "Attempt submitted successfully"
+                : "Attempt submitted successfully. Result will be available later",
+            data: buildSubmitAttemptPayload(attempt, resultAvailableImmediately),
         });
     } catch (error) {
         console.error(error);
@@ -1083,9 +1085,59 @@ const buildSubmittedAttemptSummaries = (mockTestVersion, attemptDetail) => {
     };
 };
 
-const buildSubmitAttemptPayload = (attempt) => {
+const isResultImmediatelyVisible = (mockTestVersion) => {
+    return (
+        mockTestVersion.settings?.showResultImmediately !== false &&
+        mockTestVersion.examPatternSnapshot?.showResultImmediately !== false
+    );
+};
+
+const buildSubmitAttemptPayload = (attempt, resultAvailable) => {
+    const attemptPayload = {
+        _id: attempt._id,
+        attemptNumber: attempt.attemptNumber,
+        status: attempt.status,
+        startedAt: attempt.startedAt,
+        submittedAt: attempt.submittedAt,
+        expiresAt: attempt.expiresAt,
+        totalDurationSeconds: attempt.totalDurationSeconds,
+        timeSpentSeconds: attempt.timeSpentSeconds,
+        review: attempt.review,
+    };
+
+    if (resultAvailable) {
+        attemptPayload.scoreSummary = attempt.scoreSummary;
+        attemptPayload.sectionSummaries = attempt.sectionSummaries;
+        attemptPayload.topicSummaries = attempt.topicSummaries;
+        attemptPayload.difficultySummaries = attempt.difficultySummaries;
+    }
+
     return {
         serverTime: new Date(),
+        resultAvailable,
+        attempt: attemptPayload,
+    };
+};
+
+const buildResultPayload = (attempt, mockTestVersion) => {
+    return {
+        serverTime: new Date(),
+        resultAvailable: true,
+        test: {
+            _id: mockTestVersion._id,
+            mockTestId: mockTestVersion.mockTestId,
+            versionNumber: mockTestVersion.versionNumber,
+            title: mockTestVersion.title,
+            slug: mockTestVersion.slug,
+            testType: mockTestVersion.testType,
+            accessType: mockTestVersion.accessType,
+            examPattern: {
+                name: mockTestVersion.examPatternSnapshot?.name,
+                examType: mockTestVersion.examPatternSnapshot?.examType,
+                totalDurationMinutes:
+                    mockTestVersion.examPatternSnapshot?.totalDurationMinutes,
+            },
+        },
         attempt: {
             _id: attempt._id,
             attemptNumber: attempt.attemptNumber,
@@ -1197,6 +1249,8 @@ const submitMockTestAttempt = async (req, res) => {
             reviewRetentionDays
         );
 
+        const resultAvailableImmediately = isResultImmediatelyVisible(mockTestVersion);
+
         attempt.status = "submitted";
         attempt.submittedAt = now;
         attempt.lastActivityAt = now;
@@ -1210,7 +1264,8 @@ const submitMockTestAttempt = async (req, res) => {
         attempt.topicSummaries = topicSummaries;
         attempt.difficultySummaries = difficultySummaries;
         attempt.review = {
-            isDetailedReviewAvailable: solutionVisibility === "after_submit",
+            isDetailedReviewAvailable:
+                resultAvailableImmediately && solutionVisibility === "after_submit",
             detailedReviewExpiresAt,
             solutionVisibility,
             reviewRetentionDays,
@@ -1238,9 +1293,79 @@ const submitMockTestAttempt = async (req, res) => {
     }
 };
 
+const getMockTestResult = async (req, res) => {
+    try {
+        const tenantId = getStudentTenantId(req);
+        const studentId = req.user._id;
+        const { attemptId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(attemptId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid attempt ID",
+            });
+        }
+
+        const attempt = await TestAttempt.findOne({
+            _id: attemptId,
+            tenantId,
+            studentId,
+            isActive: true,
+        });
+
+        if (!attempt) {
+            return res.status(404).json({
+                success: false,
+                message: "Attempt not found or access denied",
+            });
+        }
+
+        if (attempt.status !== "submitted") {
+            return res.status(403).json({
+                success: false,
+                message: "Result is available only after submission",
+            });
+        }
+
+        const mockTestVersion = await MockTestVersion.findOne({
+            _id: attempt.mockTestVersionId,
+            tenantId,
+            isActive: true,
+        });
+
+        if (!mockTestVersion) {
+            return res.status(404).json({
+                success: false,
+                message: "Mock test version not found",
+            });
+        }
+
+        if (!isResultImmediatelyVisible(mockTestVersion)) {
+            return res.status(403).json({
+                success: false,
+                message: "Result is not available yet",
+            });
+        }
+
+        res.status(200).json({
+            success: true,
+            message: "Result fetched successfully",
+            data: buildResultPayload(attempt, mockTestVersion),
+        });
+    } catch (error) {
+        console.error(error);
+
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+
 module.exports = {
     getPublishedMockTestsForStudent,
     startMockTestAttempt,
     saveMockTestAnswer,
     submitMockTestAttempt,
+    getMockTestResult,
 };
