@@ -40,7 +40,7 @@ const answerDetailSchema = new mongoose.Schema(
     selectedOptionId: {
       type: String,
       enum: ["A", "B", "C", "D", "E"],
-      default: null,
+      default: undefined,
     },
 
     isCorrect: {
