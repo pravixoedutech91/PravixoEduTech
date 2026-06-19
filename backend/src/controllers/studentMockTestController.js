@@ -323,7 +323,7 @@ const buildAttemptPayload = (attempt, mockTestVersion, resumed) => {
             expiresAt: attempt.expiresAt,
             totalDurationSeconds: attempt.totalDurationSeconds,
             timeSpentSeconds: attempt.timeSpentSeconds,
-            review: attempt.review,
+            review: buildReviewMetadataForStudent(attempt),
         },
         test: buildSanitizedTestForStudent(mockTestVersion),
     };
@@ -1102,7 +1102,7 @@ const buildSubmitAttemptPayload = (attempt, resultAvailable) => {
         expiresAt: attempt.expiresAt,
         totalDurationSeconds: attempt.totalDurationSeconds,
         timeSpentSeconds: attempt.timeSpentSeconds,
-        review: attempt.review,
+        review: buildReviewMetadataForStudent(attempt),
     };
 
     if (resultAvailable) {
@@ -1151,7 +1151,7 @@ const buildResultPayload = (attempt, mockTestVersion) => {
             sectionSummaries: attempt.sectionSummaries,
             topicSummaries: attempt.topicSummaries,
             difficultySummaries: attempt.difficultySummaries,
-            review: attempt.review,
+            review: buildReviewMetadataForStudent(attempt),
         },
     };
 };
@@ -1187,20 +1187,6 @@ const getDetailedReviewAccess = (attempt, now) => {
         };
     }
 
-    if (!review.isDetailedReviewAvailable) {
-        return {
-            allowed: false,
-            message: "Detailed review is not available yet",
-        };
-    }
-
-    if (solutionVisibility === "after_submit") {
-        return {
-            allowed: true,
-            message: "Detailed review available",
-        };
-    }
-
     if (solutionVisibility === "after_test_end") {
         if (attempt.expiresAt && new Date(attempt.expiresAt) <= now) {
             return {
@@ -1215,9 +1201,52 @@ const getDetailedReviewAccess = (attempt, now) => {
         };
     }
 
+    if (solutionVisibility === "after_submit") {
+        if (!review.isDetailedReviewAvailable) {
+            return {
+                allowed: false,
+                message: "Detailed review is not available yet",
+            };
+        }
+
+        return {
+            allowed: true,
+            message: "Detailed review available",
+        };
+    }
+
     return {
         allowed: false,
         message: "Detailed review is not available",
+    };
+};
+
+const buildReviewMetadataForStudent = (attempt, now = new Date()) => {
+    const review = attempt.review || {};
+    const solutionVisibility = review.solutionVisibility || "after_submit";
+
+    let isDetailedReviewAvailable = Boolean(review.isDetailedReviewAvailable);
+
+    if (solutionVisibility === "never") {
+        isDetailedReviewAvailable = false;
+    } else if (
+        review.detailedReviewExpiresAt &&
+        new Date(review.detailedReviewExpiresAt) <= now
+    ) {
+        isDetailedReviewAvailable = false;
+    } else if (solutionVisibility === "after_test_end") {
+        isDetailedReviewAvailable = Boolean(
+            attempt.expiresAt && new Date(attempt.expiresAt) <= now
+        );
+    } else if (solutionVisibility === "after_submit") {
+        isDetailedReviewAvailable = Boolean(review.isDetailedReviewAvailable);
+    }
+
+    return {
+        isDetailedReviewAvailable,
+        detailedReviewExpiresAt: review.detailedReviewExpiresAt || null,
+        solutionVisibility,
+        reviewRetentionDays: review.reviewRetentionDays || REVIEW_RETENTION_DAYS,
     };
 };
 
@@ -1312,7 +1341,7 @@ const buildReviewPayload = (attempt, mockTestVersion, attemptDetail) => {
             sectionSummaries: attempt.sectionSummaries,
             topicSummaries: attempt.topicSummaries,
             difficultySummaries: attempt.difficultySummaries,
-            review: attempt.review,
+            review: buildReviewMetadataForStudent(attempt),
         },
         sections: (mockTestVersion.sections || [])
             .map((section) => buildReviewSectionPayload(section, answerMap))
