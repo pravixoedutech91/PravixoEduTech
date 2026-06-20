@@ -1640,8 +1640,221 @@ const getMockTestReview = async (req, res) => {
     }
 };
 
+const isValidHistoryObjectId = (value) => {
+    return /^[a-f\d]{24}$/i.test(String(value || ""));
+};
+
+const buildAttemptHistoryItem = (attempt, now = new Date()) => {
+    const scoreSummary = attempt.scoreSummary || {};
+    const mockTest = attempt.mockTestId || {};
+    const mockTestVersion = attempt.mockTestVersionId || {};
+
+    const getId = (value) => {
+        if (!value) {
+            return null;
+        }
+
+        if (value._id) {
+            return String(value._id);
+        }
+
+        return String(value);
+    };
+
+    const getScoreNumber = (...keys) => {
+        for (const key of keys) {
+            const value = scoreSummary[key];
+
+            if (value !== undefined && value !== null) {
+                const numberValue = Number(value);
+
+                return Number.isFinite(numberValue) ? numberValue : 0;
+            }
+        }
+
+        return 0;
+    };
+
+    const isSubmitted = attempt.status === "submitted";
+
+    const isResultVisible =
+        isSubmitted &&
+        mockTestVersion &&
+        typeof mockTestVersion === "object" &&
+        isResultImmediatelyVisible(mockTestVersion);
+
+    return {
+        attemptId: String(attempt._id),
+        mockTestId: getId(attempt.mockTestId),
+        mockTestVersionId: getId(attempt.mockTestVersionId),
+
+        title:
+            mockTest && typeof mockTest === "object"
+                ? mockTest.title || null
+                : null,
+        slug:
+            mockTest && typeof mockTest === "object"
+                ? mockTest.slug || null
+                : null,
+        versionNumber:
+            mockTestVersion && typeof mockTestVersion === "object"
+                ? mockTestVersion.versionNumber || null
+                : null,
+
+        attemptNumber: attempt.attemptNumber,
+        status: attempt.status,
+
+        startedAt: attempt.startedAt,
+        submittedAt: attempt.submittedAt,
+        expiresAt: attempt.expiresAt,
+
+        totalDurationSeconds: attempt.totalDurationSeconds,
+        timeSpentSeconds: attempt.timeSpentSeconds,
+
+        scoreSummary: {
+            totalQuestions: getScoreNumber("totalQuestions"),
+            attemptedQuestions: getScoreNumber(
+                "attemptedQuestions",
+                "answeredQuestions"
+            ),
+            correctAnswers: getScoreNumber("correctAnswers", "correctCount"),
+            wrongAnswers: getScoreNumber("wrongAnswers", "wrongCount"),
+            skippedQuestions: getScoreNumber(
+                "skippedQuestions",
+                "skippedCount"
+            ),
+            markedForReviewQuestions: getScoreNumber(
+                "markedForReviewQuestions",
+                "markedForReviewCount"
+            ),
+            score: getScoreNumber("score"),
+            maxScore: getScoreNumber("maxScore", "totalMarks"),
+            percentage: getScoreNumber("percentage"),
+        },
+
+        result: {
+            isResultVisible,
+        },
+
+        review: buildReviewMetadataForStudent(attempt, now),
+    };
+};
+
+const getMyMockTestAttempts = async (req, res) => {
+    try {
+        const tenantId = req.user?.tenantId;
+        const studentId = req.user?._id || req.user?.id;
+
+        if (!tenantId || !studentId) {
+            return res.status(401).json({
+                success: false,
+                message: "Not authorized",
+            });
+        }
+
+        const allowedStatuses = [
+            "in_progress",
+            "submitted",
+            "expired",
+            "abandoned",
+        ];
+
+        const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+        const limit = Math.min(
+            Math.max(parseInt(req.query.limit, 10) || 10, 1),
+            50
+        );
+        const skip = (page - 1) * limit;
+
+        const { status, mockTestId } = req.query;
+
+        if (status && !allowedStatuses.includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid attempt status filter",
+                allowedStatuses,
+            });
+        }
+
+        if (mockTestId && !isValidHistoryObjectId(mockTestId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid mockTestId filter",
+            });
+        }
+
+        const filter = {
+            tenantId,
+            studentId,
+            isActive: true,
+        };
+
+        if (status) {
+            filter.status = status;
+        }
+
+        if (mockTestId) {
+            filter.mockTestId = mockTestId;
+        }
+
+        const [total, attempts] = await Promise.all([
+            TestAttempt.countDocuments(filter),
+            TestAttempt.find(filter)
+                .select(
+                    [
+                        "mockTestId",
+                        "mockTestVersionId",
+                        "attemptNumber",
+                        "status",
+                        "startedAt",
+                        "submittedAt",
+                        "expiresAt",
+                        "totalDurationSeconds",
+                        "timeSpentSeconds",
+                        "scoreSummary",
+                        "review",
+                        "isActive",
+                        "createdAt",
+                        "updatedAt",
+                    ].join(" ")
+                )
+                .populate("mockTestId", "title slug")
+                .populate(
+                    "mockTestVersionId",
+                    "versionNumber publishedAt settings.showResultImmediately examPatternSnapshot.showResultImmediately"
+                )
+                .sort({ startedAt: -1, submittedAt: -1, createdAt: -1 })
+                .skip(skip)
+                .limit(limit)
+                .lean(),
+        ]);
+
+        const now = new Date();
+
+        return res.status(200).json({
+            success: true,
+            count: attempts.length,
+            total,
+            page,
+            limit,
+            totalPages: Math.ceil(total / limit),
+            attempts: attempts.map((attempt) =>
+                buildAttemptHistoryItem(attempt, now)
+            ),
+        });
+    } catch (error) {
+        console.error("Get my mock test attempts error:", error);
+
+        return res.status(500).json({
+            success: false,
+            message: "Failed to fetch mock test attempts",
+        });
+    }
+};
+
 module.exports = {
     getPublishedMockTestsForStudent,
+    getMyMockTestAttempts,
     startMockTestAttempt,
     saveMockTestAnswer,
     submitMockTestAttempt,

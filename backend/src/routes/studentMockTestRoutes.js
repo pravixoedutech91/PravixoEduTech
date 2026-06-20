@@ -3,6 +3,7 @@ const router = express.Router();
 
 const {
   getPublishedMockTestsForStudent,
+  getMyMockTestAttempts,
   startMockTestAttempt,
   saveMockTestAnswer,
   submitMockTestAttempt,
@@ -22,6 +23,15 @@ router.get(
   authorize("student"),
   checkFeatureAccess("mockTests"),
   getPublishedMockTestsForStudent
+);
+
+// Student: Get own mock test attempt history
+router.get(
+  "/mock-tests/my-attempts",
+  protect,
+  authorize("student"),
+  checkFeatureAccess("mockTests"),
+  getMyMockTestAttempts
 );
 
 // Student: Start or resume mock test attempt
