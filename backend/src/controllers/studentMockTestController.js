@@ -434,17 +434,15 @@ const getPublishedMockTestsForStudent = async (req, res) => {
             .populate("activeVersionId", "versionNumber publishedAt")
             .sort({ publishedAt: -1, createdAt: -1 });
 
-        res.status(200).json({
+        return res.status(200).json({
             success: true,
-            message: resultAvailableImmediately
-                ? "Attempt submitted successfully"
-                : "Attempt submitted successfully. Result will be available later",
-            data: buildSubmitAttemptPayload(attempt, resultAvailableImmediately),
+            count: mockTests.length,
+            data: mockTests.map(buildStudentMockTestListItem),
         });
     } catch (error) {
         console.error(error);
 
-        res.status(500).json({
+        return res.status(500).json({
             success: false,
             message: error.message,
         });
@@ -1473,8 +1471,10 @@ const submitMockTestAttempt = async (req, res) => {
 
         res.status(200).json({
             success: true,
-            message: "Attempt submitted successfully",
-            data: buildSubmitAttemptPayload(attempt),
+            message: resultAvailableImmediately
+                ? "Attempt submitted successfully"
+                : "Attempt submitted successfully. Result will be available later",
+            data: buildSubmitAttemptPayload(attempt, resultAvailableImmediately),
         });
     } catch (error) {
         console.error(error);
@@ -1715,17 +1715,28 @@ const buildAttemptHistoryItem = (attempt, now = new Date()) => {
             totalQuestions: getScoreNumber("totalQuestions"),
             attemptedQuestions: getScoreNumber(
                 "attemptedQuestions",
-                "answeredQuestions"
+                "answeredQuestions",
+                "attempted"
             ),
-            correctAnswers: getScoreNumber("correctAnswers", "correctCount"),
-            wrongAnswers: getScoreNumber("wrongAnswers", "wrongCount"),
+            correctAnswers: getScoreNumber(
+                "correctAnswers",
+                "correctCount",
+                "correct"
+            ),
+            wrongAnswers: getScoreNumber(
+                "wrongAnswers",
+                "wrongCount",
+                "wrong"
+            ),
             skippedQuestions: getScoreNumber(
                 "skippedQuestions",
-                "skippedCount"
+                "skippedCount",
+                "skipped"
             ),
             markedForReviewQuestions: getScoreNumber(
                 "markedForReviewQuestions",
-                "markedForReviewCount"
+                "markedForReviewCount",
+                "markedForReview"
             ),
             score: getScoreNumber("score"),
             maxScore: getScoreNumber("maxScore", "totalMarks"),
