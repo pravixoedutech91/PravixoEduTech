@@ -21,7 +21,10 @@ const toNumber = (value, fallback = 0) => {
     return number;
 };
 
-const buildStudentMockTestListItem = (mockTest) => {
+const buildStudentMockTestListItem = (
+    mockTest,
+    studentAttemptSummary = null
+) => {
     return {
         _id: mockTest._id,
         title: mockTest.title,
@@ -54,6 +57,7 @@ const buildStudentMockTestListItem = (mockTest) => {
             solutionVisibility: mockTest.settings?.solutionVisibility,
         },
         publishedAt: mockTest.publishedAt,
+        studentAttemptSummary,
     };
 };
 
@@ -408,9 +412,198 @@ const buildSavedAnswerPayload = (attempt, answer) => {
     };
 };
 
+const ATTEMPT_LIMIT_COUNT_STATUSES = ["in_progress", "submitted", "expired"];
+
+const getAttemptIdForSummary = (attempt) => {
+    if (!attempt) {
+        return null;
+    }
+
+    return String(attempt._id);
+};
+
+const isAttemptResumableForSummary = (attempt, now) => {
+    if (!attempt || attempt.status !== "in_progress") {
+        return false;
+    }
+
+    if (!attempt.expiresAt) {
+        return true;
+    }
+
+    return new Date(attempt.expiresAt) > now;
+};
+
+const getPrimaryMockTestAction = ({
+    canResume,
+    canViewReview,
+    canViewResult,
+    canRetake,
+    isAttemptLimitReached,
+}) => {
+    if (canResume) {
+        return "resume";
+    }
+
+    if (canViewReview) {
+        return "view_review";
+    }
+
+    if (canViewResult) {
+        return "view_result";
+    }
+
+    if (canRetake) {
+        return "retake";
+    }
+
+    if (isAttemptLimitReached) {
+        return "limit_reached";
+    }
+
+    return "start";
+};
+
+const groupAttemptsByMockTestId = (attempts) => {
+    const attemptsByMockTestId = new Map();
+
+    for (const attempt of attempts || []) {
+        const key = String(attempt.mockTestId);
+
+        if (!attemptsByMockTestId.has(key)) {
+            attemptsByMockTestId.set(key, []);
+        }
+
+        attemptsByMockTestId.get(key).push(attempt);
+    }
+
+    return attemptsByMockTestId;
+};
+
+const buildStudentAttemptSummary = (
+    mockTest,
+    attempts = [],
+    now = new Date()
+) => {
+    const maxAttempts = Math.max(toNumber(mockTest.settings?.maxAttempts, 1), 1);
+
+    const attemptsUsed = attempts.filter((attempt) =>
+        ATTEMPT_LIMIT_COUNT_STATUSES.includes(attempt.status)
+    ).length;
+
+    const attemptsRemaining = Math.max(maxAttempts - attemptsUsed, 0);
+
+    const latestAttempt = attempts[0] || null;
+
+    const resumableAttempt = attempts.find((attempt) =>
+        isAttemptResumableForSummary(attempt, now)
+    );
+
+    const latestSubmittedAttempt = attempts.find((attempt) => {
+        return attempt.status === "submitted";
+    });
+
+    const latestSubmittedVersion = latestSubmittedAttempt?.mockTestVersionId;
+    const hasResultVisibilityData = Boolean(
+        latestSubmittedVersion &&
+            typeof latestSubmittedVersion === "object" &&
+            (latestSubmittedVersion.settings ||
+                latestSubmittedVersion.examPatternSnapshot)
+    );
+
+    const review = latestSubmittedAttempt
+        ? buildReviewMetadataForStudent(latestSubmittedAttempt, now)
+        : {
+            isDetailedReviewAvailable: false,
+            detailedReviewExpiresAt: null,
+            solutionVisibility: null,
+            reviewRetentionDays: REVIEW_RETENTION_DAYS,
+        };
+
+    const canResume = Boolean(resumableAttempt);
+
+    const canViewResult = Boolean(
+        latestSubmittedAttempt &&
+            hasResultVisibilityData &&
+            isResultImmediatelyVisible(latestSubmittedVersion)
+    );
+
+    const canViewReview = Boolean(
+        latestSubmittedAttempt && review.isDetailedReviewAvailable
+    );
+
+    const latestInProgressExpired = Boolean(
+        latestAttempt &&
+            latestAttempt.status === "in_progress" &&
+            !isAttemptResumableForSummary(latestAttempt, now)
+    );
+
+    const canRetake = Boolean(
+        !canResume &&
+            latestAttempt &&
+            attemptsRemaining > 0 &&
+            (["submitted", "expired", "abandoned"].includes(
+                latestAttempt.status
+            ) ||
+                latestInProgressExpired)
+    );
+
+    const canStart = Boolean(!latestAttempt && attemptsRemaining > 0);
+
+    const isAttemptLimitReached = Boolean(
+        attemptsUsed >= maxAttempts && !canResume
+    );
+
+    const primaryAction = getPrimaryMockTestAction({
+        canResume,
+        canViewReview,
+        canViewResult,
+        canRetake,
+        isAttemptLimitReached,
+    });
+
+    return {
+        maxAttempts,
+        attemptsUsed,
+        attemptsRemaining,
+
+        latestAttemptId: getAttemptIdForSummary(latestAttempt),
+        latestAttemptNumber: latestAttempt?.attemptNumber || null,
+        latestAttemptStatus: latestAttempt?.status || null,
+        latestAttemptStartedAt: latestAttempt?.startedAt || null,
+        latestAttemptSubmittedAt: latestAttempt?.submittedAt || null,
+        latestAttemptExpiresAt: latestAttempt?.expiresAt || null,
+
+        resumeAttemptId: getAttemptIdForSummary(resumableAttempt),
+
+        canStart,
+        canResume,
+        canViewResult,
+        canViewReview,
+        canRetake,
+        isAttemptLimitReached,
+
+        primaryAction,
+
+        result: {
+            isResultVisible: canViewResult,
+        },
+
+        review,
+    };
+};
+
 const getPublishedMockTestsForStudent = async (req, res) => {
     try {
         const tenantId = getStudentTenantId(req);
+        const studentId = req.user?._id || req.user?.id;
+
+        if (!studentId) {
+            return res.status(401).json({
+                success: false,
+                message: "Not authorized",
+            });
+        }
 
         const filter = {
             tenantId,
@@ -434,10 +627,46 @@ const getPublishedMockTestsForStudent = async (req, res) => {
             .populate("activeVersionId", "versionNumber publishedAt")
             .sort({ publishedAt: -1, createdAt: -1 });
 
+        const mockTestIds = mockTests.map((mockTest) => mockTest._id);
+
+        const attempts =
+            mockTestIds.length > 0
+                ? await TestAttempt.find({
+                    tenantId,
+                    studentId,
+                    mockTestId: { $in: mockTestIds },
+                    isActive: true,
+                })
+                    .select(
+                        "mockTestId mockTestVersionId attemptNumber status startedAt submittedAt expiresAt review isActive createdAt"
+                    )
+                    .populate(
+                        "mockTestVersionId",
+                        "versionNumber settings.showResultImmediately examPatternSnapshot.showResultImmediately"
+                    )
+                    .sort({
+                        attemptNumber: -1,
+                        startedAt: -1,
+                        createdAt: -1,
+                    })
+                    .lean()
+                : [];
+
+        const attemptsByMockTestId = groupAttemptsByMockTestId(attempts);
+        const now = new Date();
+
         return res.status(200).json({
             success: true,
             count: mockTests.length,
-            data: mockTests.map(buildStudentMockTestListItem),
+            data: mockTests.map((mockTest) => {
+                const mockTestAttempts =
+                    attemptsByMockTestId.get(String(mockTest._id)) || [];
+
+                return buildStudentMockTestListItem(
+                    mockTest,
+                    buildStudentAttemptSummary(mockTest, mockTestAttempts, now)
+                );
+            }),
         });
     } catch (error) {
         console.error(error);
