@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 
@@ -32,6 +32,7 @@ type MockTest = {
         attemptsRemaining: number;
         latestAttemptNumber: number | null;
         latestAttemptStatus: string | null;
+        canRetake: boolean;
         isAttemptLimitReached: boolean;
         primaryAction: PrimaryAction;
         result: {
@@ -50,8 +51,26 @@ type MockTestsResponse = {
     message?: string;
 };
 
+type StartAttemptResponse = {
+    success: boolean;
+    message: string;
+    data?: {
+        resumed: boolean;
+        serverTime: string;
+        attempt: {
+            _id: string;
+            attemptNumber: number;
+            status: string;
+            expiresAt?: string;
+        };
+    };
+};
+
 const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
+const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 
 const actionLabels: Record<PrimaryAction, string> = {
     start: "Start Test",
@@ -64,44 +83,51 @@ const actionLabels: Record<PrimaryAction, string> = {
 
 const getActionClassName = (action: PrimaryAction) => {
     if (action === "resume") {
-        return "bg-amber-600";
+        return "bg-amber-600 hover:bg-amber-700";
     }
 
     if (action === "view_review") {
-        return "bg-emerald-600";
+        return "bg-emerald-600 hover:bg-emerald-700";
     }
 
     if (action === "view_result") {
-        return "bg-blue-600";
+        return "bg-blue-600 hover:bg-blue-700";
     }
 
     if (action === "retake") {
-        return "bg-purple-600";
+        return "bg-purple-600 hover:bg-purple-700";
     }
 
     if (action === "limit_reached") {
         return "bg-slate-500";
     }
 
-    return "bg-slate-900";
+    return "bg-slate-900 hover:bg-slate-800";
+};
+
+const isAttemptStartAction = (action: PrimaryAction) => {
+    return action === "start" || action === "resume" || action === "retake";
 };
 
 export default function StudentMockTestsPage() {
     const [token, setToken] = useState("");
     const [mockTests, setMockTests] = useState<MockTest[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [actionLoadingMockTestId, setActionLoadingMockTestId] = useState<
+        string | null
+    >(null);
     const [errorMessage, setErrorMessage] = useState("");
     const [actionMessage, setActionMessage] = useState("");
 
-    const loadMockTests = async () => {
-        const cleanToken = token.trim();
+    const loadMockTests = async (tokenOverride?: string) => {
+        const cleanToken = (tokenOverride || token).trim();
 
         if (!cleanToken) {
             setErrorMessage("Please paste a student token first.");
             return;
         }
 
-        window.localStorage.setItem("pravixoStudentToken", cleanToken);
+        window.localStorage.setItem(STUDENT_TOKEN_STORAGE_KEY, cleanToken);
 
         setIsLoading(true);
         setErrorMessage("");
@@ -135,12 +161,95 @@ export default function StudentMockTestsPage() {
         }
     };
 
-    const handleActionClick = (mockTest: MockTest) => {
+    const showPendingActionMessage = (mockTest: MockTest) => {
         const action = mockTest.studentAttemptSummary.primaryAction;
 
         setActionMessage(
-            `${actionLabels[action]} for "${mockTest.title}" will be connected in the next frontend step.`
+            `${actionLabels[action]} for "${mockTest.title}" will be connected in a later frontend step.`
         );
+    };
+
+    const startOrResumeAttempt = async (
+        mockTest: MockTest,
+        requestedAction: "start" | "resume" | "retake"
+    ) => {
+        const cleanToken = token.trim();
+
+        if (!cleanToken) {
+            setErrorMessage("Please paste a student token first.");
+            return;
+        }
+
+        setActionLoadingMockTestId(mockTest._id);
+        setErrorMessage("");
+        setActionMessage("");
+
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/student/mock-tests/${mockTest._id}/start`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${cleanToken}`,
+                    },
+                }
+            );
+
+            const result = (await response.json()) as StartAttemptResponse;
+
+            if (!response.ok || !result.success || !result.data) {
+                throw new Error(result.message || "Unable to start test.");
+            }
+
+            const attempt = result.data.attempt;
+
+            window.localStorage.setItem(
+                ACTIVE_ATTEMPT_STORAGE_KEY,
+                JSON.stringify({
+                    mockTestId: mockTest._id,
+                    mockTestTitle: mockTest.title,
+                    requestedAction,
+                    resumed: result.data.resumed,
+                    attemptId: attempt._id,
+                    attemptNumber: attempt.attemptNumber,
+                    status: attempt.status,
+                    expiresAt: attempt.expiresAt || null,
+                    serverTime: result.data.serverTime,
+                })
+            );
+
+            await loadMockTests(cleanToken);
+
+            const actionText = result.data.resumed
+                ? "Resumed"
+                : requestedAction === "retake"
+                  ? "Started retake"
+                  : "Started";
+
+            setActionMessage(
+                `${actionText} attempt #${attempt.attemptNumber} for "${mockTest.title}". Attempt interface will be connected in T-34.`
+            );
+        } catch (error) {
+            const message =
+                error instanceof Error
+                    ? error.message
+                    : "Unable to start or resume this test.";
+
+            setErrorMessage(message);
+        } finally {
+            setActionLoadingMockTestId(null);
+        }
+    };
+
+    const handlePrimaryAction = (mockTest: MockTest) => {
+        const action = mockTest.studentAttemptSummary.primaryAction;
+
+        if (isAttemptStartAction(action)) {
+            void startOrResumeAttempt(mockTest, action);
+            return;
+        }
+
+        showPendingActionMessage(mockTest);
     };
 
     return (
@@ -181,7 +290,7 @@ export default function StudentMockTestsPage() {
 
                         <button
                             type="button"
-                            onClick={loadMockTests}
+                            onClick={() => void loadMockTests()}
                             disabled={isLoading}
                             className="min-h-12 rounded-2xl bg-blue-700 px-6 text-sm font-semibold text-white disabled:bg-slate-400"
                         >
@@ -222,6 +331,8 @@ export default function StudentMockTestsPage() {
                             {mockTests.map((mockTest) => {
                                 const summary = mockTest.studentAttemptSummary;
                                 const action = summary.primaryAction;
+                                const isActionLoading =
+                                    actionLoadingMockTestId === mockTest._id;
 
                                 return (
                                     <article
@@ -321,16 +432,40 @@ export default function StudentMockTestsPage() {
                                                 </p>
                                             </div>
 
-                                            <button
-                                                type="button"
-                                                onClick={() => handleActionClick(mockTest)}
-                                                disabled={action === "limit_reached"}
-                                                className={`rounded-2xl px-5 py-3 text-sm font-semibold text-white ${getActionClassName(
-                                                    action
-                                                )}`}
-                                            >
-                                                {actionLabels[action]}
-                                            </button>
+                                            <div className="flex flex-col gap-2 sm:flex-row">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handlePrimaryAction(mockTest)}
+                                                    disabled={
+                                                        action === "limit_reached" ||
+                                                        isActionLoading
+                                                    }
+                                                    className={`rounded-2xl px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400 ${getActionClassName(
+                                                        action
+                                                    )}`}
+                                                >
+                                                    {isActionLoading
+                                                        ? "Please wait..."
+                                                        : actionLabels[action]}
+                                                </button>
+
+                                                {summary.canRetake &&
+                                                action !== "retake" ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            void startOrResumeAttempt(
+                                                                mockTest,
+                                                                "retake"
+                                                            )
+                                                        }
+                                                        disabled={isActionLoading}
+                                                        className="rounded-2xl border border-purple-200 bg-purple-50 px-5 py-3 text-sm font-semibold text-purple-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                    >
+                                                        Retake Test
+                                                    </button>
+                                                ) : null}
+                                            </div>
                                         </div>
                                     </article>
                                 );
