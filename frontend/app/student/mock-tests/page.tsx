@@ -71,6 +71,7 @@ const API_BASE_URL =
 
 const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
 const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
+const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 
 const actionLabels: Record<PrimaryAction, string> = {
     start: "Start Test",
@@ -218,7 +219,10 @@ export default function StudentMockTestsPage() {
                 })
             );
 
-            await loadMockTests(cleanToken);
+            window.localStorage.setItem(
+                ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY,
+                JSON.stringify(result.data)
+            );
 
             const actionText = result.data.resumed
                 ? "Resumed"
@@ -227,8 +231,10 @@ export default function StudentMockTestsPage() {
                   : "Started";
 
             setActionMessage(
-                `${actionText} attempt #${attempt.attemptNumber} for "${mockTest.title}". Attempt interface will be connected in T-34.`
+                `${actionText} attempt #${attempt.attemptNumber} for "${mockTest.title}". Opening attempt interface.`
             );
+
+            window.location.assign(`/student/attempts/${attempt._id}`);
         } catch (error) {
             const message =
                 error instanceof Error
