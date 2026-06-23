@@ -643,7 +643,7 @@ export default function StudentAttemptPage() {
                     </div>
 
                     {currentQuestionGroup ? (
-                        <div className="sticky top-24 z-10 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                        <div className="sticky top-20 z-10 max-h-[38vh] overflow-y-auto rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
                             <div className="mb-3 flex flex-wrap items-center gap-2">
                                 <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
                                     {currentQuestionGroup.groupType}
@@ -900,7 +900,7 @@ export default function StudentAttemptPage() {
                             </div>
 
                             <div className="flex items-center gap-2">
-                                <span className="h-3 w-3 rounded-full bg-purple-600" />
+                                <span className="h-3 w-3 rounded-full bg-yellow-400 ring-1 ring-yellow-500" />
                                 Marked for review
                             </div>
 
