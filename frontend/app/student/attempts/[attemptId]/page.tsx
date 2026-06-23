@@ -203,7 +203,7 @@ const getPaletteClassName = ({
     }
 
     if (isMarkedForReview) {
-        return "bg-yellow-400 text-slate-950";
+        return "bg-amber-300 text-slate-950";
     }
 
     if (isAnswered) {
@@ -816,7 +816,7 @@ export default function StudentAttemptPage() {
                                 type="button"
                                 onClick={handleMarkForReview}
                                 disabled={isSavingAnswer || isAttemptLocked}
-                                className="rounded-2xl border border-yellow-200 bg-yellow-50 px-4 py-2.5 text-sm font-semibold text-yellow-800 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                             >
                                 Mark for Review
                             </button>
@@ -878,8 +878,8 @@ export default function StudentAttemptPage() {
                                 </p>
                             </div>
 
-                            <div className="rounded-2xl bg-yellow-50 p-2">
-                                <p className="text-xs font-semibold text-yellow-800">
+                            <div className="rounded-2xl bg-amber-50 p-2">
+                                <p className="text-xs font-semibold text-amber-700">
                                     Marked
                                 </p>
                                 <p className="mt-1 text-lg font-bold">
@@ -900,7 +900,7 @@ export default function StudentAttemptPage() {
                             </div>
 
                             <div className="flex items-center gap-2">
-                                <span className="h-3 w-3 rounded-full bg-yellow-400 ring-1 ring-yellow-500" />
+                                <span className="h-3 w-3 rounded-full bg-amber-300 ring-1 ring-amber-400" />
                                 Marked for review
                             </div>
 
