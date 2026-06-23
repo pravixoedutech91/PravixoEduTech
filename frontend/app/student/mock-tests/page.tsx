@@ -263,6 +263,18 @@ export default function StudentMockTestsPage() {
         router.push(`/student/attempts/${attemptId}/result`);
     };
 
+    const openAttemptReview = (mockTest: MockTest) => {
+        const attemptId = mockTest.studentAttemptSummary.latestAttemptId;
+
+        if (!attemptId) {
+            setActionMessage(
+                "Review is available, but attempt ID is missing. Please reload mock tests."
+            );
+            return;
+        }
+
+        router.push(`/student/attempts/${attemptId}/review`);
+    };
     const handlePrimaryAction = (mockTest: MockTest) => {
         const action = mockTest.studentAttemptSummary.primaryAction;
 
@@ -271,8 +283,13 @@ export default function StudentMockTestsPage() {
             return;
         }
 
-        if (action === "view_result" || action === "view_review") {
+        if (action === "view_result") {
             openAttemptResult(mockTest);
+            return;
+        }
+
+        if (action === "view_review") {
+            openAttemptReview(mockTest);
             return;
         }
 
