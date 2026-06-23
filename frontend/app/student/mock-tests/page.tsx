@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 type PrimaryAction =
     | "start"
@@ -30,6 +31,7 @@ type MockTest = {
         maxAttempts: number;
         attemptsUsed: number;
         attemptsRemaining: number;
+        latestAttemptId: string | null;
         latestAttemptNumber: number | null;
         latestAttemptStatus: string | null;
         canRetake: boolean;
@@ -111,6 +113,7 @@ const isAttemptStartAction = (action: PrimaryAction) => {
 };
 
 export default function StudentMockTestsPage() {
+    const router = useRouter();
     const [token, setToken] = useState("");
     const [mockTests, setMockTests] = useState<MockTest[]>([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -247,6 +250,19 @@ export default function StudentMockTestsPage() {
         }
     };
 
+    const openAttemptResult = (mockTest: MockTest) => {
+        const attemptId = mockTest.studentAttemptSummary.latestAttemptId;
+
+        if (!attemptId) {
+            setActionMessage(
+                "Result is available, but attempt ID is missing. Please reload mock tests."
+            );
+            return;
+        }
+
+        router.push(`/student/attempts/${attemptId}/result`);
+    };
+
     const handlePrimaryAction = (mockTest: MockTest) => {
         const action = mockTest.studentAttemptSummary.primaryAction;
 
@@ -255,9 +271,13 @@ export default function StudentMockTestsPage() {
             return;
         }
 
+        if (action === "view_result" || action === "view_review") {
+            openAttemptResult(mockTest);
+            return;
+        }
+
         showPendingActionMessage(mockTest);
     };
-
     return (
         <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950">
             <div className="mx-auto max-w-5xl">
