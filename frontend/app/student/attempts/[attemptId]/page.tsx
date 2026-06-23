@@ -393,6 +393,12 @@ export default function StudentAttemptPage() {
             return;
         }
 
+        if (isAttemptLocked) {
+            setInterfaceMessage(
+                "This attempt is submitted, expired, or locked. Answers can no longer be changed."
+            );
+            return;
+        }
         setSelectedAnswers((previousAnswers) => ({
             ...previousAnswers,
             [currentQuestion._id]: optionId,
@@ -741,15 +747,35 @@ export default function StudentAttemptPage() {
 
                         <button
                             type="button"
-                            onClick={() => setIsSubmitModalOpen(true)}
-                            disabled={isSubmittingAttempt || Boolean(submitSummaryMessage)}
+                            onClick={() => {
+                                if (isAttemptMismatch) {
+                                    setInterfaceMessage(
+                                        "Attempt data mismatch. Please return to mock tests and open the correct attempt."
+                                    );
+                                    return;
+                                }
+
+                                if (isAttemptLocked) {
+                                    setInterfaceMessage(
+                                        remainingSeconds <= 0
+                                            ? "Time is over. This attempt can no longer be submitted from this screen."
+                                            : "This attempt is no longer active. Please return to mock tests."
+                                    );
+                                    return;
+                                }
+
+                                setIsSubmitModalOpen(true);
+                            }}
+                            disabled={isSubmittingAttempt || Boolean(submitSummaryMessage) || isAttemptLocked || isAttemptMismatch}
                             className="rounded-2xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
                         >
                             {isSubmittingAttempt
                                 ? "Submitting..."
                                 : submitSummaryMessage
                                   ? "Submitted"
-                                  : "Submit Test"}
+                                  : remainingSeconds <= 0
+                                    ? "Time Over"
+                                    : "Submit Test"}
                         </button>
                     </div>
                 </div>
@@ -782,9 +808,20 @@ export default function StudentAttemptPage() {
                     ) : null}
                     {isAttemptMismatch ? (
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                            Attempt URL and stored attempt do not match. Please
-                            restart from the mock test listing page if anything
-                            looks incorrect.
+                            <p className="font-semibold">
+                                Attempt data mismatch
+                            </p>
+
+                            <p className="mt-1 leading-6">
+                                Attempt URL and stored attempt do not match. Please return to mock tests and open the correct attempt again.
+                            </p>
+
+                            <Link
+                                href="/student/mock-tests"
+                                className="mt-3 inline-flex rounded-2xl bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-800"
+                            >
+                                Back to Mock Tests
+                            </Link>
                         </div>
                     ) : null}
 
@@ -927,7 +964,8 @@ export default function StudentAttemptPage() {
                                         onClick={() =>
                                             handleSelectOption(option.optionId)
                                         }
-                                        className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left text-sm transition ${
+                                        disabled={isAttemptLocked}
+                                        className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-70 ${
                                             isSelected
                                                 ? "border-blue-600 bg-blue-50 ring-2 ring-blue-100"
                                                 : "border-slate-200 bg-white hover:border-blue-300"
@@ -1077,7 +1115,7 @@ export default function StudentAttemptPage() {
                             </p>
 
                             <p className="mt-1 text-slate-600">
-                                {submitSummaryMessage ? "submitted" : payload.attempt.status}
+                                {submitSummaryMessage ? "submitted" : remainingSeconds <= 0 ? "time_over" : payload.attempt.status}
                             </p>
 
                             <p className="mt-3 font-semibold">
