@@ -130,6 +130,31 @@ type SaveAnswerResponse = {
     };
 };
 
+type SubmitAttemptResponse = {
+    success: boolean;
+    message: string;
+    data?: {
+        resultAvailable?: boolean;
+        attempt?: {
+            _id: string;
+            attemptNumber: number;
+            status: string;
+            submittedAt?: string;
+            scoreSummary?: {
+                totalQuestions?: number;
+                attempted?: number;
+                correct?: number;
+                wrong?: number;
+                skipped?: number;
+                score?: number;
+                maxScore?: number;
+                percentage?: number;
+                accuracy?: number;
+            };
+        };
+    };
+};
+
 const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
@@ -264,6 +289,9 @@ export default function StudentAttemptPage() {
     >({});
     const [interfaceMessage, setInterfaceMessage] = useState("");
     const [isSavingAnswer, setIsSavingAnswer] = useState(false);
+    const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
+    const [isSubmittingAttempt, setIsSubmittingAttempt] = useState(false);
+    const [submitSummaryMessage, setSubmitSummaryMessage] = useState("");
     const questionStartedAtRef = useRef(0);
     const [lastSavedAtByQuestion, setLastSavedAtByQuestion] = useState<
         Record<string, string>
@@ -349,6 +377,7 @@ export default function StudentAttemptPage() {
 
     const isAttemptLocked =
         !payload ||
+        Boolean(submitSummaryMessage) ||
         remainingSeconds <= 0 ||
         payload.attempt.status !== "in_progress";
 
@@ -532,6 +561,60 @@ export default function StudentAttemptPage() {
         });
     };
 
+    const submitAttemptFromFrontend = async () => {
+        if (!payload || isSubmittingAttempt || submitSummaryMessage) {
+            return;
+        }
+
+        const token = getStudentToken().trim();
+
+        if (!token) {
+            setInterfaceMessage(
+                "Student token not found. Please go back to mock tests and load the test again."
+            );
+            return;
+        }
+
+        setIsSubmittingAttempt(true);
+        setInterfaceMessage("");
+
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/student/attempts/${payload.attempt._id}/submit`,
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
+            );
+
+            const result = (await response.json()) as SubmitAttemptResponse;
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to submit attempt.");
+            }
+
+            const submittedAttemptNumber =
+                result.data?.attempt?.attemptNumber || payload.attempt.attemptNumber;
+
+            setSubmitSummaryMessage(
+                `Attempt #${submittedAttemptNumber} submitted successfully. Result page will be connected in T-36.`
+            );
+            setIsSubmitModalOpen(false);
+            setInterfaceMessage("Test submitted successfully.");
+        } catch (error) {
+            const message =
+                error instanceof Error
+                    ? error.message
+                    : "Unable to submit attempt.";
+
+            setInterfaceMessage(message);
+        } finally {
+            setIsSubmittingAttempt(false);
+        }
+    };
+
     if (!payload) {
         return (
             <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950">
@@ -574,6 +657,44 @@ export default function StudentAttemptPage() {
                 </div>
             ) : null}
 
+            {isSubmitModalOpen ? (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 px-4">
+                    <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl ring-1 ring-slate-200">
+                        <p className="text-sm font-semibold uppercase tracking-wide text-red-600">
+                            Confirm Submit
+                        </p>
+
+                        <h2 className="mt-2 text-xl font-bold text-slate-950">
+                            Submit this test?
+                        </h2>
+
+                        <p className="mt-3 text-sm leading-6 text-slate-600">
+                            Once submitted, answers cannot be changed. You can view result/review after submission according to test settings.
+                        </p>
+
+                        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setIsSubmitModalOpen(false)}
+                                disabled={isSubmittingAttempt}
+                                className="rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100"
+                            >
+                                Cancel
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => void submitAttemptFromFrontend()}
+                                disabled={isSubmittingAttempt}
+                                className="rounded-2xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+                            >
+                                {isSubmittingAttempt ? "Submitting..." : "Yes, Submit"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            ) : null}
+
             <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur">
                 <div className="mx-auto flex max-w-7xl flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
@@ -604,14 +725,15 @@ export default function StudentAttemptPage() {
 
                         <button
                             type="button"
-                            onClick={() =>
-                                setInterfaceMessage(
-                                    "Submit confirmation and submit API will be connected in T-35."
-                                )
-                            }
-                            className="rounded-2xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white"
+                            onClick={() => setIsSubmitModalOpen(true)}
+                            disabled={isSubmittingAttempt || Boolean(submitSummaryMessage)}
+                            className="rounded-2xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
                         >
-                            Submit Test
+                            {isSubmittingAttempt
+                                ? "Submitting..."
+                                : submitSummaryMessage
+                                  ? "Submitted"
+                                  : "Submit Test"}
                         </button>
                     </div>
                 </div>

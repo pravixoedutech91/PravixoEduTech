@@ -25,6 +25,9 @@ const buildStudentMockTestListItem = (
     mockTest,
     studentAttemptSummary = null
 ) => {
+    const activeVersionSettings =
+        mockTest.activeVersionId?.settings || mockTest.settings || {};
+
     return {
         _id: mockTest._id,
         title: mockTest.title,
@@ -51,10 +54,10 @@ const buildStudentMockTestListItem = (
             }
             : null,
         settings: {
-            maxAttempts: mockTest.settings?.maxAttempts,
-            interfaceMode: mockTest.settings?.interfaceMode,
-            showResultImmediately: mockTest.settings?.showResultImmediately,
-            solutionVisibility: mockTest.settings?.solutionVisibility,
+            maxAttempts: activeVersionSettings?.maxAttempts,
+            interfaceMode: activeVersionSettings?.interfaceMode,
+            showResultImmediately: activeVersionSettings?.showResultImmediately,
+            solutionVisibility: activeVersionSettings?.solutionVisibility,
         },
         publishedAt: mockTest.publishedAt,
         studentAttemptSummary,
@@ -485,7 +488,10 @@ const buildStudentAttemptSummary = (
     attempts = [],
     now = new Date()
 ) => {
-    const maxAttempts = Math.max(toNumber(mockTest.settings?.maxAttempts, 1), 1);
+    const activeVersionSettings =
+        mockTest.activeVersionId?.settings || mockTest.settings || {};
+
+    const maxAttempts = Math.max(toNumber(activeVersionSettings?.maxAttempts, 1), 1);
 
     const attemptsUsed = attempts.filter((attempt) =>
         ATTEMPT_LIMIT_COUNT_STATUSES.includes(attempt.status)
@@ -624,7 +630,7 @@ const getPublishedMockTestsForStudent = async (req, res) => {
                 "title slug description testType accessType price salePrice isPurchasable examPatternId activeVersionId settings.maxAttempts settings.interfaceMode settings.showResultImmediately settings.solutionVisibility publishedAt createdAt"
             )
             .populate("examPatternId", "name examType totalDurationMinutes")
-            .populate("activeVersionId", "versionNumber publishedAt")
+            .populate("activeVersionId", "versionNumber publishedAt settings.maxAttempts settings.interfaceMode settings.showResultImmediately settings.solutionVisibility")
             .sort({ publishedAt: -1, createdAt: -1 });
 
         const mockTestIds = mockTests.map((mockTest) => mockTest._id);
