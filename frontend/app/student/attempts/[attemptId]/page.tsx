@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname } from "next/navigation";
 
@@ -292,12 +294,17 @@ export default function StudentAttemptPage() {
     const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
     const [isSubmittingAttempt, setIsSubmittingAttempt] = useState(false);
     const [submitSummaryMessage, setSubmitSummaryMessage] = useState("");
+    const [submittedAtMs, setSubmittedAtMs] = useState<number | null>(null);
     const questionStartedAtRef = useRef(0);
     const [lastSavedAtByQuestion, setLastSavedAtByQuestion] = useState<
         Record<string, string>
     >({});
 
     useEffect(() => {
+        if (submittedAtMs !== null || submitSummaryMessage) {
+            return;
+        }
+
         const timerId = window.setInterval(() => {
             setNow(Date.now());
         }, 1000);
@@ -305,7 +312,7 @@ export default function StudentAttemptPage() {
         return () => {
             window.clearInterval(timerId);
         };
-    }, []);
+    }, [submittedAtMs, submitSummaryMessage]);
 
     useEffect(() => {
         questionStartedAtRef.current = Date.now();
@@ -576,9 +583,17 @@ export default function StudentAttemptPage() {
         }
 
         setIsSubmittingAttempt(true);
-        setInterfaceMessage("");
+        setInterfaceMessage("Saving current answer before final submit.");
 
         try {
+            const currentAnswerSaved = await saveCurrentAnswer({
+                successMessage: "Current answer saved before final submit.",
+            });
+
+            if (!currentAnswerSaved) {
+                return;
+            }
+
             const response = await fetch(
                 `${API_BASE_URL}/api/student/attempts/${payload.attempt._id}/submit`,
                 {
@@ -599,8 +614,9 @@ export default function StudentAttemptPage() {
                 result.data?.attempt?.attemptNumber || payload.attempt.attemptNumber;
 
             setSubmitSummaryMessage(
-                `Attempt #${submittedAttemptNumber} submitted successfully. Result page will be connected in T-36.`
+                `Attempt #${submittedAttemptNumber} submitted successfully. You can now view result and review.`
             );
+            setSubmittedAtMs(Date.now());
             setIsSubmitModalOpen(false);
             setInterfaceMessage("Test submitted successfully.");
         } catch (error) {
@@ -741,6 +757,29 @@ export default function StudentAttemptPage() {
 
             <div className="mx-auto grid max-w-7xl gap-4 px-3 py-4 lg:grid-cols-[minmax(0,1fr)_240px]">
                 <section className="space-y-5">
+                    {submitSummaryMessage ? (
+                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                            <p className="font-semibold">
+                                {submitSummaryMessage}
+                            </p>
+
+                            <div className="mt-3 flex flex-wrap gap-3">
+                                <Link
+                                    href={`/student/attempts/${payload.attempt._id}/result`}
+                                    className="rounded-2xl bg-emerald-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-800"
+                                >
+                                    View Result
+                                </Link>
+
+                                <Link
+                                    href={`/student/attempts/${payload.attempt._id}/review`}
+                                    className="rounded-2xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
+                                >
+                                    View Review
+                                </Link>
+                            </div>
+                        </div>
+                    ) : null}
                     {isAttemptMismatch ? (
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
                             Attempt URL and stored attempt do not match. Please
@@ -1038,7 +1077,7 @@ export default function StudentAttemptPage() {
                             </p>
 
                             <p className="mt-1 text-slate-600">
-                                {payload.attempt.status}
+                                {submitSummaryMessage ? "submitted" : payload.attempt.status}
                             </p>
 
                             <p className="mt-3 font-semibold">
