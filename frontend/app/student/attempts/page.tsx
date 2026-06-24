@@ -12,6 +12,8 @@ const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
 
 type AttemptStatus = "in_progress" | "submitted" | "expired" | "abandoned" | string;
 
+type AttemptStatusFilter = "all" | "in_progress" | "submitted" | "expired" | "abandoned";
+
 type ScoreSummary = {
     totalQuestions?: number;
     attemptedQuestions?: number;
@@ -78,6 +80,14 @@ const statusClasses: Record<string, string> = {
     abandoned: "border-slate-200 bg-slate-100 text-slate-600",
 };
 
+const statusFilterOptions: Array<{ label: string; value: AttemptStatusFilter }> = [
+    { label: "All", value: "all" },
+    { label: "Submitted", value: "submitted" },
+    { label: "In Progress", value: "in_progress" },
+    { label: "Expired", value: "expired" },
+    { label: "Abandoned", value: "abandoned" },
+];
+
 const formatDateTime = (value?: string | null) => {
     if (!value) {
         return "-";
@@ -133,6 +143,8 @@ export default function StudentAttemptsPage() {
     const [errorMessage, setErrorMessage] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
     const [total, setTotal] = useState(0);
+    const [activeStatusFilter, setActiveStatusFilter] =
+        useState<AttemptStatusFilter>("all");
 
     useEffect(() => {
         const timer = window.setTimeout(() => {
@@ -164,8 +176,14 @@ export default function StudentAttemptsPage() {
         setIsLoading(true);
 
         try {
+            const queryParams = new URLSearchParams({ limit: "20" });
+
+            if (activeStatusFilter !== "all") {
+                queryParams.set("status", activeStatusFilter);
+            }
+
             const response = await fetch(
-                `${API_BASE_URL}/api/student/mock-tests/my-attempts?limit=20`,
+                `${API_BASE_URL}/api/student/mock-tests/my-attempts?${queryParams.toString()}`,
                 {
                     headers: {
                         Authorization: `Bearer ${cleanToken}`,
@@ -196,7 +214,7 @@ export default function StudentAttemptsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [cleanToken]);
+    }, [activeStatusFilter, cleanToken]);
 
     useEffect(() => {
         if (!isClientReady || !cleanToken) {
@@ -246,6 +264,7 @@ export default function StudentAttemptsPage() {
                                 {isLoading ? "Loading..." : "Refresh Attempts"}
                             </button>
                         </div>
+
                     </div>
 
                     <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -272,6 +291,34 @@ export default function StudentAttemptsPage() {
                             <p className="mt-2 text-sm font-semibold text-emerald-700">
                                 Backend expiry sync active
                             </p>
+                        </div>
+                    </div>
+
+                    <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                            Filter by status
+                        </p>
+
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            {statusFilterOptions.map((option) => {
+                                const isActive = activeStatusFilter === option.value;
+
+                                return (
+                                    <button
+                                        key={option.value}
+                                        type="button"
+                                        onClick={() => setActiveStatusFilter(option.value)}
+                                        disabled={isLoading}
+                                        className={`rounded-full border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
+                                            isActive
+                                                ? "border-blue-600 bg-blue-600 text-white"
+                                                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+                                        }`}
+                                    >
+                                        {option.label}
+                                    </button>
+                                );
+                            })}
                         </div>
                     </div>
                 </section>
