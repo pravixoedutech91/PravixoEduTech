@@ -1,5 +1,7 @@
 ﻿"use client";
 
+
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -345,6 +347,13 @@ export default function StudentMockTestsPage() {
                         >
                             {isLoading ? "Loading..." : "Load Mock Tests"}
                         </button>
+
+                        <Link
+                            href="/student/attempts"
+                            className="flex min-h-12 items-center justify-center rounded-2xl border border-slate-300 bg-white px-6 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                            My Attempts
+                        </Link>
                     </div>
 
                     {errorMessage ? (
@@ -548,3 +557,6 @@ export default function StudentMockTestsPage() {
         </main>
     );
 }
+
+
+
