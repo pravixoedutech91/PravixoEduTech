@@ -425,6 +425,41 @@ const getAttemptIdForSummary = (attempt) => {
     return String(attempt._id);
 };
 
+const syncExpiredInProgressAttempts = async ({
+    tenantId,
+    studentId,
+    mockTestIds = null,
+    mockTestId = null,
+    now = new Date(),
+}) => {
+    if (!tenantId || !studentId) {
+        return 0;
+    }
+
+    const filter = {
+        tenantId,
+        studentId,
+        status: "in_progress",
+        isActive: true,
+        expiresAt: { $ne: null, $lte: now },
+    };
+
+    if (Array.isArray(mockTestIds) && mockTestIds.length > 0) {
+        filter.mockTestId = { $in: mockTestIds };
+    } else if (mockTestId) {
+        filter.mockTestId = mockTestId;
+    }
+
+    const result = await TestAttempt.updateMany(filter, {
+        $set: {
+            status: "expired",
+            lastActivityAt: now,
+        },
+    });
+
+    return result.modifiedCount || result.nModified || 0;
+};
+
 const isAttemptResumableForSummary = (attempt, now) => {
     if (!attempt || attempt.status !== "in_progress") {
         return false;
@@ -638,6 +673,15 @@ const getPublishedMockTestsForStudent = async (req, res) => {
             .sort({ publishedAt: -1, createdAt: -1 });
 
         const mockTestIds = mockTests.map((mockTest) => mockTest._id);
+
+        if (mockTestIds.length > 0) {
+            await syncExpiredInProgressAttempts({
+                tenantId,
+                studentId,
+                mockTestIds,
+                now: new Date(),
+            });
+        }
 
         const attempts =
             mockTestIds.length > 0
@@ -2032,6 +2076,13 @@ const getMyMockTestAttempts = async (req, res) => {
                 message: "Invalid mockTestId filter",
             });
         }
+
+        await syncExpiredInProgressAttempts({
+            tenantId,
+            studentId,
+            mockTestId: mockTestId || null,
+            now: new Date(),
+        });
 
         const filter = {
             tenantId,
