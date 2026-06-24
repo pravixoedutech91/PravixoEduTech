@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -38,9 +38,11 @@ type MockTest = {
         isAttemptLimitReached: boolean;
         primaryAction: PrimaryAction;
         result: {
+            attemptId?: string | null;
             isResultVisible: boolean;
         };
         review: {
+            attemptId?: string | null;
             isDetailedReviewAvailable: boolean;
         };
     };
@@ -230,8 +232,8 @@ export default function StudentMockTestsPage() {
             const actionText = result.data.resumed
                 ? "Resumed"
                 : requestedAction === "retake"
-                  ? "Started retake"
-                  : "Started";
+                    ? "Started retake"
+                    : "Started";
 
             setActionMessage(
                 `${actionText} attempt #${attempt.attemptNumber} for "${mockTest.title}". Opening attempt interface.`
@@ -251,7 +253,9 @@ export default function StudentMockTestsPage() {
     };
 
     const openAttemptResult = (mockTest: MockTest) => {
-        const attemptId = mockTest.studentAttemptSummary.latestAttemptId;
+        const attemptId =
+            mockTest.studentAttemptSummary.result.attemptId ||
+            mockTest.studentAttemptSummary.latestAttemptId;
 
         if (!attemptId) {
             setActionMessage(
@@ -264,7 +268,9 @@ export default function StudentMockTestsPage() {
     };
 
     const openAttemptReview = (mockTest: MockTest) => {
-        const attemptId = mockTest.studentAttemptSummary.latestAttemptId;
+        const attemptId =
+            mockTest.studentAttemptSummary.review.attemptId ||
+            mockTest.studentAttemptSummary.latestAttemptId;
 
         if (!attemptId) {
             setActionMessage(
@@ -492,8 +498,30 @@ export default function StudentMockTestsPage() {
                                                         : actionLabels[action]}
                                                 </button>
 
+                                                {summary.result.isResultVisible && action !== "view_result" ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openAttemptResult(mockTest)}
+                                                        disabled={isActionLoading}
+                                                        className="rounded-2xl border border-blue-200 bg-blue-50 px-5 py-3 text-sm font-semibold text-blue-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                    >
+                                                        View Result
+                                                    </button>
+                                                ) : null}
+
+                                                {summary.review.isDetailedReviewAvailable && action !== "view_review" ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openAttemptReview(mockTest)}
+                                                        disabled={isActionLoading}
+                                                        className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                    >
+                                                        View Review
+                                                    </button>
+                                                ) : null}
+
                                                 {summary.canRetake &&
-                                                action !== "retake" ? (
+                                                    action !== "retake" ? (
                                                     <button
                                                         type="button"
                                                         onClick={() =>

@@ -1,4 +1,4 @@
-const mongoose = require("mongoose");
+﻿const mongoose = require("mongoose");
 
 const MockTest = require("../models/MockTest");
 const MockTestVersion = require("../models/MockTestVersion");
@@ -592,10 +592,14 @@ const buildStudentAttemptSummary = (
         primaryAction,
 
         result: {
+            attemptId: getAttemptIdForSummary(latestSubmittedAttempt),
             isResultVisible: canViewResult,
         },
 
-        review,
+        review: {
+            ...review,
+            attemptId: getAttemptIdForSummary(latestSubmittedAttempt),
+        },
     };
 };
 
