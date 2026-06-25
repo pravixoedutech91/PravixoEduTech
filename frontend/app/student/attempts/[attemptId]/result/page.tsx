@@ -18,6 +18,32 @@ const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
 const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 
+const INVALID_STUDENT_SESSION_MESSAGE =
+    "Your student session has expired or was invalidated. Please login again.";
+
+const clearStudentSessionStorage = () => {
+    window.localStorage.removeItem(STUDENT_TOKEN_KEY);
+    window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+};
+
+const isInvalidStudentSessionResponse = (
+    response: Response,
+    message?: string
+) => {
+    const normalizedMessage = (message || "").toLowerCase();
+
+    return (
+        response.status === 401 ||
+        response.status === 403 ||
+        normalizedMessage.includes("jwt expired") ||
+        normalizedMessage.includes("invalid token") ||
+        normalizedMessage.includes("not authorized") ||
+        normalizedMessage.includes("session invalid")
+    );
+};
+
 type ScoreSummary = {
     totalQuestions: number;
     attempted: number;
@@ -226,6 +252,14 @@ export default function StudentAttemptResultPage() {
 
             const payload = (await response.json()) as ResultApiResponse;
 
+            if (isInvalidStudentSessionResponse(response, payload.message)) {
+                clearStudentSessionStorage();
+                setResult(null);
+                setErrorMessage(INVALID_STUDENT_SESSION_MESSAGE);
+                router.push("/student/login");
+                return;
+            }
+
             if (!response.ok || !payload.success || !payload.data) {
                 throw new Error(payload.message || "Unable to load result.");
             }
@@ -239,7 +273,7 @@ export default function StudentAttemptResultPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [attemptId, effectiveStudentToken]);
+    }, [attemptId, effectiveStudentToken, router]);
 
     useEffect(() => {
         if (!attemptId || !effectiveStudentToken) return;
@@ -260,10 +294,7 @@ export default function StudentAttemptResultPage() {
     }, [attemptId, effectiveStudentToken, fetchResult]);
 
     const handleLogout = () => {
-        window.localStorage.removeItem(STUDENT_TOKEN_KEY);
-        window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
-        window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
-        window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+        clearStudentSessionStorage();
 
         setResult(null);
         setErrorMessage("You have been logged out. Please login again.");
