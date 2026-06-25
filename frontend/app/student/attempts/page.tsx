@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const API_BASE_URL =
@@ -9,6 +10,9 @@ const API_BASE_URL =
     "http://localhost:5000";
 
 const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
+const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
+const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
+const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 
 type AttemptStatus = "in_progress" | "submitted" | "expired" | "abandoned" | string;
 
@@ -136,6 +140,7 @@ const toDisplayNumber = (value?: number | null, suffix = "") => {
 };
 
 export default function StudentAttemptsPage() {
+    const router = useRouter();
     const [token, setToken] = useState("");
     const [isClientReady, setIsClientReady] = useState(false);
     const [attempts, setAttempts] = useState<AttemptHistoryItem[]>([]);
@@ -228,6 +233,21 @@ export default function StudentAttemptsPage() {
         return () => window.clearTimeout(timer);
     }, [isClientReady, cleanToken, fetchAttempts]);
 
+    const handleLogout = () => {
+        window.localStorage.removeItem(STUDENT_TOKEN_STORAGE_KEY);
+        window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
+        window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
+        window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+
+        setToken("");
+        setAttempts([]);
+        setTotal(0);
+        setSuccessMessage("");
+        setErrorMessage("You have been logged out. Please login again.");
+
+        router.push("/student/login");
+    };
+
     return (
         <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 lg:px-8">
             <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -255,14 +275,33 @@ export default function StudentAttemptsPage() {
                                 Back to Mock Tests
                             </Link>
 
-                            <button
-                                type="button"
-                                onClick={fetchAttempts}
-                                disabled={isLoading || !isClientReady || !cleanToken}
-                                className="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                            >
-                                {isLoading ? "Loading..." : "Refresh Attempts"}
-                            </button>
+                            {cleanToken ? (
+                                <button
+                                    type="button"
+                                    onClick={fetchAttempts}
+                                    disabled={isLoading || !isClientReady}
+                                    className="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                >
+                                    {isLoading ? "Loading..." : "Refresh Attempts"}
+                                </button>
+                            ) : (
+                                <Link
+                                    href="/student/login"
+                                    className="rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+                                >
+                                    Login
+                                </Link>
+                            )}
+
+                            {cleanToken ? (
+                                <button
+                                    type="button"
+                                    onClick={handleLogout}
+                                    className="rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-red-700 hover:bg-red-100"
+                                >
+                                    Logout
+                                </button>
+                            ) : null}
                         </div>
 
                     </div>
