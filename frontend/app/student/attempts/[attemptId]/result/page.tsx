@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
     useCallback,
     useEffect,
@@ -14,6 +14,9 @@ import {
 const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 const STUDENT_TOKEN_KEY = "pravixoStudentToken";
+const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
+const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
+const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 
 type ScoreSummary = {
     totalQuestions: number;
@@ -177,12 +180,12 @@ const MiniStat = ({
 };
 
 export default function StudentAttemptResultPage() {
+    const router = useRouter();
     const params = useParams<{ attemptId?: string | string[] }>();
     const attemptId = Array.isArray(params.attemptId)
         ? params.attemptId[0]
         : params.attemptId;
 
-    const [tokenInput, setTokenInput] = useState("");
     const [result, setResult] = useState<ResultPayload | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
@@ -192,7 +195,7 @@ export default function StudentAttemptResultPage() {
         getStudentToken,
         getEmptyServerSnapshot
     );
-    const effectiveStudentToken = tokenInput.trim() || storedStudentToken.trim();
+    const effectiveStudentToken = storedStudentToken.trim();
     const autoLoadKeyRef = useRef("");
 
     const fetchResult = useCallback(async () => {
@@ -204,7 +207,7 @@ export default function StudentAttemptResultPage() {
         const token = effectiveStudentToken;
 
         if (!token) {
-            setErrorMessage("Student token is required to load result.");
+            setErrorMessage("Please login as a student first to load result.");
             return;
         }
 
@@ -256,6 +259,18 @@ export default function StudentAttemptResultPage() {
         };
     }, [attemptId, effectiveStudentToken, fetchResult]);
 
+    const handleLogout = () => {
+        window.localStorage.removeItem(STUDENT_TOKEN_KEY);
+        window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
+        window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
+        window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+
+        setResult(null);
+        setErrorMessage("You have been logged out. Please login again.");
+
+        router.push("/student/login");
+    };
+
     const scoreSummary = result?.attempt.scoreSummary;
 
     const resultStatusLabel = useMemo(() => {
@@ -303,25 +318,52 @@ export default function StudentAttemptResultPage() {
                 </header>
 
                 <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <label className="text-sm font-semibold text-slate-700">
-                        Student token
-                    </label>
-                    <div className="mt-2 flex flex-col gap-3 md:flex-row">
-                        <input
-                            type="password"
-                            value={tokenInput}
-                            onChange={(event) => setTokenInput(event.target.value)}
-                            placeholder="Paste student token if result does not load automatically"
-                            className="min-h-11 flex-1 rounded-2xl border border-slate-300 px-4 text-sm outline-none focus:border-blue-500"
-                        />
-                        <button
-                            type="button"
-                            onClick={() => void fetchResult()}
-                            disabled={isLoading}
-                            className="rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-                        >
-                            {isLoading ? "Loading..." : "Load Result"}
-                        </button>
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
+                                Student Session
+                            </p>
+
+                            <h2 className="mt-2 text-xl font-bold text-slate-950">
+                                Result Access
+                            </h2>
+
+                            <p className="mt-2 text-sm text-slate-600">
+                                {effectiveStudentToken
+                                    ? "You are logged in. Result loads using your saved student session."
+                                    : "Please login first to view this result."}
+                            </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                            {effectiveStudentToken ? (
+                                <button
+                                    type="button"
+                                    onClick={() => void fetchResult()}
+                                    disabled={isLoading}
+                                    className="rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+                                >
+                                    {isLoading ? "Loading..." : "Refresh Result"}
+                                </button>
+                            ) : (
+                                <Link
+                                    href="/student/login"
+                                    className="rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                                >
+                                    Login
+                                </Link>
+                            )}
+
+                            {effectiveStudentToken ? (
+                                <button
+                                    type="button"
+                                    onClick={handleLogout}
+                                    className="rounded-2xl border border-red-200 bg-red-50 px-5 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
+                                >
+                                    Logout
+                                </button>
+                            ) : null}
+                        </div>
                     </div>
                 </section>
 
