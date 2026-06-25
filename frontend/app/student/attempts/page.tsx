@@ -14,6 +14,32 @@ const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
 const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 
+const INVALID_STUDENT_SESSION_MESSAGE =
+    "Your student session has expired or was invalidated. Please login again.";
+
+const clearStudentSessionStorage = () => {
+    window.localStorage.removeItem(STUDENT_TOKEN_STORAGE_KEY);
+    window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+};
+
+const isInvalidStudentSessionResponse = (
+    response: Response,
+    message?: string
+) => {
+    const normalizedMessage = (message || "").toLowerCase();
+
+    return (
+        response.status === 401 ||
+        response.status === 403 ||
+        normalizedMessage.includes("jwt expired") ||
+        normalizedMessage.includes("invalid token") ||
+        normalizedMessage.includes("not authorized") ||
+        normalizedMessage.includes("session invalid")
+    );
+};
+
 type AttemptStatus = "in_progress" | "submitted" | "expired" | "abandoned" | string;
 
 type AttemptStatusFilter = "all" | "in_progress" | "submitted" | "expired" | "abandoned";
@@ -199,6 +225,17 @@ export default function StudentAttemptsPage() {
 
             const result = (await response.json()) as AttemptsResponse;
 
+            if (isInvalidStudentSessionResponse(response, result.message)) {
+                clearStudentSessionStorage();
+                setToken("");
+                setAttempts([]);
+                setTotal(0);
+                setSuccessMessage("");
+                setErrorMessage(INVALID_STUDENT_SESSION_MESSAGE);
+                router.push("/student/login");
+                return;
+            }
+
             if (!response.ok || !result.success) {
                 throw new Error(
                     result.message || "Unable to load attempt history"
@@ -219,7 +256,7 @@ export default function StudentAttemptsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [activeStatusFilter, cleanToken]);
+    }, [activeStatusFilter, cleanToken, router]);
 
     useEffect(() => {
         if (!isClientReady || !cleanToken) {
@@ -234,10 +271,7 @@ export default function StudentAttemptsPage() {
     }, [isClientReady, cleanToken, fetchAttempts]);
 
     const handleLogout = () => {
-        window.localStorage.removeItem(STUDENT_TOKEN_STORAGE_KEY);
-        window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
-        window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
-        window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+        clearStudentSessionStorage();
 
         setToken("");
         setAttempts([]);
