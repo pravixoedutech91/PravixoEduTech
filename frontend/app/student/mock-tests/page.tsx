@@ -2,7 +2,7 @@
 
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type PrimaryAction =
@@ -78,6 +78,7 @@ const API_BASE_URL =
 const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
 const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
+const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
 
 const actionLabels: Record<PrimaryAction, string> = {
     start: "Start Test",
@@ -119,6 +120,7 @@ const isAttemptStartAction = (action: PrimaryAction) => {
 export default function StudentMockTestsPage() {
     const router = useRouter();
     const [token, setToken] = useState("");
+    const [isClientReady, setIsClientReady] = useState(false);
     const [mockTests, setMockTests] = useState<MockTest[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [actionLoadingMockTestId, setActionLoadingMockTestId] = useState<
@@ -127,11 +129,11 @@ export default function StudentMockTestsPage() {
     const [errorMessage, setErrorMessage] = useState("");
     const [actionMessage, setActionMessage] = useState("");
 
-    const loadMockTests = async (tokenOverride?: string) => {
+    const loadMockTests = useCallback(async (tokenOverride?: string) => {
         const cleanToken = (tokenOverride || token).trim();
 
         if (!cleanToken) {
-            setErrorMessage("Please paste a student token first.");
+            setErrorMessage("Please login as a student first.");
             return;
         }
 
@@ -167,6 +169,50 @@ export default function StudentMockTestsPage() {
         } finally {
             setIsLoading(false);
         }
+    }, [token]);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => {
+            const storedToken =
+                window.localStorage.getItem(STUDENT_TOKEN_STORAGE_KEY) || "";
+            const cleanToken = storedToken.trim();
+
+            if (cleanToken) {
+                setToken(cleanToken);
+            } else {
+                setErrorMessage("Please login as a student first.");
+            }
+
+            setIsClientReady(true);
+        }, 0);
+
+        return () => window.clearTimeout(timer);
+    }, []);
+
+    useEffect(() => {
+        if (!isClientReady || !token.trim()) {
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            void loadMockTests(token);
+        }, 0);
+
+        return () => window.clearTimeout(timer);
+    }, [isClientReady, loadMockTests, token]);
+
+    const handleLogout = () => {
+        window.localStorage.removeItem(STUDENT_TOKEN_STORAGE_KEY);
+        window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
+        window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
+        window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+
+        setToken("");
+        setMockTests([]);
+        setActionMessage("");
+        setErrorMessage("You have been logged out. Please login again.");
+
+        router.push("/student/login");
     };
 
     const showPendingActionMessage = (mockTest: MockTest) => {
@@ -184,7 +230,7 @@ export default function StudentMockTestsPage() {
         const cleanToken = token.trim();
 
         if (!cleanToken) {
-            setErrorMessage("Please paste a student token first.");
+            setErrorMessage("Please login as a student first.");
             return;
         }
 
@@ -322,38 +368,59 @@ export default function StudentMockTestsPage() {
                 </section>
 
                 <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                    <label
-                        htmlFor="student-token"
-                        className="text-sm font-semibold text-slate-800"
-                    >
-                        Student JWT token
-                    </label>
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
+                                Student Session
+                            </p>
 
-                    <div className="mt-3 flex flex-col gap-3 md:flex-row">
-                        <input
-                            id="student-token"
-                            type="password"
-                            value={token}
-                            onChange={(event) => setToken(event.target.value)}
-                            placeholder="Paste student token from Thunder Client"
-                            className="min-h-12 flex-1 rounded-2xl border border-slate-300 px-4 text-sm outline-none focus:border-blue-500"
-                        />
+                            <h2 className="mt-2 text-2xl font-bold">
+                                Mock Test Access
+                            </h2>
 
-                        <button
-                            type="button"
-                            onClick={() => void loadMockTests()}
-                            disabled={isLoading}
-                            className="min-h-12 rounded-2xl bg-blue-700 px-6 text-sm font-semibold text-white disabled:bg-slate-400"
-                        >
-                            {isLoading ? "Loading..." : "Load Mock Tests"}
-                        </button>
+                            <p className="mt-2 max-w-2xl text-sm text-slate-600">
+                                {token.trim()
+                                    ? "You are logged in. Your mock tests load automatically from your saved student session."
+                                    : "Please login first to access your assigned mock tests."}
+                            </p>
+                        </div>
 
-                        <Link
-                            href="/student/attempts"
-                            className="flex min-h-12 items-center justify-center rounded-2xl border border-slate-300 bg-white px-6 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                        >
-                            My Attempts
-                        </Link>
+                        <div className="flex flex-wrap gap-3">
+                            {token.trim() ? (
+                                <button
+                                    type="button"
+                                    onClick={() => void loadMockTests()}
+                                    disabled={isLoading || !isClientReady}
+                                    className="min-h-12 rounded-2xl bg-blue-700 px-6 text-sm font-semibold text-white disabled:bg-slate-400"
+                                >
+                                    {isLoading ? "Loading..." : "Refresh Mock Tests"}
+                                </button>
+                            ) : (
+                                <Link
+                                    href="/student/login"
+                                    className="flex min-h-12 items-center justify-center rounded-2xl bg-blue-700 px-6 text-sm font-semibold text-white hover:bg-blue-800"
+                                >
+                                    Login
+                                </Link>
+                            )}
+
+                            <Link
+                                href="/student/attempts"
+                                className="flex min-h-12 items-center justify-center rounded-2xl border border-slate-300 bg-white px-6 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                                My Attempts
+                            </Link>
+
+                            {token.trim() ? (
+                                <button
+                                    type="button"
+                                    onClick={handleLogout}
+                                    className="min-h-12 rounded-2xl border border-red-200 bg-red-50 px-6 text-sm font-semibold text-red-700 hover:bg-red-100"
+                                >
+                                    Logout
+                                </button>
+                            ) : null}
+                        </div>
                     </div>
 
                     {errorMessage ? (
