@@ -163,6 +163,14 @@ const API_BASE_URL =
 const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 
+const getStudentTokenSnapshot = () => {
+    if (typeof window === "undefined") {
+        return "";
+    }
+
+    return window.localStorage.getItem(STUDENT_TOKEN_STORAGE_KEY) || "";
+};
+
 const subscribeToPayloadStorage = (onStoreChange: () => void) => {
     if (typeof window === "undefined") {
         return () => {};
@@ -247,6 +255,7 @@ const getInterfaceMessageClassName = (message: string) => {
         lowerMessage.includes("unable") ||
         lowerMessage.includes("not found") ||
         lowerMessage.includes("not authorized") ||
+        lowerMessage.includes("login") ||
         lowerMessage.includes("expired") ||
         lowerMessage.includes("no longer active") ||
         lowerMessage.includes("only in-progress") ||
@@ -276,6 +285,12 @@ export default function StudentAttemptPage() {
         () => parsePayloadSnapshot(payloadSnapshot),
         [payloadSnapshot]
     );
+    const storedStudentToken = useSyncExternalStore(
+        subscribeToPayloadStorage,
+        getStudentTokenSnapshot,
+        getServerPayloadSnapshot
+    );
+    const hasStudentToken = Boolean(storedStudentToken.trim());
     const attemptIdFromPath = useMemo(() => {
         const parts = pathname.split("/").filter(Boolean);
 
@@ -448,7 +463,7 @@ export default function StudentAttemptPage() {
 
         if (!token) {
             setInterfaceMessage(
-                "Student token not found. Please go back to mock tests and load the test again."
+                "Please login as a student first to continue this attempt."
             );
             return false;
         }
@@ -660,6 +675,43 @@ export default function StudentAttemptPage() {
                     >
                         Go to Mock Tests
                     </a>
+                </div>
+            </main>
+        );
+    }
+
+    if (!hasStudentToken) {
+        return (
+            <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950">
+                <div className="mx-auto max-w-3xl rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
+                    <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
+                        PravixoEduTech Test Interface
+                    </p>
+
+                    <h1 className="mt-2 text-2xl font-bold">
+                        Login required to continue test
+                    </h1>
+
+                    <p className="mt-3 text-sm leading-6 text-slate-600">
+                        Your student session is not available. Please login again
+                        before continuing this attempt.
+                    </p>
+
+                    <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+                        <Link
+                            href="/student/login"
+                            className="inline-flex justify-center rounded-2xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"
+                        >
+                            Login
+                        </Link>
+
+                        <Link
+                            href="/student/mock-tests"
+                            className="inline-flex justify-center rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                            Back to Mock Tests
+                        </Link>
+                    </div>
                 </div>
             </main>
         );
