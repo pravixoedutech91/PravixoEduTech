@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
     useCallback,
     useEffect,
@@ -15,6 +15,9 @@ const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 
 const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
+const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
+const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
+const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 
 type ScoreSummary = {
     totalQuestions: number;
@@ -326,6 +329,7 @@ const getOptionClassName = ({
 };
 
 export default function StudentAttemptReviewPage() {
+    const router = useRouter();
     const params = useParams<{ attemptId: string }>();
     const attemptId = useMemo(() => String(params.attemptId || ""), [params]);
 
@@ -335,12 +339,11 @@ export default function StudentAttemptReviewPage() {
         getEmptyServerSnapshot
     );
 
-    const [tokenInput, setTokenInput] = useState("");
     const [review, setReview] = useState<ReviewPayload | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState("");
 
-    const effectiveStudentToken = tokenInput.trim() || storedStudentToken.trim();
+    const effectiveStudentToken = storedStudentToken.trim();
     const autoLoadKeyRef = useRef("");
 
     const fetchReview = useCallback(async () => {
@@ -350,7 +353,7 @@ export default function StudentAttemptReviewPage() {
         }
 
         if (!effectiveStudentToken) {
-            setMessage("Paste student token first.");
+            setMessage("Please login as a student first to load review.");
             return;
         }
 
@@ -421,6 +424,18 @@ export default function StudentAttemptReviewPage() {
         return map;
     }, [review]);
 
+    const handleLogout = () => {
+        window.localStorage.removeItem(STUDENT_TOKEN_STORAGE_KEY);
+        window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
+        window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
+        window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+
+        setReview(null);
+        setMessage("You have been logged out. Please login again.");
+
+        router.push("/student/login");
+    };
+
     return (
         <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950">
             <div className="mx-auto max-w-6xl space-y-6">
@@ -457,26 +472,52 @@ export default function StudentAttemptReviewPage() {
                 </section>
 
                 <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                    <label className="text-sm font-semibold" htmlFor="student-token">
-                        Student token
-                    </label>
-                    <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                        <input
-                            id="student-token"
-                            type="password"
-                            value={tokenInput}
-                            onChange={(event) => setTokenInput(event.target.value)}
-                            placeholder="Paste student token if review does not load automatically"
-                            className="min-w-0 flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                        />
-                        <button
-                            type="button"
-                            onClick={() => void fetchReview()}
-                            disabled={isLoading}
-                            className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-                        >
-                            {isLoading ? "Loading..." : "Load Review"}
-                        </button>
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
+                                Student Session
+                            </p>
+
+                            <h2 className="mt-2 text-xl font-bold text-slate-950">
+                                Review Access
+                            </h2>
+
+                            <p className="mt-2 text-sm text-slate-600">
+                                {effectiveStudentToken
+                                    ? "You are logged in. Review loads using your saved student session."
+                                    : "Please login first to view this detailed review."}
+                            </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                            {effectiveStudentToken ? (
+                                <button
+                                    type="button"
+                                    onClick={() => void fetchReview()}
+                                    disabled={isLoading}
+                                    className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
+                                >
+                                    {isLoading ? "Loading..." : "Refresh Review"}
+                                </button>
+                            ) : (
+                                <Link
+                                    href="/student/login"
+                                    className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+                                >
+                                    Login
+                                </Link>
+                            )}
+
+                            {effectiveStudentToken ? (
+                                <button
+                                    type="button"
+                                    onClick={handleLogout}
+                                    className="rounded-2xl border border-red-200 bg-red-50 px-6 py-3 text-sm font-semibold text-red-700 hover:bg-red-100"
+                                >
+                                    Logout
+                                </button>
+                            ) : null}
+                        </div>
                     </div>
 
                     {message ? (
@@ -753,7 +794,7 @@ export default function StudentAttemptReviewPage() {
                     <section className="rounded-3xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
                         <h2 className="text-xl font-bold">Review not loaded yet</h2>
                         <p className="mt-2 text-sm text-slate-600">
-                            Paste your student token or click Load Review to fetch detailed review.
+                            Login as a student to fetch detailed review.
                         </p>
                     </section>
                 )}
