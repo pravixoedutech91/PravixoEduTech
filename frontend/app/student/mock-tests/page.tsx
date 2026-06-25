@@ -80,6 +80,32 @@ const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
 
+const INVALID_STUDENT_SESSION_MESSAGE =
+    "Your student session has expired or was invalidated. Please login again.";
+
+const clearStudentSessionStorage = () => {
+    window.localStorage.removeItem(STUDENT_TOKEN_STORAGE_KEY);
+    window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+};
+
+const isInvalidStudentSessionResponse = (
+    response: Response,
+    message?: string
+) => {
+    const normalizedMessage = (message || "").toLowerCase();
+
+    return (
+        response.status === 401 ||
+        response.status === 403 ||
+        normalizedMessage.includes("jwt expired") ||
+        normalizedMessage.includes("invalid token") ||
+        normalizedMessage.includes("not authorized") ||
+        normalizedMessage.includes("session invalid")
+    );
+};
+
 const actionLabels: Record<PrimaryAction, string> = {
     start: "Start Test",
     resume: "Resume Test",
@@ -153,6 +179,16 @@ export default function StudentMockTestsPage() {
 
             const result = (await response.json()) as MockTestsResponse;
 
+            if (isInvalidStudentSessionResponse(response, result.message)) {
+                clearStudentSessionStorage();
+                setToken("");
+                setMockTests([]);
+                setActionMessage("");
+                setErrorMessage(INVALID_STUDENT_SESSION_MESSAGE);
+                router.push("/student/login");
+                return;
+            }
+
             if (!response.ok || !result.success) {
                 throw new Error(result.message || "Unable to load mock tests.");
             }
@@ -169,7 +205,7 @@ export default function StudentMockTestsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [token]);
+    }, [router, token]);
 
     useEffect(() => {
         const timer = window.setTimeout(() => {
@@ -202,10 +238,7 @@ export default function StudentMockTestsPage() {
     }, [isClientReady, loadMockTests, token]);
 
     const handleLogout = () => {
-        window.localStorage.removeItem(STUDENT_TOKEN_STORAGE_KEY);
-        window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
-        window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
-        window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+        clearStudentSessionStorage();
 
         setToken("");
         setMockTests([]);
@@ -250,6 +283,16 @@ export default function StudentMockTestsPage() {
             );
 
             const result = (await response.json()) as StartAttemptResponse;
+
+            if (isInvalidStudentSessionResponse(response, result.message)) {
+                clearStudentSessionStorage();
+                setToken("");
+                setMockTests([]);
+                setActionMessage("");
+                setErrorMessage(INVALID_STUDENT_SESSION_MESSAGE);
+                router.push("/student/login");
+                return;
+            }
 
             if (!response.ok || !result.success || !result.data) {
                 throw new Error(result.message || "Unable to start test.");
