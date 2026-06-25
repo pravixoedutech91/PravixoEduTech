@@ -19,6 +19,32 @@ const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
 const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 
+const INVALID_STUDENT_SESSION_MESSAGE =
+    "Your student session has expired or was invalidated. Please login again.";
+
+const clearStudentSessionStorage = () => {
+    window.localStorage.removeItem(STUDENT_TOKEN_STORAGE_KEY);
+    window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+};
+
+const isInvalidStudentSessionResponse = (
+    response: Response,
+    message?: string
+) => {
+    const normalizedMessage = (message || "").toLowerCase();
+
+    return (
+        response.status === 401 ||
+        response.status === 403 ||
+        normalizedMessage.includes("jwt expired") ||
+        normalizedMessage.includes("invalid token") ||
+        normalizedMessage.includes("not authorized") ||
+        normalizedMessage.includes("session invalid")
+    );
+};
+
 type ScoreSummary = {
     totalQuestions: number;
     attempted: number;
@@ -372,6 +398,14 @@ export default function StudentAttemptReviewPage() {
 
             const result = (await response.json()) as ReviewResponse;
 
+            if (isInvalidStudentSessionResponse(response, result.message)) {
+                clearStudentSessionStorage();
+                setReview(null);
+                setMessage(INVALID_STUDENT_SESSION_MESSAGE);
+                router.push("/student/login");
+                return;
+            }
+
             if (!response.ok || !result.success || !result.data) {
                 throw new Error(result.message || "Unable to fetch review.");
             }
@@ -384,7 +418,7 @@ export default function StudentAttemptReviewPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [attemptId, effectiveStudentToken]);
+    }, [attemptId, effectiveStudentToken, router]);
 
     useEffect(() => {
         const key = `${attemptId}:${effectiveStudentToken}`;
@@ -425,10 +459,7 @@ export default function StudentAttemptReviewPage() {
     }, [review]);
 
     const handleLogout = () => {
-        window.localStorage.removeItem(STUDENT_TOKEN_STORAGE_KEY);
-        window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
-        window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
-        window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+        clearStudentSessionStorage();
 
         setReview(null);
         setMessage("You have been logged out. Please login again.");
