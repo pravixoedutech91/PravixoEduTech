@@ -284,13 +284,7 @@ export default function StudentAttemptResultPage() {
 
         autoLoadKeyRef.current = autoLoadKey;
 
-        const timerId = window.setTimeout(() => {
-            void fetchResult();
-        }, 0);
-
-        return () => {
-            window.clearTimeout(timerId);
-        };
+        void fetchResult();
     }, [attemptId, effectiveStudentToken, fetchResult]);
 
     const handleLogout = () => {

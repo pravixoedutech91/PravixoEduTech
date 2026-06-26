@@ -429,11 +429,7 @@ export default function StudentAttemptReviewPage() {
 
         autoLoadKeyRef.current = key;
 
-        const timer = window.setTimeout(() => {
-            void fetchReview();
-        }, 0);
-
-        return () => window.clearTimeout(timer);
+        void fetchReview();
     }, [attemptId, effectiveStudentToken, fetchReview]);
 
     const summary = review?.attempt.scoreSummary;
