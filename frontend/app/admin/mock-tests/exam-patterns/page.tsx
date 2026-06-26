@@ -26,6 +26,31 @@ type MeResponse = {
     data?: AdminProfile;
 };
 
+type ExamPatternSection = {
+    name?: string;
+    sectionType?: string;
+    durationMinutes?: number;
+    questionCount?: number;
+};
+
+type ExamPattern = {
+    _id: string;
+    name: string;
+    slug: string;
+    description?: string;
+    examType?: string;
+    totalDurationMinutes?: number;
+    sections?: ExamPatternSection[];
+    isActive?: boolean;
+};
+
+type ExamPatternsResponse = {
+    success: boolean;
+    message?: string;
+    count?: number;
+    data?: ExamPattern[];
+};
+
 const isAllowedAdminRole = (role?: string) => {
     return Boolean(role && ALLOWED_ADMIN_ROLES.includes(role));
 };
@@ -39,6 +64,9 @@ export default function AdminExamPatternsPage() {
     const [isReady, setIsReady] = useState(false);
     const [isAllowed, setIsAllowed] = useState(false);
     const [message, setMessage] = useState("");
+    const [patterns, setPatterns] = useState<ExamPattern[]>([]);
+    const [isPatternsLoading, setIsPatternsLoading] = useState(false);
+    const [patternsError, setPatternsError] = useState("");
 
     useEffect(() => {
         const verifyAdminSession = async () => {
@@ -77,6 +105,43 @@ export default function AdminExamPatternsPage() {
 
                 setIsAllowed(true);
                 setMessage("");
+                setIsPatternsLoading(true);
+
+                try {
+                    const patternsResponse = await fetch(
+                        `${API_BASE_URL}/api/exam-patterns`,
+                        {
+                            headers: {
+                                Authorization: `Bearer ${savedToken}`,
+                            },
+                        }
+                    );
+
+                    const patternsResult =
+                        (await patternsResponse.json()) as ExamPatternsResponse;
+
+                    if (
+                        !patternsResponse.ok ||
+                        !patternsResult.success ||
+                        !Array.isArray(patternsResult.data)
+                    ) {
+                        throw new Error(
+                            patternsResult.message || "Unable to load exam patterns."
+                        );
+                    }
+
+                    setPatterns(patternsResult.data);
+                    setPatternsError("");
+                } catch (patternError) {
+                    setPatterns([]);
+                    setPatternsError(
+                        patternError instanceof Error
+                            ? patternError.message
+                            : "Unable to load exam patterns."
+                    );
+                } finally {
+                    setIsPatternsLoading(false);
+                }
             } catch (error) {
                 clearAdminSessionStorage();
                 setIsAllowed(false);
@@ -150,7 +215,11 @@ export default function AdminExamPatternsPage() {
                 </p>
 
                 <div className="mt-5 rounded-2xl bg-blue-50 p-4 text-sm text-blue-900 ring-1 ring-blue-100">
-                    Protected placeholder only. Forms and API integration will be added after route setup.
+                    {isPatternsLoading
+                        ? "Loading exam patterns..."
+                        : patternsError
+                          ? patternsError
+                          : `Existing exam patterns loaded: ${patterns.length}. Table will be added next.`}
                 </div>
             </section>
         </main>
