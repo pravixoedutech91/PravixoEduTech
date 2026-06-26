@@ -238,6 +238,14 @@ export default function StudentMockTestsPage() {
     }, [isClientReady, loadMockTests, token]);
 
     const handleLogout = () => {
+        const shouldLogout = window.confirm(
+            "Are you sure you want to logout? Your saved student session will be cleared."
+        );
+
+        if (!shouldLogout) {
+            return;
+        }
+
         clearStudentSessionStorage();
 
         setToken("");

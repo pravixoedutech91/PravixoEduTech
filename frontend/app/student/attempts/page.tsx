@@ -271,6 +271,14 @@ export default function StudentAttemptsPage() {
     }, [isClientReady, cleanToken, fetchAttempts]);
 
     const handleLogout = () => {
+        const shouldLogout = window.confirm(
+            "Are you sure you want to logout? Your saved student session will be cleared."
+        );
+
+        if (!shouldLogout) {
+            return;
+        }
+
         clearStudentSessionStorage();
 
         setToken("");
