@@ -3,7 +3,7 @@
 import Link from "next/link";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 type AttemptPayload = {
     resumed: boolean;
@@ -161,7 +161,35 @@ const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
+const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
+const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
+
+const INVALID_STUDENT_SESSION_MESSAGE =
+    "Your student session has expired or was invalidated. Please login again.";
+
+const clearStudentSessionStorage = () => {
+    window.localStorage.removeItem(STUDENT_TOKEN_STORAGE_KEY);
+    window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+};
+
+const isInvalidStudentSessionResponse = (
+    response: Response,
+    message?: string
+) => {
+    const normalizedMessage = (message || "").toLowerCase();
+
+    return (
+        response.status === 401 ||
+        response.status === 403 ||
+        normalizedMessage.includes("jwt expired") ||
+        normalizedMessage.includes("invalid token") ||
+        normalizedMessage.includes("not authorized") ||
+        normalizedMessage.includes("session invalid")
+    );
+};
 
 const getStudentTokenSnapshot = () => {
     if (typeof window === "undefined") {
@@ -276,6 +304,7 @@ const getInterfaceMessageClassName = (message: string) => {
 };
 export default function StudentAttemptPage() {
     const pathname = usePathname();
+    const router = useRouter();
     const payloadSnapshot = useSyncExternalStore(
         subscribeToPayloadStorage,
         getPayloadSnapshot,
@@ -502,6 +531,13 @@ export default function StudentAttemptPage() {
 
             const result = (await response.json()) as SaveAnswerResponse;
 
+            if (isInvalidStudentSessionResponse(response, result.message)) {
+                clearStudentSessionStorage();
+                setInterfaceMessage(INVALID_STUDENT_SESSION_MESSAGE);
+                router.push("/student/login");
+                return false;
+            }
+
             if (!response.ok || !result.success) {
                 throw new Error(result.message || "Unable to save answer.");
             }
@@ -626,6 +662,14 @@ export default function StudentAttemptPage() {
             );
 
             const result = (await response.json()) as SubmitAttemptResponse;
+
+            if (isInvalidStudentSessionResponse(response, result.message)) {
+                clearStudentSessionStorage();
+                setIsSubmitModalOpen(false);
+                setInterfaceMessage(INVALID_STUDENT_SESSION_MESSAGE);
+                router.push("/student/login");
+                return;
+            }
 
             if (!response.ok || !result.success) {
                 throw new Error(result.message || "Unable to submit attempt.");
