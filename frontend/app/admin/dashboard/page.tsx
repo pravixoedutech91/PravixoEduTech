@@ -36,6 +36,22 @@ const isAllowedAdminRole = (role?: string) => {
     return Boolean(role && ALLOWED_ADMIN_ROLES.includes(role));
 };
 
+const getAdminRoleLabel = (role?: string) => {
+    if (role === "super_admin") {
+        return "Super Admin";
+    }
+
+    if (role === "tenant_admin") {
+        return "Admin";
+    }
+
+    if (role === "content_admin") {
+        return "Content Manager";
+    }
+
+    return "Admin";
+};
+
 const clearAdminSessionStorage = () => {
     window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
     window.localStorage.removeItem(ADMIN_PROFILE_STORAGE_KEY);
@@ -109,7 +125,7 @@ export default function AdminDashboardPage() {
         return () => window.clearTimeout(timerId);
     }, []);
 
-    const roleLabel = profile?.role ? profile.role.replaceAll("_", " ") : "admin";
+    const roleLabel = getAdminRoleLabel(profile?.role);
 
     const handleLogout = () => {
         const shouldLogout = window.confirm(
@@ -167,61 +183,138 @@ export default function AdminDashboardPage() {
     }
 
     return (
-        <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950 sm:px-6 lg:px-8">
-            <div className="mx-auto flex max-w-6xl flex-col gap-6">
-                <header className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <main className="min-h-screen bg-slate-100 text-slate-950">
+            <div className="flex min-h-screen flex-col lg:flex-row">
+                <aside className="border-b border-slate-200 bg-slate-950 px-5 py-6 text-white lg:w-72 lg:border-b-0 lg:border-r lg:border-slate-800">
+                    <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-200">
+                            PravixoEduTech
+                        </p>
+                        <h2 className="mt-2 text-2xl font-black">Admin Panel</h2>
+                        <p className="mt-2 text-xs leading-5 text-slate-300">
+                            {profile.name || "Admin"} · {roleLabel}
+                        </p>
+                    </div>
+
+                    <nav className="mt-8 space-y-6">
                         <div>
-                            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-blue-700">
-                                PravixoEduTech Admin
+                            <p className="px-3 text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+                                Main
                             </p>
-
-                            <h1 className="mt-2 text-3xl font-bold">
-                                Admin Dashboard
-                            </h1>
-
-                            <p className="mt-2 text-sm text-slate-600">
-                                Logged in as {profile.name || "Admin"} ({roleLabel})
-                            </p>
+                            <Link
+                                href="/admin/dashboard"
+                                className="mt-3 flex items-center justify-between rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-950"
+                            >
+                                Dashboard
+                                <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] text-blue-700">
+                                    Active
+                                </span>
+                            </Link>
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={handleLogout}
-                            className="rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-red-700 hover:bg-red-100"
-                        >
-                            Logout
-                        </button>
+                        <div>
+                            <p className="px-3 text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+                                Mock-Test
+                            </p>
+
+                            <div className="mt-3 space-y-2">
+                                {[
+                                    "Exam Patterns",
+                                    "Question Groups",
+                                    "Question Bank",
+                                    "Mock Tests",
+                                    "Published Versions",
+                                ].map((item) => (
+                                    <div
+                                        key={item}
+                                        className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200"
+                                    >
+                                        <span>{item}</span>
+                                        <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] text-slate-400">
+                                            Coming next
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </nav>
+                </aside>
+
+                <section className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
+                    <div className="mx-auto flex max-w-6xl flex-col gap-6">
+                        <header className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+                            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                <div>
+                                    <p className="text-sm font-semibold uppercase tracking-[0.25em] text-blue-700">
+                                        Admin Dashboard
+                                    </p>
+
+                                    <h1 className="mt-2 text-3xl font-bold">
+                                        Welcome, {profile.name || "Admin"}
+                                    </h1>
+
+                                    <p className="mt-2 text-sm text-slate-600">
+                                        Logged in as {roleLabel}. Admin session is verified from backend.
+                                    </p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={handleLogout}
+                                    className="rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-semibold text-red-700 hover:bg-red-100"
+                                >
+                                    Logout
+                                </button>
+                            </div>
+                        </header>
+
+                        <section className="grid gap-4 md:grid-cols-3">
+                            <div className="min-w-0 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Role
+                                </p>
+                                <p className="mt-2 break-words text-lg font-bold">
+                                    {roleLabel}
+                                </p>
+                            </div>
+
+                            <div className="min-w-0 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Institute
+                                </p>
+                                <p className="mt-2 break-words text-lg font-bold">
+                                    {profile.tenantId || "-"}
+                                </p>
+                            </div>
+
+                            <div className="min-w-0 rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Email / Mobile
+                                </p>
+                                <p className="mt-2 break-all text-base font-bold sm:text-lg">
+                                    {profile.email || profile.mobile || "-"}
+                                </p>
+                            </div>
+                        </section>
+
+                        <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+                            <h2 className="text-xl font-bold">
+                                T-42B Admin Shell Foundation
+                            </h2>
+
+                            <p className="mt-3 text-sm leading-6 text-slate-600">
+                                Admin sidebar shell is now ready. The Mock-Test section
+                                will be connected step by step: Exam Patterns, Question
+                                Groups, Question Bank, Mock Test Builder, and Published
+                                Versions.
+                            </p>
+
+                            <div className="mt-5 rounded-2xl bg-blue-50 p-4 text-sm text-blue-900 ring-1 ring-blue-100">
+                                Next step: create protected placeholder routes for the
+                                Mock-Test module before adding forms or APIs.
+                            </div>
+                        </section>
                     </div>
-                </header>
-
-                <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                    <h2 className="text-xl font-bold">T-42A Admin Session Foundation</h2>
-
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                        <div className="rounded-2xl bg-slate-50 p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Tenant
-                            </p>
-                            <p className="mt-1 text-sm font-bold">
-                                {profile.tenantId || "-"}
-                            </p>
-                        </div>
-
-                        <div className="rounded-2xl bg-slate-50 p-4">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                Email / Mobile
-                            </p>
-                            <p className="mt-1 text-sm font-bold">
-                                {profile.email || profile.mobile || "-"}
-                            </p>
-                        </div>
-                    </div>
-
-                    <p className="mt-5 text-sm leading-6 text-slate-600">
-                        This is a protected placeholder dashboard. Full sidebar and
-                        Mock-Test management module will be added in the next steps.
-                    </p>
                 </section>
             </div>
         </main>

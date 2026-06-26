@@ -119,8 +119,7 @@ export default function AdminLoginPage() {
                             </h1>
 
                             <p className="mt-4 max-w-xl text-sm leading-6 text-blue-50">
-                                Secure access for Super Admin, Tenant Admin, and
-                                Content Admin users to manage platform operations.
+                                Secure access for Super Admin, Admin, and Content Manager roles to manage platform operations.
                             </p>
 
                             <div className="mt-8 rounded-2xl border border-white/20 bg-white/10 p-5 text-sm text-blue-50">
