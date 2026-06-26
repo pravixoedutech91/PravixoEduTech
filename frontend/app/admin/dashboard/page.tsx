@@ -225,15 +225,28 @@ export default function AdminDashboardPage() {
                                     "Mock Tests",
                                     "Published Versions",
                                 ].map((item) => (
-                                    <div
-                                        key={item}
-                                        className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200"
-                                    >
-                                        <span>{item}</span>
-                                        <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] text-slate-400">
-                                            Coming next
-                                        </span>
-                                    </div>
+                                    item === "Exam Patterns" ? (
+                                        <Link
+                                            key={item}
+                                            href="/admin/mock-tests/exam-patterns"
+                                            className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
+                                        >
+                                            <span>{item}</span>
+                                            <span className="rounded-full bg-blue-950 px-2 py-0.5 text-[11px] text-blue-200">
+                                                Open
+                                            </span>
+                                        </Link>
+                                    ) : (
+                                        <div
+                                            key={item}
+                                            className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200"
+                                        >
+                                            <span>{item}</span>
+                                            <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] text-slate-400">
+                                                Coming next
+                                            </span>
+                                        </div>
+                                    )
                                 ))}
                             </div>
                         </div>
