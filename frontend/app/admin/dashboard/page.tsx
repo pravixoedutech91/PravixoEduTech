@@ -4,8 +4,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+const API_BASE_URL =
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:5000";
+
 const ADMIN_TOKEN_STORAGE_KEY = "pravixoAdminToken";
 const ADMIN_PROFILE_STORAGE_KEY = "pravixoAdminProfile";
+
+const INVALID_ADMIN_SESSION_MESSAGE =
+    "Your admin session has expired or was invalidated. Please login again.";
 
 const ALLOWED_ADMIN_ROLES = ["super_admin", "tenant_admin", "content_admin"];
 
@@ -18,8 +26,19 @@ type AdminProfile = {
     role?: string;
 };
 
+type MeResponse = {
+    success: boolean;
+    message?: string;
+    data?: AdminProfile;
+};
+
 const isAllowedAdminRole = (role?: string) => {
     return Boolean(role && ALLOWED_ADMIN_ROLES.includes(role));
+};
+
+const clearAdminSessionStorage = () => {
+    window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
+    window.localStorage.removeItem(ADMIN_PROFILE_STORAGE_KEY);
 };
 
 export default function AdminDashboardPage() {
@@ -32,35 +51,59 @@ export default function AdminDashboardPage() {
 
     useEffect(() => {
         const timerId = window.setTimeout(() => {
-            const savedToken =
-                window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
-        const savedProfileRaw =
-            window.localStorage.getItem(ADMIN_PROFILE_STORAGE_KEY) || "";
+            const verifyAdminSession = async () => {
+                const savedToken =
+                    window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
 
-        let savedProfile: AdminProfile | null = null;
+                if (!savedToken) {
+                    clearAdminSessionStorage();
+                    setToken("");
+                    setProfile(null);
+                    setMessage("Please login with an admin account.");
+                    setIsClientReady(true);
+                    return;
+                }
 
-        try {
-            savedProfile = savedProfileRaw
-                ? (JSON.parse(savedProfileRaw) as AdminProfile)
-                : null;
-        } catch {
-            savedProfile = null;
-        }
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+                        headers: {
+                            Authorization: `Bearer ${savedToken}`,
+                        },
+                    });
 
-        if (!savedToken || !isAllowedAdminRole(savedProfile?.role)) {
-            window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
-            window.localStorage.removeItem(ADMIN_PROFILE_STORAGE_KEY);
-            setToken("");
-            setProfile(null);
-            setMessage("Please login with an admin account.");
-            setIsClientReady(true);
-            return;
-        }
+                    const result = (await response.json()) as MeResponse;
 
-        setToken(savedToken);
-        setProfile(savedProfile);
-            setMessage("");
-            setIsClientReady(true);
+                    if (!response.ok || !result.success || !result.data) {
+                        throw new Error(result.message || INVALID_ADMIN_SESSION_MESSAGE);
+                    }
+
+                    if (!isAllowedAdminRole(result.data.role)) {
+                        throw new Error("Please login with an admin account.");
+                    }
+
+                    window.localStorage.setItem(
+                        ADMIN_PROFILE_STORAGE_KEY,
+                        JSON.stringify(result.data)
+                    );
+
+                    setToken(savedToken);
+                    setProfile(result.data);
+                    setMessage("");
+                } catch (error) {
+                    clearAdminSessionStorage();
+                    setToken("");
+                    setProfile(null);
+                    setMessage(
+                        error instanceof Error
+                            ? error.message
+                            : INVALID_ADMIN_SESSION_MESSAGE
+                    );
+                } finally {
+                    setIsClientReady(true);
+                }
+            };
+
+            void verifyAdminSession();
         }, 0);
 
         return () => window.clearTimeout(timerId);
@@ -77,8 +120,7 @@ export default function AdminDashboardPage() {
             return;
         }
 
-        window.localStorage.removeItem(ADMIN_TOKEN_STORAGE_KEY);
-        window.localStorage.removeItem(ADMIN_PROFILE_STORAGE_KEY);
+        clearAdminSessionStorage();
 
         setToken("");
         setProfile(null);
