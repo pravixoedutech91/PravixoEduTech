@@ -59,6 +59,15 @@ type CreatePatternForm = {
     description: string;
 };
 
+type CreatePatternSectionForm = {
+    name: string;
+    sectionType: string;
+    durationMinutes: string;
+    questionCount: string;
+    marksPerQuestion: string;
+    negativeMarks: string;
+};
+
 const defaultCreatePatternForm: CreatePatternForm = {
     name: "",
     slug: "",
@@ -66,6 +75,17 @@ const defaultCreatePatternForm: CreatePatternForm = {
     totalDurationMinutes: "",
     description: "",
 };
+
+const defaultCreatePatternSections: CreatePatternSectionForm[] = [
+    {
+        name: "",
+        sectionType: "mcq",
+        durationMinutes: "",
+        questionCount: "",
+        marksPerQuestion: "1",
+        negativeMarks: "0",
+    },
+];
 
 const isAllowedAdminRole = (role?: string) => {
     return Boolean(role && ALLOWED_ADMIN_ROLES.includes(role));
@@ -86,6 +106,9 @@ export default function AdminExamPatternsPage() {
     const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
     const [createPatternForm, setCreatePatternForm] =
         useState<CreatePatternForm>(defaultCreatePatternForm);
+    const [createPatternSections, setCreatePatternSections] = useState<
+        CreatePatternSectionForm[]
+    >(defaultCreatePatternSections);
 
     const updateCreatePatternField = (
         field: keyof CreatePatternForm,
@@ -95,6 +118,23 @@ export default function AdminExamPatternsPage() {
             ...current,
             [field]: value,
         }));
+    };
+
+    const updateCreatePatternSectionField = (
+        index: number,
+        field: keyof CreatePatternSectionForm,
+        value: string
+    ) => {
+        setCreatePatternSections((current) =>
+            current.map((section, sectionIndex) =>
+                sectionIndex === index
+                    ? {
+                          ...section,
+                          [field]: value,
+                      }
+                    : section
+            )
+        );
     };
 
     useEffect(() => {
@@ -344,6 +384,129 @@ export default function AdminExamPatternsPage() {
                                 />
                             </label>
                         </div>
+
+                        <section className="mt-6 rounded-3xl bg-white p-4 ring-1 ring-slate-200">
+                            <h3 className="text-base font-bold">Section 1</h3>
+                            <p className="mt-1 text-sm text-slate-600">
+                                One default section only. Add/remove section will come later.
+                            </p>
+
+                            {createPatternSections.map((section, index) => (
+                                <div
+                                    key={index}
+                                    className="mt-4 grid gap-4 sm:grid-cols-3"
+                                >
+                                    <label className="grid gap-2 text-sm font-semibold text-slate-800 sm:col-span-2">
+                                        Section Name
+                                        <input
+                                            value={section.name}
+                                            onChange={(event) =>
+                                                updateCreatePatternSectionField(
+                                                    index,
+                                                    "name",
+                                                    event.target.value
+                                                )
+                                            }
+                                            placeholder="Example: General Intelligence"
+                                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                        />
+                                    </label>
+
+                                    <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                        Section Type
+                                        <select
+                                            value={section.sectionType}
+                                            onChange={(event) =>
+                                                updateCreatePatternSectionField(
+                                                    index,
+                                                    "sectionType",
+                                                    event.target.value
+                                                )
+                                            }
+                                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                        >
+                                            <option value="mcq">MCQ</option>
+                                            <option value="typing">Typing</option>
+                                            <option value="mixed">Mixed</option>
+                                        </select>
+                                    </label>
+
+                                    <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                        Duration Minutes
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            value={section.durationMinutes}
+                                            onChange={(event) =>
+                                                updateCreatePatternSectionField(
+                                                    index,
+                                                    "durationMinutes",
+                                                    event.target.value
+                                                )
+                                            }
+                                            placeholder="Example: 15"
+                                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                        />
+                                    </label>
+
+                                    <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                        Questions
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            value={section.questionCount}
+                                            onChange={(event) =>
+                                                updateCreatePatternSectionField(
+                                                    index,
+                                                    "questionCount",
+                                                    event.target.value
+                                                )
+                                            }
+                                            placeholder="Example: 25"
+                                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                        />
+                                    </label>
+
+                                    <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                        Marks / Question
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.25"
+                                            value={section.marksPerQuestion}
+                                            onChange={(event) =>
+                                                updateCreatePatternSectionField(
+                                                    index,
+                                                    "marksPerQuestion",
+                                                    event.target.value
+                                                )
+                                            }
+                                            placeholder="Example: 2"
+                                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                        />
+                                    </label>
+
+                                    <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                        Negative Marks
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.25"
+                                            value={section.negativeMarks}
+                                            onChange={(event) =>
+                                                updateCreatePatternSectionField(
+                                                    index,
+                                                    "negativeMarks",
+                                                    event.target.value
+                                                )
+                                            }
+                                            placeholder="Example: 0.5"
+                                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                        />
+                                    </label>
+                                </div>
+                            ))}
+                        </section>
                     </section>
                 ) : null}
 
