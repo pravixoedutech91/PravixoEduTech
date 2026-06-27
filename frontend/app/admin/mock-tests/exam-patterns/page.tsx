@@ -268,6 +268,16 @@ export default function AdminExamPatternsPage() {
                                     <option value="cpct">CPCT</option>
                                 </select>
                             </label>
+
+                            <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                Total Duration Minutes
+                                <input
+                                    type="number"
+                                    min="1"
+                                    placeholder="Example: 60"
+                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                />
+                            </label>
                         </div>
                     </section>
                 ) : null}
