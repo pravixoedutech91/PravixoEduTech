@@ -239,13 +239,23 @@ export default function AdminExamPatternsPage() {
                             Basic fields only. Save API will be added later.
                         </p>
 
-                        <label className="mt-5 grid gap-2 text-sm font-semibold text-slate-800">
-                            Pattern Name
-                            <input
-                                placeholder="Example: SSC CGL Tier 1"
-                                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
-                            />
-                        </label>
+                        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                            <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                Pattern Name
+                                <input
+                                    placeholder="Example: SSC CGL Tier 1"
+                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                />
+                            </label>
+
+                            <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                Slug
+                                <input
+                                    placeholder="example: ssc-cgl-tier-1"
+                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                />
+                            </label>
+                        </div>
                     </section>
                 ) : null}
 
