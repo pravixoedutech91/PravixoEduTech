@@ -51,6 +51,22 @@ type ExamPatternsResponse = {
     data?: ExamPattern[];
 };
 
+type CreatePatternForm = {
+    name: string;
+    slug: string;
+    examType: string;
+    totalDurationMinutes: string;
+    description: string;
+};
+
+const defaultCreatePatternForm: CreatePatternForm = {
+    name: "",
+    slug: "",
+    examType: "custom",
+    totalDurationMinutes: "",
+    description: "",
+};
+
 const isAllowedAdminRole = (role?: string) => {
     return Boolean(role && ALLOWED_ADMIN_ROLES.includes(role));
 };
@@ -68,6 +84,18 @@ export default function AdminExamPatternsPage() {
     const [isPatternsLoading, setIsPatternsLoading] = useState(false);
     const [patternsError, setPatternsError] = useState("");
     const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+    const [createPatternForm, setCreatePatternForm] =
+        useState<CreatePatternForm>(defaultCreatePatternForm);
+
+    const updateCreatePatternField = (
+        field: keyof CreatePatternForm,
+        value: string
+    ) => {
+        setCreatePatternForm((current) => ({
+            ...current,
+            [field]: value,
+        }));
+    };
 
     useEffect(() => {
         const verifyAdminSession = async () => {
@@ -243,6 +271,10 @@ export default function AdminExamPatternsPage() {
                             <label className="grid gap-2 text-sm font-semibold text-slate-800">
                                 Pattern Name
                                 <input
+                                    value={createPatternForm.name}
+                                    onChange={(event) =>
+                                        updateCreatePatternField("name", event.target.value)
+                                    }
                                     placeholder="Example: SSC CGL Tier 1"
                                     className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
                                 />
@@ -251,6 +283,10 @@ export default function AdminExamPatternsPage() {
                             <label className="grid gap-2 text-sm font-semibold text-slate-800">
                                 Slug
                                 <input
+                                    value={createPatternForm.slug}
+                                    onChange={(event) =>
+                                        updateCreatePatternField("slug", event.target.value)
+                                    }
                                     placeholder="example: ssc-cgl-tier-1"
                                     className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
                                 />
@@ -258,7 +294,13 @@ export default function AdminExamPatternsPage() {
 
                             <label className="grid gap-2 text-sm font-semibold text-slate-800">
                                 Exam Type
-                                <select className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400">
+                                <select
+                                    value={createPatternForm.examType}
+                                    onChange={(event) =>
+                                        updateCreatePatternField("examType", event.target.value)
+                                    }
+                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                >
                                     <option value="custom">Custom</option>
                                     <option value="ssc">SSC</option>
                                     <option value="railway">Railway</option>
@@ -274,6 +316,13 @@ export default function AdminExamPatternsPage() {
                                 <input
                                     type="number"
                                     min="1"
+                                    value={createPatternForm.totalDurationMinutes}
+                                    onChange={(event) =>
+                                        updateCreatePatternField(
+                                            "totalDurationMinutes",
+                                            event.target.value
+                                        )
+                                    }
                                     placeholder="Example: 60"
                                     className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
                                 />
@@ -283,6 +332,13 @@ export default function AdminExamPatternsPage() {
                                 Description
                                 <textarea
                                     rows={3}
+                                    value={createPatternForm.description}
+                                    onChange={(event) =>
+                                        updateCreatePatternField(
+                                            "description",
+                                            event.target.value
+                                        )
+                                    }
                                     placeholder="Short admin note about this exam pattern"
                                     className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
                                 />
