@@ -295,6 +295,31 @@ export default function AdminExamPatternsPage() {
                                             </p>
                                         </div>
                                     </div>
+
+                                    {sections.length > 0 ? (
+                                        <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                            <p className="text-xs font-semibold uppercase text-slate-500">
+                                                Section Preview
+                                            </p>
+
+                                            <div className="mt-3 grid gap-2">
+                                                {sections.map((section, index) => (
+                                                    <div
+                                                        key={`${pattern._id}-section-${index}`}
+                                                        className="flex flex-col gap-1 rounded-xl bg-slate-50 p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+                                                    >
+                                                        <p className="font-semibold">
+                                                            {index + 1}. {section.name || "Untitled section"}
+                                                        </p>
+
+                                                        <p className="text-slate-600">
+                                                            {section.sectionType || "mcq"} · {section.questionCount || 0} questions · {section.durationMinutes || 0} min
+                                                        </p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : null}
                                 </article>
                             );
                         })}
