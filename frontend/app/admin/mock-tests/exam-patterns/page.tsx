@@ -219,8 +219,87 @@ export default function AdminExamPatternsPage() {
                         ? "Loading exam patterns..."
                         : patternsError
                           ? patternsError
-                          : `Existing exam patterns loaded: ${patterns.length}. Table will be added next.`}
+                          : `Existing exam patterns loaded: ${patterns.length}.`}
                 </div>
+
+                {!isPatternsLoading && !patternsError && patterns.length > 0 ? (
+                    <section className="mt-6 grid gap-4">
+                        {patterns.map((pattern) => {
+                            const sections = pattern.sections || [];
+                            const totalQuestions = sections.reduce(
+                                (total, section) =>
+                                    total + Number(section.questionCount || 0),
+                                0
+                            );
+
+                            return (
+                                <article
+                                    key={pattern._id}
+                                    className="rounded-3xl border border-slate-200 bg-slate-50 p-5"
+                                >
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                        <div>
+                                            <h2 className="text-lg font-bold">
+                                                {pattern.name}
+                                            </h2>
+                                            <p className="mt-1 text-sm text-slate-600">
+                                                {pattern.description || pattern.slug}
+                                            </p>
+                                        </div>
+
+                                        <span
+                                            className={
+                                                pattern.isActive
+                                                    ? "w-fit rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 ring-1 ring-green-100"
+                                                    : "w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200"
+                                            }
+                                        >
+                                            {pattern.isActive ? "Active" : "Inactive"}
+                                        </span>
+                                    </div>
+
+                                    <div className="mt-4 grid gap-3 sm:grid-cols-4">
+                                        <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+                                            <p className="text-xs font-semibold uppercase text-slate-500">
+                                                Exam Type
+                                            </p>
+                                            <p className="mt-1 font-bold">
+                                                {pattern.examType || "-"}
+                                            </p>
+                                        </div>
+
+                                        <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+                                            <p className="text-xs font-semibold uppercase text-slate-500">
+                                                Duration
+                                            </p>
+                                            <p className="mt-1 font-bold">
+                                                {pattern.totalDurationMinutes || 0} min
+                                            </p>
+                                        </div>
+
+                                        <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+                                            <p className="text-xs font-semibold uppercase text-slate-500">
+                                                Sections
+                                            </p>
+                                            <p className="mt-1 font-bold">
+                                                {sections.length}
+                                            </p>
+                                        </div>
+
+                                        <div className="rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+                                            <p className="text-xs font-semibold uppercase text-slate-500">
+                                                Questions
+                                            </p>
+                                            <p className="mt-1 font-bold">
+                                                {totalQuestions}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </article>
+                            );
+                        })}
+                    </section>
+                ) : null}
             </section>
         </main>
     );
