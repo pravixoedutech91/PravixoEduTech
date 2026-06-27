@@ -67,6 +67,7 @@ export default function AdminExamPatternsPage() {
     const [patterns, setPatterns] = useState<ExamPattern[]>([]);
     const [isPatternsLoading, setIsPatternsLoading] = useState(false);
     const [patternsError, setPatternsError] = useState("");
+    const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
 
     useEffect(() => {
         const verifyAdminSession = async () => {
@@ -213,6 +214,32 @@ export default function AdminExamPatternsPage() {
                     This protected admin page will manage exam structures, sections,
                     duration, marks, negative marking, and navigation rules.
                 </p>
+
+                <div className="mt-6 flex flex-col gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                        <h2 className="text-lg font-bold">Create Exam Pattern</h2>
+                        <p className="mt-1 text-sm text-slate-600">
+                            Form shell only. No API submit yet.
+                        </p>
+                    </div>
+
+                    <button
+                        type="button"
+                        onClick={() => setIsCreateFormOpen((value) => !value)}
+                        className="w-fit rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                    >
+                        {isCreateFormOpen ? "Close Form" : "Create Pattern"}
+                    </button>
+                </div>
+
+                {isCreateFormOpen ? (
+                    <section className="mt-4 rounded-3xl border border-dashed border-blue-200 bg-blue-50 p-5">
+                        <h2 className="text-lg font-bold">New Exam Pattern</h2>
+                        <p className="mt-2 text-sm leading-6 text-blue-900">
+                            This is only the create form shell. Fields and save API will be added in the next step.
+                        </p>
+                    </section>
+                ) : null}
 
                 <div className="mt-5 rounded-2xl bg-blue-50 p-4 text-sm text-blue-900 ring-1 ring-blue-100">
                     {isPatternsLoading
