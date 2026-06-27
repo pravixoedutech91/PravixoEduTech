@@ -255,6 +255,19 @@ export default function AdminExamPatternsPage() {
                                     className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
                                 />
                             </label>
+
+                            <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                Exam Type
+                                <select className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400">
+                                    <option value="custom">Custom</option>
+                                    <option value="ssc">SSC</option>
+                                    <option value="railway">Railway</option>
+                                    <option value="banking">Banking</option>
+                                    <option value="upsc">UPSC</option>
+                                    <option value="state_exam">State Exam</option>
+                                    <option value="cpct">CPCT</option>
+                                </select>
+                            </label>
                         </div>
                     </section>
                 ) : null}
