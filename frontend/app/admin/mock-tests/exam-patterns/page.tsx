@@ -137,6 +137,70 @@ export default function AdminExamPatternsPage() {
         );
     };
 
+    const createPatternValidationErrors = (() => {
+        const errors: string[] = [];
+        const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+        if (!createPatternForm.name.trim()) {
+            errors.push("Pattern name is required.");
+        }
+
+        if (!createPatternForm.slug.trim()) {
+            errors.push("Slug is required.");
+        } else if (!slugPattern.test(createPatternForm.slug.trim())) {
+            errors.push("Slug must use lowercase letters, numbers, and hyphens only.");
+        }
+
+        const totalDuration = Number(createPatternForm.totalDurationMinutes);
+
+        if (!Number.isFinite(totalDuration) || totalDuration <= 0) {
+            errors.push("Total duration must be greater than 0.");
+        }
+
+        const sectionDurationTotal = createPatternSections.reduce(
+            (total, section) => total + Number(section.durationMinutes || 0),
+            0
+        );
+
+        createPatternSections.forEach((section, index) => {
+            const sectionNumber = index + 1;
+            const sectionDuration = Number(section.durationMinutes);
+            const questionCount = Number(section.questionCount);
+            const marksPerQuestion = Number(section.marksPerQuestion);
+            const negativeMarks = Number(section.negativeMarks);
+
+            if (!section.name.trim()) {
+                errors.push(`Section ${sectionNumber} name is required.`);
+            }
+
+            if (!Number.isFinite(sectionDuration) || sectionDuration <= 0) {
+                errors.push(`Section ${sectionNumber} duration must be greater than 0.`);
+            }
+
+            if (!Number.isInteger(questionCount) || questionCount <= 0) {
+                errors.push(`Section ${sectionNumber} questions must be a positive whole number.`);
+            }
+
+            if (!Number.isFinite(marksPerQuestion) || marksPerQuestion <= 0) {
+                errors.push(`Section ${sectionNumber} marks per question must be greater than 0.`);
+            }
+
+            if (!Number.isFinite(negativeMarks) || negativeMarks < 0) {
+                errors.push(`Section ${sectionNumber} negative marks cannot be negative.`);
+            }
+        });
+
+        if (
+            Number.isFinite(totalDuration) &&
+            totalDuration > 0 &&
+            sectionDurationTotal !== totalDuration
+        ) {
+            errors.push("Total duration must equal the sum of section durations.");
+        }
+
+        return errors;
+    })();
+
     useEffect(() => {
         const verifyAdminSession = async () => {
             const savedToken =
@@ -506,6 +570,27 @@ export default function AdminExamPatternsPage() {
                                     </label>
                                 </div>
                             ))}
+                        </section>
+
+                        <section className="mt-4 rounded-3xl bg-white p-4 ring-1 ring-slate-200">
+                            <h3 className="text-base font-bold">Validation Preview</h3>
+
+                            {createPatternValidationErrors.length > 0 ? (
+                                <ul className="mt-3 grid gap-2 text-sm text-red-700">
+                                    {createPatternValidationErrors.map((error) => (
+                                        <li
+                                            key={error}
+                                            className="rounded-2xl bg-red-50 px-4 py-3 ring-1 ring-red-100"
+                                        >
+                                            {error}
+                                        </li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="mt-3 rounded-2xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-700 ring-1 ring-green-100">
+                                    Basic validation passed. Save API will be added later.
+                                </p>
+                            )}
                         </section>
                     </section>
                 ) : null}
