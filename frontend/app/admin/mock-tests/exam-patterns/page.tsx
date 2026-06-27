@@ -591,6 +591,22 @@ export default function AdminExamPatternsPage() {
                                     Basic validation passed. Save API will be added later.
                                 </p>
                             )}
+
+                            <div className="mt-4 flex justify-end">
+                                <button
+                                    type="button"
+                                    disabled={createPatternValidationErrors.length > 0}
+                                    className={
+                                        createPatternValidationErrors.length > 0
+                                            ? "rounded-2xl bg-slate-200 px-5 py-3 text-sm font-semibold text-slate-500"
+                                            : "rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                                    }
+                                >
+                                    {createPatternValidationErrors.length > 0
+                                        ? "Fix validation errors first"
+                                        : "Save Pattern - API next"}
+                                </button>
+                            </div>
                         </section>
                     </section>
                 ) : null}
