@@ -236,8 +236,16 @@ export default function AdminExamPatternsPage() {
                     <section className="mt-4 rounded-3xl border border-dashed border-blue-200 bg-blue-50 p-5">
                         <h2 className="text-lg font-bold">New Exam Pattern</h2>
                         <p className="mt-2 text-sm leading-6 text-blue-900">
-                            This is only the create form shell. Fields and save API will be added in the next step.
+                            Basic fields only. Save API will be added later.
                         </p>
+
+                        <label className="mt-5 grid gap-2 text-sm font-semibold text-slate-800">
+                            Pattern Name
+                            <input
+                                placeholder="Example: SSC CGL Tier 1"
+                                className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                            />
+                        </label>
                     </section>
                 ) : null}
 
