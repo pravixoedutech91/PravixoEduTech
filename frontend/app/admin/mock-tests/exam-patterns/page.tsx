@@ -278,6 +278,15 @@ export default function AdminExamPatternsPage() {
                                     className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
                                 />
                             </label>
+
+                            <label className="grid gap-2 text-sm font-semibold text-slate-800 sm:col-span-2">
+                                Description
+                                <textarea
+                                    rows={3}
+                                    placeholder="Short admin note about this exam pattern"
+                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                />
+                            </label>
                         </div>
                     </section>
                 ) : null}
