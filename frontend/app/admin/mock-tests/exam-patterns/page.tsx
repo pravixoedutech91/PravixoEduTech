@@ -51,6 +51,12 @@ type ExamPatternsResponse = {
     data?: ExamPattern[];
 };
 
+type CreateExamPatternResponse = {
+    success: boolean;
+    message?: string;
+    data?: ExamPattern;
+};
+
 type CreatePatternForm = {
     name: string;
     slug: string;
@@ -109,6 +115,9 @@ export default function AdminExamPatternsPage() {
     const [createPatternSections, setCreatePatternSections] = useState<
         CreatePatternSectionForm[]
     >(defaultCreatePatternSections);
+    const [isCreatingPattern, setIsCreatingPattern] = useState(false);
+    const [createPatternMessage, setCreatePatternMessage] = useState("");
+    const [createPatternError, setCreatePatternError] = useState("");
 
     const updateCreatePatternField = (
         field: keyof CreatePatternForm,
@@ -200,6 +209,71 @@ export default function AdminExamPatternsPage() {
 
         return errors;
     })();
+
+    const handleCreatePattern = async () => {
+        if (createPatternValidationErrors.length > 0 || isCreatingPattern) {
+            return;
+        }
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (!savedToken) {
+            setCreatePatternMessage("");
+            setCreatePatternError("Admin session expired. Please login again.");
+            return;
+        }
+
+        const payload = {
+            name: createPatternForm.name.trim(),
+            slug: createPatternForm.slug.trim(),
+            description: createPatternForm.description.trim(),
+            examType: createPatternForm.examType,
+            totalDurationMinutes: Number(createPatternForm.totalDurationMinutes),
+            sections: createPatternSections.map((section, index) => ({
+                name: section.name.trim(),
+                sectionType: section.sectionType,
+                durationMinutes: Number(section.durationMinutes),
+                questionCount: Number(section.questionCount),
+                marksPerQuestion: Number(section.marksPerQuestion),
+                negativeMarks: Number(section.negativeMarks),
+                order: index + 1,
+            })),
+        };
+
+        try {
+            setIsCreatingPattern(true);
+            setCreatePatternMessage("");
+            setCreatePatternError("");
+
+            const response = await fetch(`${API_BASE_URL}/api/exam-patterns`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${savedToken}`,
+                },
+                body: JSON.stringify(payload),
+            });
+
+            const result = (await response.json()) as CreateExamPatternResponse;
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to create exam pattern.");
+            }
+
+            setCreatePatternMessage(
+                "Exam pattern created successfully. List refresh will be added next."
+            );
+        } catch (error) {
+            setCreatePatternError(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to create exam pattern."
+            );
+        } finally {
+            setIsCreatingPattern(false);
+        }
+    };
 
     useEffect(() => {
         const verifyAdminSession = async () => {
@@ -351,7 +425,7 @@ export default function AdminExamPatternsPage() {
                     <div>
                         <h2 className="text-lg font-bold">Create Exam Pattern</h2>
                         <p className="mt-1 text-sm text-slate-600">
-                            Form shell only. No API submit yet.
+                            Create a new exam pattern for mock tests.
                         </p>
                     </div>
 
@@ -368,7 +442,7 @@ export default function AdminExamPatternsPage() {
                     <section className="mt-4 rounded-3xl border border-dashed border-blue-200 bg-blue-50 p-5">
                         <h2 className="text-lg font-bold">New Exam Pattern</h2>
                         <p className="mt-2 text-sm leading-6 text-blue-900">
-                            Basic fields only. Save API will be added later.
+                            Fill exam details and section details before saving.
                         </p>
 
                         <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -588,25 +662,44 @@ export default function AdminExamPatternsPage() {
                                 </ul>
                             ) : (
                                 <p className="mt-3 rounded-2xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-700 ring-1 ring-green-100">
-                                    Basic validation passed. Save API will be added later.
+                                    Basic validation passed. Ready to save.
                                 </p>
                             )}
 
                             <div className="mt-4 flex justify-end">
                                 <button
                                     type="button"
-                                    disabled={createPatternValidationErrors.length > 0}
+                                    onClick={handleCreatePattern}
+                                    disabled={
+                                        createPatternValidationErrors.length > 0 ||
+                                        isCreatingPattern
+                                    }
                                     className={
-                                        createPatternValidationErrors.length > 0
+                                        createPatternValidationErrors.length > 0 ||
+                                        isCreatingPattern
                                             ? "rounded-2xl bg-slate-200 px-5 py-3 text-sm font-semibold text-slate-500"
                                             : "rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
                                     }
                                 >
-                                    {createPatternValidationErrors.length > 0
-                                        ? "Fix validation errors first"
-                                        : "Save Pattern - API next"}
+                                    {isCreatingPattern
+                                        ? "Saving..."
+                                        : createPatternValidationErrors.length > 0
+                                          ? "Fix validation errors first"
+                                          : "Save Pattern"}
                                 </button>
                             </div>
+
+                            {createPatternMessage ? (
+                                <p className="mt-3 rounded-2xl bg-green-50 px-4 py-3 text-sm font-semibold text-green-700 ring-1 ring-green-100">
+                                    {createPatternMessage}
+                                </p>
+                            ) : null}
+
+                            {createPatternError ? (
+                                <p className="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm font-semibold text-red-700 ring-1 ring-red-100">
+                                    {createPatternError}
+                                </p>
+                            ) : null}
                         </section>
                     </section>
                 ) : null}
