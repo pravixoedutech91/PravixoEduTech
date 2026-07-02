@@ -123,6 +123,9 @@ export default function AdminExamPatternsPage() {
         field: keyof CreatePatternForm,
         value: string
     ) => {
+        setCreatePatternMessage("");
+        setCreatePatternError("");
+
         setCreatePatternForm((current) => ({
             ...current,
             [field]: value,
@@ -134,6 +137,9 @@ export default function AdminExamPatternsPage() {
         field: keyof CreatePatternSectionForm,
         value: string
     ) => {
+        setCreatePatternMessage("");
+        setCreatePatternError("");
+
         setCreatePatternSections((current) =>
             current.map((section, sectionIndex) =>
                 sectionIndex === index
@@ -171,10 +177,14 @@ export default function AdminExamPatternsPage() {
             errors.push("Pattern name is required.");
         }
 
-        if (!createPatternForm.slug.trim()) {
+        const trimmedSlug = createPatternForm.slug.trim();
+
+        if (!trimmedSlug) {
             errors.push("Slug is required.");
-        } else if (!slugPattern.test(createPatternForm.slug.trim())) {
+        } else if (!slugPattern.test(trimmedSlug)) {
             errors.push("Slug must use lowercase letters, numbers, and hyphens only.");
+        } else if (patterns.some((pattern) => pattern.slug === trimmedSlug)) {
+            errors.push("Slug already exists. Use a unique slug.");
         }
 
         const totalDuration = Number(createPatternForm.totalDurationMinutes);
