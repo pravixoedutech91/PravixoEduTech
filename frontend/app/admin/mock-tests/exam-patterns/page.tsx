@@ -146,6 +146,23 @@ export default function AdminExamPatternsPage() {
         );
     };
 
+    const hasCreatePatternDraft = Boolean(
+        createPatternForm.name.trim() ||
+            createPatternForm.slug.trim() ||
+            createPatternForm.totalDurationMinutes.trim() ||
+            createPatternForm.description.trim() ||
+            createPatternForm.examType !== defaultCreatePatternForm.examType ||
+            createPatternSections.some(
+                (section) =>
+                    section.name.trim() ||
+                    section.durationMinutes.trim() ||
+                    section.questionCount.trim() ||
+                    section.marksPerQuestion !== "1" ||
+                    section.negativeMarks !== "0" ||
+                    section.sectionType !== "mcq"
+            )
+    );
+
     const createPatternValidationErrors = (() => {
         const errors: string[] = [];
         const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -272,8 +289,11 @@ export default function AdminExamPatternsPage() {
                 ]);
             }
 
+            setCreatePatternForm(defaultCreatePatternForm);
+            setCreatePatternSections(defaultCreatePatternSections);
+
             setCreatePatternMessage(
-                "Exam pattern created successfully and list updated."
+                "Exam pattern created successfully, list updated, and form reset."
             );
         } catch (error) {
             setCreatePatternError(
@@ -660,7 +680,11 @@ export default function AdminExamPatternsPage() {
                         <section className="mt-4 rounded-3xl bg-white p-4 ring-1 ring-slate-200">
                             <h3 className="text-base font-bold">Validation Preview</h3>
 
-                            {createPatternValidationErrors.length > 0 ? (
+                            {!hasCreatePatternDraft ? (
+                                <p className="mt-3 rounded-2xl bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 ring-1 ring-slate-200">
+                                    Fill details to create another exam pattern.
+                                </p>
+                            ) : createPatternValidationErrors.length > 0 ? (
                                 <ul className="mt-3 grid gap-2 text-sm text-red-700">
                                     {createPatternValidationErrors.map((error) => (
                                         <li
@@ -694,9 +718,11 @@ export default function AdminExamPatternsPage() {
                                 >
                                     {isCreatingPattern
                                         ? "Saving..."
-                                        : createPatternValidationErrors.length > 0
-                                          ? "Fix validation errors first"
-                                          : "Save Pattern"}
+                                        : !hasCreatePatternDraft
+                                          ? "Fill details to save"
+                                          : createPatternValidationErrors.length > 0
+                                            ? "Fix validation errors first"
+                                            : "Save Pattern"}
                                 </button>
                             </div>
 
