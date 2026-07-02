@@ -118,6 +118,8 @@ export default function AdminExamPatternsPage() {
     const [isCreatingPattern, setIsCreatingPattern] = useState(false);
     const [createPatternMessage, setCreatePatternMessage] = useState("");
     const [createPatternError, setCreatePatternError] = useState("");
+    const [patternActionId, setPatternActionId] = useState("");
+    const [patternActionError, setPatternActionError] = useState("");
 
     const updateCreatePatternField = (
         field: keyof CreatePatternForm,
@@ -313,6 +315,65 @@ export default function AdminExamPatternsPage() {
             );
         } finally {
             setIsCreatingPattern(false);
+        }
+    };
+
+    const handleTogglePatternStatus = async (pattern: ExamPattern) => {
+        if (patternActionId) {
+            return;
+        }
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (!savedToken) {
+            setPatternActionError("Admin session expired. Please login again.");
+            return;
+        }
+
+        try {
+            setPatternActionId(pattern._id);
+            setPatternActionError("");
+
+            const response = await fetch(
+                pattern.isActive
+                    ? `${API_BASE_URL}/api/exam-patterns/${pattern._id}/disable`
+                    : `${API_BASE_URL}/api/exam-patterns/${pattern._id}`,
+                {
+                    method: pattern.isActive ? "PATCH" : "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${savedToken}`,
+                    },
+                    body: pattern.isActive
+                        ? undefined
+                        : JSON.stringify({ isActive: true }),
+                }
+            );
+
+            const result = (await response.json()) as CreateExamPatternResponse;
+
+            if (!response.ok || !result.success || !result.data) {
+                throw new Error(
+                    result.message || "Unable to update exam pattern status."
+                );
+            }
+
+            setPatterns((currentPatterns) =>
+                currentPatterns.map((currentPattern) =>
+                    currentPattern._id === result.data?._id
+                        ? result.data
+                        : currentPattern
+                )
+            );
+        } catch (error) {
+            setPatternActionError(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to update exam pattern status."
+            );
+        } finally {
+            setPatternActionId("");
         }
     };
 
@@ -759,6 +820,12 @@ export default function AdminExamPatternsPage() {
                           : `Existing exam patterns loaded: ${patterns.length}.`}
                 </div>
 
+                {patternActionError ? (
+                    <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700 ring-1 ring-red-100">
+                        {patternActionError}
+                    </div>
+                ) : null}
+
                 {!isPatternsLoading && !patternsError && patterns.length > 0 ? (
                     <section className="mt-6 grid gap-4">
                         {patterns.map((pattern) => {
@@ -784,15 +851,32 @@ export default function AdminExamPatternsPage() {
                                             </p>
                                         </div>
 
-                                        <span
-                                            className={
-                                                pattern.isActive
-                                                    ? "w-fit rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 ring-1 ring-green-100"
-                                                    : "w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200"
-                                            }
-                                        >
-                                            {pattern.isActive ? "Active" : "Inactive"}
-                                        </span>
+                                        <div className="flex flex-wrap gap-2">
+                                            <span
+                                                className={
+                                                    pattern.isActive
+                                                        ? "w-fit rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700 ring-1 ring-green-100"
+                                                        : "w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200"
+                                                }
+                                            >
+                                                {pattern.isActive ? "Active" : "Inactive"}
+                                            </span>
+
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    void handleTogglePatternStatus(pattern)
+                                                }
+                                                disabled={patternActionId === pattern._id}
+                                                className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100 disabled:text-slate-400"
+                                            >
+                                                {patternActionId === pattern._id
+                                                    ? "Updating..."
+                                                    : pattern.isActive
+                                                      ? "Disable"
+                                                      : "Re-enable"}
+                                            </button>
+                                        </div>
                                     </div>
 
                                     <div className="mt-4 grid gap-3 sm:grid-cols-4">
