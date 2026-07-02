@@ -261,8 +261,19 @@ export default function AdminExamPatternsPage() {
                 throw new Error(result.message || "Unable to create exam pattern.");
             }
 
+            if (result.data) {
+                const createdPattern = result.data;
+
+                setPatterns((currentPatterns) => [
+                    createdPattern,
+                    ...currentPatterns.filter(
+                        (pattern) => pattern._id !== createdPattern._id
+                    ),
+                ]);
+            }
+
             setCreatePatternMessage(
-                "Exam pattern created successfully. List refresh will be added next."
+                "Exam pattern created successfully and list updated."
             );
         } catch (error) {
             setCreatePatternError(
