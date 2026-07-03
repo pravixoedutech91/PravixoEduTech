@@ -154,6 +154,27 @@ export default function AdminExamPatternsPage() {
         );
     };
 
+    const addCreatePatternSection = () => {
+        setCreatePatternMessage("");
+        setCreatePatternError("");
+
+        setCreatePatternSections((current) => [
+            ...current,
+            { ...defaultCreatePatternSections[0] },
+        ]);
+    };
+
+    const removeCreatePatternSection = (index: number) => {
+        setCreatePatternMessage("");
+        setCreatePatternError("");
+
+        setCreatePatternSections((current) =>
+            current.length <= 1
+                ? current
+                : current.filter((_, sectionIndex) => sectionIndex !== index)
+        );
+    };
+
     const hasCreatePatternDraft = Boolean(
         createPatternForm.name.trim() ||
             createPatternForm.slug.trim() ||
@@ -199,6 +220,10 @@ export default function AdminExamPatternsPage() {
             (total, section) => total + Number(section.durationMinutes || 0),
             0
         );
+
+        if (createPatternSections.length === 0) {
+            errors.push("At least one section is required.");
+        }
 
         createPatternSections.forEach((section, index) => {
             const sectionNumber = index + 1;
@@ -692,126 +717,166 @@ export default function AdminExamPatternsPage() {
                         </div>
 
                         <section className="mt-6 rounded-3xl bg-white p-4 ring-1 ring-slate-200">
-                            <h3 className="text-base font-bold">Section 1</h3>
-                            <p className="mt-1 text-sm text-slate-600">
-                                One default section only. Add/remove section will come later.
-                            </p>
-
-                            {createPatternSections.map((section, index) => (
-                                <div
-                                    key={index}
-                                    className="mt-4 grid gap-4 sm:grid-cols-3"
-                                >
-                                    <label className="grid gap-2 text-sm font-semibold text-slate-800 sm:col-span-2">
-                                        Section Name
-                                        <input
-                                            value={section.name}
-                                            onChange={(event) =>
-                                                updateCreatePatternSectionField(
-                                                    index,
-                                                    "name",
-                                                    event.target.value
-                                                )
-                                            }
-                                            placeholder="Example: General Intelligence"
-                                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
-                                        />
-                                    </label>
-
-                                    <label className="grid gap-2 text-sm font-semibold text-slate-800">
-                                        Section Type
-                                        <select
-                                            value={section.sectionType}
-                                            onChange={(event) =>
-                                                updateCreatePatternSectionField(
-                                                    index,
-                                                    "sectionType",
-                                                    event.target.value
-                                                )
-                                            }
-                                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
-                                        >
-                                            <option value="mcq">MCQ</option>
-                                            <option value="typing">Typing</option>
-                                            <option value="mixed">Mixed</option>
-                                        </select>
-                                    </label>
-
-                                    <label className="grid gap-2 text-sm font-semibold text-slate-800">
-                                        Duration Minutes
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            value={section.durationMinutes}
-                                            onChange={(event) =>
-                                                updateCreatePatternSectionField(
-                                                    index,
-                                                    "durationMinutes",
-                                                    event.target.value
-                                                )
-                                            }
-                                            placeholder="Example: 15"
-                                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
-                                        />
-                                    </label>
-
-                                    <label className="grid gap-2 text-sm font-semibold text-slate-800">
-                                        Questions
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            value={section.questionCount}
-                                            onChange={(event) =>
-                                                updateCreatePatternSectionField(
-                                                    index,
-                                                    "questionCount",
-                                                    event.target.value
-                                                )
-                                            }
-                                            placeholder="Example: 25"
-                                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
-                                        />
-                                    </label>
-
-                                    <label className="grid gap-2 text-sm font-semibold text-slate-800">
-                                        Marks / Question
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            step="0.25"
-                                            value={section.marksPerQuestion}
-                                            onChange={(event) =>
-                                                updateCreatePatternSectionField(
-                                                    index,
-                                                    "marksPerQuestion",
-                                                    event.target.value
-                                                )
-                                            }
-                                            placeholder="Example: 2"
-                                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
-                                        />
-                                    </label>
-
-                                    <label className="grid gap-2 text-sm font-semibold text-slate-800">
-                                        Negative Marks
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            step="0.25"
-                                            value={section.negativeMarks}
-                                            onChange={(event) =>
-                                                updateCreatePatternSectionField(
-                                                    index,
-                                                    "negativeMarks",
-                                                    event.target.value
-                                                )
-                                            }
-                                            placeholder="Example: 0.5"
-                                            className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
-                                        />
-                                    </label>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <h3 className="text-base font-bold">Sections</h3>
+                                    <p className="mt-1 text-sm text-slate-600">
+                                        Add one or more exam sections. Total duration must match the sum of all section durations.
+                                    </p>
                                 </div>
-                            ))}
+
+                                <button
+                                    type="button"
+                                    onClick={addCreatePatternSection}
+                                    className="w-fit rounded-full bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700"
+                                >
+                                    Add Section
+                                </button>
+                            </div>
+
+                            <div className="mt-4 grid gap-4">
+                                {createPatternSections.map((section, index) => (
+                                    <article
+                                        key={index}
+                                        className="rounded-3xl border border-slate-200 bg-slate-50 p-4"
+                                    >
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                            <div>
+                                                <h4 className="text-sm font-bold text-slate-900">
+                                                    Section {index + 1}
+                                                </h4>
+                                                <p className="mt-1 text-xs font-semibold text-slate-500">
+                                                    Saved order: {index + 1}
+                                                </p>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    removeCreatePatternSection(index)
+                                                }
+                                                disabled={createPatternSections.length <= 1}
+                                                className="w-fit rounded-full bg-white px-3 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-100 hover:bg-red-50 disabled:text-slate-400 disabled:ring-slate-200"
+                                            >
+                                                {createPatternSections.length <= 1
+                                                    ? "Minimum 1 required"
+                                                    : "Remove"}
+                                            </button>
+                                        </div>
+
+                                        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                                            <label className="grid gap-2 text-sm font-semibold text-slate-800 sm:col-span-2">
+                                                Section Name
+                                                <input
+                                                    value={section.name}
+                                                    onChange={(event) =>
+                                                        updateCreatePatternSectionField(
+                                                            index,
+                                                            "name",
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    placeholder="Example: General Intelligence"
+                                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                                />
+                                            </label>
+
+                                            <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                                Section Type
+                                                <select
+                                                    value={section.sectionType}
+                                                    onChange={(event) =>
+                                                        updateCreatePatternSectionField(
+                                                            index,
+                                                            "sectionType",
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                                >
+                                                    <option value="mcq">MCQ</option>
+                                                    <option value="typing">Typing</option>
+                                                    <option value="mixed">Mixed</option>
+                                                </select>
+                                            </label>
+
+                                            <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                                Duration Minutes
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    value={section.durationMinutes}
+                                                    onChange={(event) =>
+                                                        updateCreatePatternSectionField(
+                                                            index,
+                                                            "durationMinutes",
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    placeholder="Example: 15"
+                                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                                />
+                                            </label>
+
+                                            <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                                Questions
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    value={section.questionCount}
+                                                    onChange={(event) =>
+                                                        updateCreatePatternSectionField(
+                                                            index,
+                                                            "questionCount",
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    placeholder="Example: 25"
+                                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                                />
+                                            </label>
+
+                                            <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                                Marks / Question
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.25"
+                                                    value={section.marksPerQuestion}
+                                                    onChange={(event) =>
+                                                        updateCreatePatternSectionField(
+                                                            index,
+                                                            "marksPerQuestion",
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    placeholder="Example: 2"
+                                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                                />
+                                            </label>
+
+                                            <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                                Negative Marks
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="0.25"
+                                                    value={section.negativeMarks}
+                                                    onChange={(event) =>
+                                                        updateCreatePatternSectionField(
+                                                            index,
+                                                            "negativeMarks",
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    placeholder="Example: 0.5"
+                                                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-400"
+                                                />
+                                            </label>
+                                        </div>
+                                    </article>
+                                ))}
+                            </div>
                         </section>
 
                         <section className="mt-4 rounded-3xl bg-white p-4 ring-1 ring-slate-200">
