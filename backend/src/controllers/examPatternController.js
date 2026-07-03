@@ -1,5 +1,8 @@
+const mongoose = require("mongoose");
 const ExamPattern = require("../models/ExamPattern");
 const { getTenantFilter } = require("../middleware/tenantMiddleware");
+const MockTest = require("../models/MockTest");
+const MockTestVersion = require("../models/MockTestVersion");
 
 const validateSectionDuration = (totalDurationMinutes, sections) => {
   const sectionDurationTotal = sections.reduce(
@@ -175,9 +178,96 @@ const disableExamPattern = async (req, res) => {
   }
 };
 
+const deleteExamPattern = async (req, res) => {
+  try {
+    const tenantFilter = getTenantFilter(req.user);
+    const { id } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid exam pattern ID",
+      });
+    }
+
+    const examPattern = await ExamPattern.findOne({
+      _id: id,
+      ...tenantFilter,
+    });
+
+    if (!examPattern) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam pattern not found or access denied",
+      });
+    }
+
+    const usedInMockTest = await MockTest.findOne({
+      examPatternId: id,
+      ...tenantFilter,
+    }).select("_id title testType");
+
+    if (usedInMockTest) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Exam pattern is already used and cannot be deleted. Disable it instead.",
+        usedBy: {
+          type: "MockTest",
+          id: usedInMockTest._id,
+          title: usedInMockTest.title,
+          testType: usedInMockTest.testType,
+        },
+      });
+    }
+
+    const usedInPublishedVersion = await MockTestVersion.findOne({
+      "examPatternSnapshot.examPatternId": id,
+      ...tenantFilter,
+    }).select("_id mockTestId versionNumber publishedAt");
+
+    if (usedInPublishedVersion) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Exam pattern is already used in a published snapshot/version and cannot be deleted. Disable it instead.",
+        usedBy: {
+          type: "MockTestVersion",
+          id: usedInPublishedVersion._id,
+          mockTestId: usedInPublishedVersion.mockTestId,
+          versionNumber: usedInPublishedVersion.versionNumber,
+          publishedAt: usedInPublishedVersion.publishedAt,
+        },
+      });
+    }
+
+    await ExamPattern.deleteOne({
+      _id: id,
+      ...tenantFilter,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Exam pattern deleted successfully",
+      data: {
+        _id: examPattern._id,
+        name: examPattern.name,
+        slug: examPattern.slug,
+      },
+    });
+  } catch (error) {
+    console.error("Delete exam pattern error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete exam pattern",
+    });
+  }
+};
+
 module.exports = {
   createExamPattern,
   getAllExamPatterns,
   updateExamPattern,
   disableExamPattern,
+  deleteExamPattern,
 };

@@ -6,6 +6,7 @@ const {
   getAllExamPatterns,
   updateExamPattern,
   disableExamPattern,
+  deleteExamPattern,
 } = require("../controllers/examPatternController");
 
 const {
@@ -55,6 +56,15 @@ router.patch(
   checkFeatureAccess("mockTests"),
   ensureTenantAccess,
   disableExamPattern
+);
+
+router.delete(
+  "/:id",
+  protect,
+  authorize("super_admin", "tenant_admin", "content_admin"),
+  checkFeatureAccess("mockTests"),
+  ensureTenantAccess,
+  deleteExamPattern
 );
 
 module.exports = router;
