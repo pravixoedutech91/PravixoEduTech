@@ -114,6 +114,14 @@ type TestSection = {
     questions: TestQuestion[];
 };
 
+type TestQuestionWithSectionContext = TestQuestion & {
+    sectionSlug: string;
+    sectionName: string;
+    sectionOrder: number;
+    sectionQuestionNumber: number;
+    questionGroups?: QuestionGroup[];
+};
+
 type SaveAnswerResponse = {
     success: boolean;
     message: string;
@@ -377,32 +385,70 @@ export default function StudentAttemptPage() {
         };
     }, [interfaceMessage]);
 
-    const section = payload?.test.sections?.[0] || null;
-
-    const questions = useMemo(() => {
-        return [...(section?.questions || [])].sort(
-            (firstQuestion, secondQuestion) =>
-                firstQuestion.order - secondQuestion.order
+    const sections = useMemo(() => {
+        return [...(payload?.test.sections || [])].sort(
+            (firstSection, secondSection) =>
+                Number(firstSection.order || 1) - Number(secondSection.order || 1)
         );
-    }, [section]);
+    }, [payload]);
+
+    const questions = useMemo<TestQuestionWithSectionContext[]>(() => {
+        return sections.flatMap((testSection) => {
+            return [...(testSection.questions || [])]
+                .sort(
+                    (firstQuestion, secondQuestion) =>
+                        Number(firstQuestion.order || 1) -
+                        Number(secondQuestion.order || 1)
+                )
+                .map((question, index) => ({
+                    ...question,
+                    sectionSlug: testSection.sectionSlug,
+                    sectionName: testSection.name,
+                    sectionOrder: testSection.order,
+                    sectionQuestionNumber: index + 1,
+                    questionGroups: testSection.questionGroups || [],
+                }));
+        });
+    }, [sections]);
 
     const currentQuestion = questions[currentQuestionIndex] || null;
     const currentQuestionNumber = currentQuestionIndex + 1;
 
+    const section = useMemo(() => {
+        if (!currentQuestion) {
+            return sections[0] || null;
+        }
+
+        return (
+            sections.find(
+                (testSection) =>
+                    testSection.sectionSlug === currentQuestion.sectionSlug
+            ) ||
+            sections[0] ||
+            null
+        );
+    }, [currentQuestion, sections]);
+
+    useEffect(() => {
+        if (currentQuestionIndex > 0 && currentQuestionIndex >= questions.length) {
+            setCurrentQuestionIndex(0);
+        }
+    }, [currentQuestionIndex, questions.length]);
+
     const currentQuestionGroup = useMemo(() => {
-        if (!section || !currentQuestion?.questionGroupId) {
+        if (!currentQuestion?.questionGroupId) {
             return null;
         }
 
         return (
-            section.questionGroups?.find((questionGroup) => {
+            (currentQuestion.questionGroups || []).find((questionGroup) => {
                 return (
                     questionGroup.questionGroupId ===
                     currentQuestion.questionGroupId
                 );
             }) || null
         );
-    }, [currentQuestion, section]);
+    }, [currentQuestion]);
 
     const remainingSeconds = useMemo(() => {
         if (!payload?.attempt.expiresAt) {
@@ -1012,6 +1058,18 @@ export default function StudentAttemptPage() {
                                 Question {currentQuestionNumber}
                             </span>
 
+                            {currentQuestion?.sectionName ? (
+                                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
+                                    {currentQuestion.sectionName}
+                                </span>
+                            ) : null}
+
+                            {currentQuestion?.sectionQuestionNumber ? (
+                                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                                    Section Q{currentQuestion.sectionQuestionNumber}
+                                </span>
+                            ) : null}
+
                             {currentQuestion?.subject ? (
                                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                                     {currentQuestion.subject}
@@ -1126,7 +1184,11 @@ export default function StudentAttemptPage() {
                         </h2>
 
                         <p className="mt-1 text-xs text-slate-500">
-                            Section: {section?.name || "Not available"}
+                            Current Section: {section?.name || "Not available"}
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-500">
+                            Total Sections: {sections.length} | Questions: {questions.length}
                         </p>
 
                         <div className="mt-3 grid grid-cols-5 gap-1.5">
