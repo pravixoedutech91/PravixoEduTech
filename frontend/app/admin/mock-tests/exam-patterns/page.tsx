@@ -377,6 +377,72 @@ export default function AdminExamPatternsPage() {
         }
     };
 
+
+    const handleDeletePattern = async (pattern: ExamPattern) => {
+        if (patternActionId) {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Delete exam pattern "${pattern.name}"?\n\nThis is a permanent hard delete and should be used only for accidental/unused patterns.\n\nIf this pattern is already used in a Mock Test, PYQ Test, published snapshot, attempt, or result history, backend will block deletion and you should Disable it instead.`
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (!savedToken) {
+            setPatternActionError("Admin session expired. Please login again.");
+            return;
+        }
+
+        try {
+            setPatternActionId(pattern._id);
+            setPatternActionError("");
+
+            const response = await fetch(
+                `${API_BASE_URL}/api/exam-patterns/${pattern._id}`,
+                {
+                    method: "DELETE",
+                    headers: {
+                        Authorization: `Bearer ${savedToken}`,
+                    },
+                }
+            );
+
+            const result = (await response.json()) as {
+                success: boolean;
+                message?: string;
+            };
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message ||
+                        "Unable to delete exam pattern. Disable it instead if already used."
+                );
+            }
+
+            setPatterns((currentPatterns) =>
+                currentPatterns.filter(
+                    (currentPattern) => currentPattern._id !== pattern._id
+                )
+            );
+        } catch (error) {
+            const errorMessage =
+                error instanceof Error
+                    ? error.message
+                    : "Unable to delete exam pattern.";
+
+            setPatternActionError(errorMessage);
+            window.alert(errorMessage);
+        } finally {
+            setPatternActionId("");
+        }
+    };
+
     useEffect(() => {
         const verifyAdminSession = async () => {
             const savedToken =
@@ -875,6 +941,19 @@ export default function AdminExamPatternsPage() {
                                                     : pattern.isActive
                                                       ? "Disable"
                                                       : "Re-enable"}
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    void handleDeletePattern(pattern)
+                                                }
+                                                disabled={patternActionId === pattern._id}
+                                                className="rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 ring-1 ring-red-100 hover:bg-red-100 disabled:text-red-300"
+                                            >
+                                                {patternActionId === pattern._id
+                                                    ? "Working..."
+                                                    : "Delete"}
                                             </button>
                                         </div>
                                     </div>
