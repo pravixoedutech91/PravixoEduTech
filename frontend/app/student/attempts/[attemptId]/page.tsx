@@ -183,6 +183,11 @@ const clearStudentSessionStorage = () => {
     window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
 };
 
+const clearActiveAttemptStorage = () => {
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+};
+
 const isInvalidStudentSessionResponse = (
     response: Response,
     message?: string
@@ -478,10 +483,22 @@ export default function StudentAttemptPage() {
         remainingSeconds <= 0 ||
         payload.attempt.status !== "in_progress";
 
+    const isAttemptMismatch =
+        Boolean(attemptIdFromPath && payload?.attempt._id) &&
+        attemptIdFromPath !== payload?.attempt._id;
+
     const handleSelectOption = (optionId: string) => {
         if (!currentQuestion) {
             return;
         }
+
+        if (isAttemptMismatch) {
+            setInterfaceMessage(
+                "Attempt data mismatch. Please clear stored attempt data and open the test again from Mock Tests."
+            );
+            return;
+        }
+
 
         if (isAttemptLocked) {
             setInterfaceMessage(
@@ -524,6 +541,13 @@ export default function StudentAttemptPage() {
         successMessage?: string;
     }) => {
         if (!payload || !currentQuestion) {
+            return false;
+        }
+
+        if (isAttemptMismatch) {
+            setInterfaceMessage(
+                "Attempt data mismatch. Please clear stored attempt data and open the test again from Mock Tests."
+            );
             return false;
         }
 
@@ -676,6 +700,15 @@ export default function StudentAttemptPage() {
             return;
         }
 
+        if (isAttemptMismatch) {
+            setIsSubmitModalOpen(false);
+            setInterfaceMessage(
+                "Attempt data mismatch. Please clear stored attempt data and open the test again from Mock Tests."
+            );
+            return;
+        }
+
+
         const token = getStudentToken().trim();
 
         if (!token) {
@@ -807,7 +840,45 @@ export default function StudentAttemptPage() {
         );
     }
 
-    const isAttemptMismatch = attemptIdFromPath !== payload.attempt._id;
+    if (isAttemptMismatch) {
+        return (
+            <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950">
+                <div className="mx-auto max-w-3xl rounded-2xl bg-white p-8 text-center shadow-sm ring-1 ring-amber-200">
+                    <p className="text-sm font-semibold uppercase tracking-wide text-amber-700">
+                        PravixoEduTech Test Interface
+                    </p>
+
+                    <h1 className="mt-2 text-2xl font-bold">
+                        Attempt data mismatch
+                    </h1>
+
+                    <p className="mt-3 text-sm leading-6 text-slate-600">
+                        The attempt URL and stored attempt data do not match. For your safety, this screen will not show stale test questions. Please clear the stored attempt data and open the test again from Mock Tests.
+                    </p>
+
+                    <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                clearActiveAttemptStorage();
+                                router.push("/student/mock-tests");
+                            }}
+                            className="inline-flex justify-center rounded-2xl bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-800"
+                        >
+                            Clear Stored Attempt & Go to Mock Tests
+                        </button>
+
+                        <Link
+                            href="/student/mock-tests"
+                            className="inline-flex justify-center rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                            Back to Mock Tests
+                        </Link>
+                    </div>
+                </div>
+            </main>
+        );
+    }
 
     return (
         <main className="min-h-screen bg-slate-100 text-slate-950">
@@ -948,28 +1019,7 @@ export default function StudentAttemptPage() {
                             </div>
                         </div>
                     ) : null}
-                    {isAttemptMismatch ? (
-                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                            <p className="font-semibold">
-                                Attempt data mismatch
-                            </p>
-
-                            <p className="mt-1 leading-6">
-                                Attempt URL and stored attempt do not match. Please return to mock tests and open the correct attempt again.
-                            </p>
-
-                            <Link
-                                href="/student/mock-tests"
-                                className="mt-3 inline-flex rounded-2xl bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-800"
-                            >
-                                Back to Mock Tests
-                            </Link>
-                        </div>
-                    ) : null}
-
-
-
-                    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+<div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                             Test Instructions
                         </p>
