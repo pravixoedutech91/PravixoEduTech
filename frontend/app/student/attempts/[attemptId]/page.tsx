@@ -5,6 +5,16 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
+type AttemptAnswerState = {
+    questionSnapshotId: string;
+    selectedOptionId?: string | null;
+    markedForReview?: boolean;
+    status?: string;
+    visited?: boolean;
+    timeSpentSeconds?: number;
+    answeredAt?: string | null;
+};
+
 type AttemptPayload = {
     resumed: boolean;
     serverTime: string;
@@ -48,6 +58,7 @@ type AttemptPayload = {
             solutionVisibility?: string;
         };
     };
+    answers?: AttemptAnswerState[];
 };
 
 type ContentBlock = {
@@ -289,6 +300,37 @@ const getPaletteClassName = ({
     return "bg-white text-slate-700 ring-1 ring-slate-300";
 };
 
+const buildSavedAnswerStateMaps = (answers?: AttemptAnswerState[]) => {
+    const selectedAnswerMap: Record<string, string> = {};
+    const markedForReviewMap: Record<string, boolean> = {};
+    const savedAtMap: Record<string, string> = {};
+
+    for (const answer of answers || []) {
+        if (!answer.questionSnapshotId) {
+            continue;
+        }
+
+        if (answer.selectedOptionId) {
+            selectedAnswerMap[answer.questionSnapshotId] =
+                answer.selectedOptionId;
+        }
+
+        if (answer.markedForReview) {
+            markedForReviewMap[answer.questionSnapshotId] = true;
+        }
+
+        if (answer.selectedOptionId || answer.markedForReview) {
+            savedAtMap[answer.questionSnapshotId] = "restored from saved attempt";
+        }
+    }
+
+    return {
+        selectedAnswerMap,
+        markedForReviewMap,
+        savedAtMap,
+    };
+};
+
 const getInterfaceMessageClassName = (message: string) => {
     const lowerMessage = message.toLowerCase();
 
@@ -374,6 +416,14 @@ export default function StudentAttemptPage() {
     useEffect(() => {
         questionStartedAtRef.current = Date.now();
     }, [currentQuestionIndex]);
+
+    useEffect(() => {
+        const hydratedAnswerState = buildSavedAnswerStateMaps(payload?.answers);
+
+        setSelectedAnswers(hydratedAnswerState.selectedAnswerMap);
+        setMarkedForReview(hydratedAnswerState.markedForReviewMap);
+        setLastSavedAtByQuestion(hydratedAnswerState.savedAtMap);
+    }, [payload?.attempt._id, payload?.answers]);
 
 
     useEffect(() => {
@@ -775,6 +825,33 @@ export default function StudentAttemptPage() {
         }
     };
 
+    const handlePauseAndExit = async () => {
+        if (!payload) {
+            router.push("/student/mock-tests");
+            return;
+        }
+
+        if (isAttemptMismatch) {
+            clearActiveAttemptStorage();
+            router.push("/student/mock-tests");
+            return;
+        }
+
+        if (!isAttemptLocked && currentQuestion) {
+            setInterfaceMessage("Saving attempt before leaving.");
+
+            const saved = await saveCurrentAnswer({
+                successMessage: "Attempt saved. Returning to mock tests.",
+            });
+
+            if (!saved) {
+                return;
+            }
+        }
+
+        router.push("/student/mock-tests");
+    };
+
     if (!payload) {
         return (
             <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950">
@@ -957,6 +1034,15 @@ export default function StudentAttemptPage() {
                                 {formatDuration(remainingSeconds)}
                             </p>
                         </div>
+
+                        <button
+                            type="button"
+                            onClick={() => void handlePauseAndExit()}
+                            disabled={isSubmittingAttempt || isSavingAnswer}
+                            className="rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                        >
+                            {isSavingAnswer ? "Saving..." : "Pause & Exit"}
+                        </button>
 
                         <button
                             type="button"
@@ -1151,8 +1237,10 @@ export default function StudentAttemptPage() {
                         {currentQuestion &&
                         lastSavedAtByQuestion[currentQuestion._id] ? (
                             <p className="mt-3 text-xs font-semibold text-emerald-700">
-                                Saved at{" "}
-                                {lastSavedAtByQuestion[currentQuestion._id]}
+                                {lastSavedAtByQuestion[currentQuestion._id] ===
+                                "restored from saved attempt"
+                                    ? "Restored from saved attempt"
+                                    : `Saved at ${lastSavedAtByQuestion[currentQuestion._id]}`}
                             </p>
                         ) : null}
 

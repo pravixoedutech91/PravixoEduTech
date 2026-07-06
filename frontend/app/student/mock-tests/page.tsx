@@ -237,6 +237,36 @@ export default function StudentMockTestsPage() {
         return () => window.clearTimeout(timer);
     }, [isClientReady, loadMockTests, token]);
 
+    useEffect(() => {
+        if (!isClientReady || !token.trim()) {
+            return;
+        }
+
+        const handleMockTestPageShow = () => {
+            void loadMockTests(token);
+        };
+
+        const handleMockTestVisibilityChange = () => {
+            if (document.visibilityState === "visible") {
+                void loadMockTests(token);
+            }
+        };
+
+        window.addEventListener("pageshow", handleMockTestPageShow);
+        document.addEventListener(
+            "visibilitychange",
+            handleMockTestVisibilityChange
+        );
+
+        return () => {
+            window.removeEventListener("pageshow", handleMockTestPageShow);
+            document.removeEventListener(
+                "visibilitychange",
+                handleMockTestVisibilityChange
+            );
+        };
+    }, [isClientReady, loadMockTests, token]);
+
     const handleLogout = () => {
         const shouldLogout = window.confirm(
             "Are you sure you want to logout? Your saved student session will be cleared."
@@ -675,6 +705,3 @@ export default function StudentMockTestsPage() {
         </main>
     );
 }
-
-
-

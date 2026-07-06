@@ -317,7 +317,24 @@ const getOrCreateAttemptDetail = async (tenantId, attempt, mockTestVersion) => {
     });
 };
 
-const buildAttemptPayload = (attempt, mockTestVersion, resumed) => {
+const buildAttemptAnswerStatePayload = (attemptDetail) => {
+    return (attemptDetail?.answers || []).map((answer) => ({
+        questionSnapshotId: answer.questionSnapshotId,
+        selectedOptionId: answer.selectedOptionId || null,
+        markedForReview: Boolean(answer.markedForReview),
+        status: answer.status || "not_visited",
+        visited: Boolean(answer.visited),
+        timeSpentSeconds: toNumber(answer.timeSpentSeconds, 0),
+        answeredAt: answer.answeredAt || null,
+    }));
+};
+
+const buildAttemptPayload = (
+    attempt,
+    mockTestVersion,
+    resumed,
+    attemptDetail = null
+) => {
     return {
         resumed,
         serverTime: new Date(),
@@ -333,6 +350,7 @@ const buildAttemptPayload = (attempt, mockTestVersion, resumed) => {
             review: buildReviewMetadataForStudent(attempt),
         },
         test: buildSanitizedTestForStudent(mockTestVersion),
+        answers: buildAttemptAnswerStatePayload(attemptDetail),
     };
 };
 const findQuestionInVersionBySnapshotId = (mockTestVersion, questionSnapshotId) => {
@@ -818,12 +836,21 @@ const startMockTestAttempt = async (req, res) => {
             existingAttempt.lastActivityAt = now;
             await existingAttempt.save();
 
-            await getOrCreateAttemptDetail(tenantId, existingAttempt, mockTestVersion);
+            const attemptDetail = await getOrCreateAttemptDetail(
+                tenantId,
+                existingAttempt,
+                mockTestVersion
+            );
 
             return res.status(200).json({
                 success: true,
                 message: "Attempt resumed successfully",
-                data: buildAttemptPayload(existingAttempt, mockTestVersion, true),
+                data: buildAttemptPayload(
+                    existingAttempt,
+                    mockTestVersion,
+                    true,
+                    attemptDetail
+                ),
             });
         }
 
@@ -862,6 +889,7 @@ const startMockTestAttempt = async (req, res) => {
                 : null;
 
         let attempt = null;
+        let attemptDetail = null;
 
         try {
             attempt = await TestAttempt.create({
@@ -890,7 +918,7 @@ const startMockTestAttempt = async (req, res) => {
                 },
             });
 
-            await TestAttemptDetail.create({
+            attemptDetail = await TestAttemptDetail.create({
                 tenantId,
                 attemptId: attempt._id,
                 studentId,
@@ -910,7 +938,12 @@ const startMockTestAttempt = async (req, res) => {
         res.status(201).json({
             success: true,
             message: "Attempt started successfully",
-            data: buildAttemptPayload(attempt, mockTestVersion, false),
+            data: buildAttemptPayload(
+                attempt,
+                mockTestVersion,
+                false,
+                attemptDetail
+            ),
         });
     } catch (error) {
         console.error(error);
