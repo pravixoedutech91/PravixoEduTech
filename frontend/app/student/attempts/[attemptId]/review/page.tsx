@@ -18,6 +18,7 @@ const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
 const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
 const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
+const ACTIVE_ATTEMPT_POSITION_STORAGE_KEY = "pravixoActiveAttemptPosition";
 
 const INVALID_STUDENT_SESSION_MESSAGE =
     "Your student session has expired or was invalidated. Please login again.";
@@ -27,6 +28,7 @@ const clearStudentSessionStorage = () => {
     window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
     window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
     window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_POSITION_STORAGE_KEY);
 };
 
 const isInvalidStudentSessionResponse = (

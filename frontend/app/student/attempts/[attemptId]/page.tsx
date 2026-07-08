@@ -916,12 +916,15 @@ export default function StudentAttemptPage() {
                 result.data?.attempt?.attemptNumber || payload.attempt.attemptNumber;
 
             setSubmitSummaryMessage(
-                `Attempt #${submittedAttemptNumber} submitted successfully. You can now view result and review.`
+                `Attempt #${submittedAttemptNumber} submitted successfully. Opening result.`
             );
             setSubmittedAtMs(Date.now());
-            window.localStorage.removeItem(ACTIVE_ATTEMPT_POSITION_STORAGE_KEY);
+            clearActiveAttemptStorage();
             setIsSubmitModalOpen(false);
-            setInterfaceMessage("Test submitted successfully.");
+            setInterfaceMessage("Test submitted successfully. Opening result.");
+            window.location.assign(
+                `/student/attempts/${payload.attempt._id}/result`
+            );
         } catch (error) {
             const message =
                 error instanceof Error
