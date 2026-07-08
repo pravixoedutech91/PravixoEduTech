@@ -151,6 +151,8 @@ export default function AdminQuestionGroupsPage() {
     const [isCreatingGroup, setIsCreatingGroup] = useState(false);
     const [createGroupMessage, setCreateGroupMessage] = useState("");
     const [createGroupError, setCreateGroupError] = useState("");
+    const [includeInactiveGroups, setIncludeInactiveGroups] = useState(false);
+    const [groupActionId, setGroupActionId] = useState("");
 
     const createGroupValidationErrors = (() => {
         const errors: string[] = [];
@@ -208,13 +210,18 @@ export default function AdminQuestionGroupsPage() {
         }));
     };
 
-    const loadQuestionGroups = async (savedToken: string) => {
+    const loadQuestionGroups = async (
+        savedToken: string,
+        includeInactive = includeInactiveGroups
+    ) => {
         setIsGroupsLoading(true);
         setGroupsError("");
 
         try {
+            const queryString = includeInactive ? "?includeInactive=true" : "";
+
             const response = await fetch(
-                API_BASE_URL + "/api/question-groups",
+                API_BASE_URL + "/api/question-groups" + queryString,
                 {
                     headers: {
                         Authorization: "Bearer " + savedToken,
@@ -356,6 +363,96 @@ export default function AdminQuestionGroupsPage() {
     }, [createGroupMessage, createGroupError]);
 
     const createGroupToastMessage = createGroupMessage || createGroupError;
+
+    const handleToggleIncludeInactiveGroups = (checked: boolean) => {
+        setIncludeInactiveGroups(checked);
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (savedToken) {
+            void loadQuestionGroups(savedToken, checked);
+        }
+    };
+
+    const handleDisableQuestionGroup = async (group: QuestionGroup) => {
+        if (groupActionId || group.isActive === false) {
+            return;
+        }
+
+        const confirmed = window.confirm(
+            `Disable question group "${group.title}"?\n\nDisabled groups cannot be attached to new questions, but existing published snapshots remain safe.`
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (!savedToken) {
+            setCreateGroupError("Admin session expired. Please login again.");
+            return;
+        }
+
+        setGroupActionId(group._id);
+        setCreateGroupMessage("");
+        setCreateGroupError("");
+
+        try {
+            const response = await fetch(
+                API_BASE_URL + "/api/question-groups/" + group._id + "/disable",
+                {
+                    method: "PATCH",
+                    headers: {
+                        Authorization: "Bearer " + savedToken,
+                    },
+                }
+            );
+
+            const result = (await response.json()) as CreateQuestionGroupResponse;
+
+            if (response.status === 401 || response.status === 403) {
+                clearAdminSessionStorage();
+                setIsAllowed(false);
+                setMessage(
+                    result.message ||
+                        "Your admin session has expired. Please login again."
+                );
+                return;
+            }
+
+            if (!response.ok || !result.success || !result.data) {
+                throw new Error(result.message || "Unable to disable question group.");
+            }
+
+            setQuestionGroups((current) => {
+                if (!includeInactiveGroups) {
+                    return current.filter((item) => item._id !== group._id);
+                }
+
+                return current.map((item) =>
+                    item._id === group._id
+                        ? {
+                              ...item,
+                              isActive: false,
+                          }
+                        : item
+                );
+            });
+
+            setCreateGroupMessage("Question group disabled successfully.");
+        } catch (error) {
+            setCreateGroupError(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to disable question group."
+            );
+        } finally {
+            setGroupActionId("");
+        }
+    };
 
     useEffect(() => {
         const verifyAdminSession = async () => {
@@ -844,23 +941,39 @@ export default function AdminQuestionGroupsPage() {
                             </p>
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={() => {
-                                const savedToken =
-                                    window.localStorage.getItem(
-                                        ADMIN_TOKEN_STORAGE_KEY
-                                    ) || "";
+                        <div className="flex flex-wrap items-center gap-3">
+                            <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700">
+                                <input
+                                    type="checkbox"
+                                    checked={includeInactiveGroups}
+                                    onChange={(event) =>
+                                        handleToggleIncludeInactiveGroups(
+                                            event.target.checked
+                                        )
+                                    }
+                                    className="h-4 w-4"
+                                />
+                                Show inactive
+                            </label>
 
-                                if (savedToken) {
-                                    void loadQuestionGroups(savedToken);
-                                }
-                            }}
-                            disabled={isGroupsLoading}
-                            className="w-fit rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                        >
-                            {isGroupsLoading ? "Refreshing..." : "Refresh List"}
-                        </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const savedToken =
+                                        window.localStorage.getItem(
+                                            ADMIN_TOKEN_STORAGE_KEY
+                                        ) || "";
+
+                                    if (savedToken) {
+                                        void loadQuestionGroups(savedToken);
+                                    }
+                                }}
+                                disabled={isGroupsLoading}
+                                className="w-fit rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                            >
+                                {isGroupsLoading ? "Refreshing..." : "Refresh List"}
+                            </button>
+                        </div>
                     </div>
 
                     <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -887,7 +1000,9 @@ export default function AdminQuestionGroupsPage() {
                                 Scope
                             </p>
                             <p className="mt-2 text-sm font-semibold text-slate-700">
-                                Active grouped stimulus content
+                                {includeInactiveGroups
+                                    ? "Active and inactive grouped stimulus"
+                                    : "Active grouped stimulus content"}
                             </p>
                         </div>
                     </div>
@@ -944,13 +1059,36 @@ export default function AdminQuestionGroupsPage() {
                                             ) : null}
                                         </div>
 
-                                        <div className="min-w-[160px] rounded-2xl bg-slate-50 p-4 text-sm ring-1 ring-slate-200">
-                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                                Expected Qs
-                                            </p>
-                                            <p className="mt-1 text-lg font-bold">
-                                                {group.expectedQuestionCount ?? "-"}
-                                            </p>
+                                        <div className="flex min-w-[160px] flex-col gap-3">
+                                            <div className="rounded-2xl bg-slate-50 p-4 text-sm ring-1 ring-slate-200">
+                                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                    Expected Qs
+                                                </p>
+                                                <p className="mt-1 text-lg font-bold">
+                                                    {group.expectedQuestionCount ?? "-"}
+                                                </p>
+                                            </div>
+
+                                            {group.isActive === false ? (
+                                                <span className="rounded-2xl bg-slate-100 px-4 py-2.5 text-center text-sm font-semibold text-slate-500 ring-1 ring-slate-200">
+                                                    Disabled
+                                                </span>
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        void handleDisableQuestionGroup(
+                                                            group
+                                                        )
+                                                    }
+                                                    disabled={groupActionId === group._id}
+                                                    className="rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:text-red-300"
+                                                >
+                                                    {groupActionId === group._id
+                                                        ? "Disabling..."
+                                                        : "Disable"}
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
 
