@@ -183,6 +183,7 @@ const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
 const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
 const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
+const ACTIVE_ATTEMPT_POSITION_STORAGE_KEY = "pravixoActiveAttemptPosition";
 
 const INVALID_STUDENT_SESSION_MESSAGE =
     "Your student session has expired or was invalidated. Please login again.";
@@ -192,11 +193,13 @@ const clearStudentSessionStorage = () => {
     window.localStorage.removeItem(STUDENT_PROFILE_STORAGE_KEY);
     window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
     window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_POSITION_STORAGE_KEY);
 };
 
 const clearActiveAttemptStorage = () => {
     window.localStorage.removeItem(ACTIVE_ATTEMPT_STORAGE_KEY);
     window.localStorage.removeItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY);
+    window.localStorage.removeItem(ACTIVE_ATTEMPT_POSITION_STORAGE_KEY);
 };
 
 const isInvalidStudentSessionResponse = (
@@ -398,6 +401,10 @@ export default function StudentAttemptPage() {
     const [lastSavedAtByQuestion, setLastSavedAtByQuestion] = useState<
         Record<string, string>
     >({});
+    const [
+        hasRestoredQuestionPosition,
+        setHasRestoredQuestionPosition,
+    ] = useState(false);
 
     useEffect(() => {
         if (submittedAtMs !== null || submitSummaryMessage) {
@@ -416,6 +423,10 @@ export default function StudentAttemptPage() {
     useEffect(() => {
         questionStartedAtRef.current = Date.now();
     }, [currentQuestionIndex]);
+
+    useEffect(() => {
+        setHasRestoredQuestionPosition(false);
+    }, [payload?.attempt._id]);
 
     useEffect(() => {
         const hydratedAnswerState = buildSavedAnswerStateMaps(payload?.answers);
@@ -490,6 +501,82 @@ export default function StudentAttemptPage() {
         }
     }, [currentQuestionIndex, questions.length]);
 
+    useEffect(() => {
+        if (
+            hasRestoredQuestionPosition ||
+            !payload?.attempt._id ||
+            questions.length === 0 ||
+            typeof window === "undefined"
+        ) {
+            return;
+        }
+
+        setHasRestoredQuestionPosition(true);
+
+        const storedPositionRaw = window.localStorage.getItem(
+            ACTIVE_ATTEMPT_POSITION_STORAGE_KEY
+        );
+
+        if (!storedPositionRaw) {
+            return;
+        }
+
+        try {
+            const storedPosition = JSON.parse(storedPositionRaw) as {
+                attemptId?: string;
+                currentQuestionIndex?: number;
+                questionSnapshotId?: string;
+            };
+
+            if (storedPosition.attemptId !== payload.attempt._id) {
+                return;
+            }
+
+            const storedQuestionIndex =
+                typeof storedPosition.questionSnapshotId === "string"
+                    ? questions.findIndex(
+                          (question) =>
+                              question._id === storedPosition.questionSnapshotId
+                      )
+                    : Number(storedPosition.currentQuestionIndex);
+
+            if (
+                Number.isInteger(storedQuestionIndex) &&
+                storedQuestionIndex >= 0 &&
+                storedQuestionIndex < questions.length
+            ) {
+                setCurrentQuestionIndex(storedQuestionIndex);
+            }
+        } catch {
+            window.localStorage.removeItem(ACTIVE_ATTEMPT_POSITION_STORAGE_KEY);
+        }
+    }, [
+        hasRestoredQuestionPosition,
+        payload?.attempt._id,
+        questions,
+        questions.length,
+    ]);
+
+    useEffect(() => {
+        if (
+            !payload?.attempt._id ||
+            !currentQuestion ||
+            typeof window === "undefined"
+        ) {
+            return;
+        }
+
+        window.localStorage.setItem(
+            ACTIVE_ATTEMPT_POSITION_STORAGE_KEY,
+            JSON.stringify({
+                attemptId: payload.attempt._id,
+                currentQuestionIndex,
+                questionSnapshotId: currentQuestion._id,
+                updatedAt: new Date().toISOString(),
+            })
+        );
+    }, [currentQuestion, currentQuestionIndex, payload?.attempt._id]);
+
     const currentQuestionGroup = useMemo(() => {
         if (!currentQuestion?.questionGroupId) {
             return null;
@@ -536,6 +623,12 @@ export default function StudentAttemptPage() {
     const isAttemptMismatch =
         Boolean(attemptIdFromPath && payload?.attempt._id) &&
         attemptIdFromPath !== payload?.attempt._id;
+
+    const canOpenSubmitModal =
+        Boolean(payload) &&
+        !Boolean(submitSummaryMessage) &&
+        payload?.attempt.status === "in_progress" &&
+        !isAttemptMismatch;
 
     const handleSelectOption = (optionId: string) => {
         if (!currentQuestion) {
@@ -694,8 +787,17 @@ export default function StudentAttemptPage() {
         }
     };
 
-    const handleClearResponse = () => {
-        if (!currentQuestion || isSavingAnswer) {
+    const handleClearResponse = async () => {
+        if (!currentQuestion || isSavingAnswer || isAttemptLocked) {
+            return;
+        }
+
+        const saved = await saveCurrentAnswer({
+            selectedOptionIdOverride: null,
+            successMessage: "Response cleared and saved.",
+        });
+
+        if (!saved) {
             return;
         }
 
@@ -704,31 +806,30 @@ export default function StudentAttemptPage() {
             delete updatedAnswers[currentQuestion._id];
             return updatedAnswers;
         });
-
-        void saveCurrentAnswer({
-            selectedOptionIdOverride: null,
-            successMessage: "Response cleared and saved.",
-        });
     };
 
-    const handleMarkForReview = () => {
-        if (!currentQuestion || isSavingAnswer) {
+    const handleMarkForReview = async () => {
+        if (!currentQuestion || isSavingAnswer || isAttemptLocked) {
             return;
         }
 
         const nextMarkedValue = !markedForReview[currentQuestion._id];
 
-        setMarkedForReview((previousMarked) => ({
-            ...previousMarked,
-            [currentQuestion._id]: nextMarkedValue,
-        }));
-
-        void saveCurrentAnswer({
+        const saved = await saveCurrentAnswer({
             markedForReviewOverride: nextMarkedValue,
             successMessage: nextMarkedValue
                 ? "Question marked for review and saved."
                 : "Review mark removed and saved.",
         });
+
+        if (!saved) {
+            return;
+        }
+
+        setMarkedForReview((previousMarked) => ({
+            ...previousMarked,
+            [currentQuestion._id]: nextMarkedValue,
+        }));
     };
 
     const handleSaveAndNext = () => {
@@ -769,15 +870,22 @@ export default function StudentAttemptPage() {
         }
 
         setIsSubmittingAttempt(true);
-        setInterfaceMessage("Saving current answer before final submit.");
 
         try {
-            const currentAnswerSaved = await saveCurrentAnswer({
-                successMessage: "Current answer saved before final submit.",
-            });
+            if (!isAttemptLocked) {
+                setInterfaceMessage("Saving current answer before final submit.");
 
-            if (!currentAnswerSaved) {
-                return;
+                const currentAnswerSaved = await saveCurrentAnswer({
+                    successMessage: "Current answer saved before final submit.",
+                });
+
+                if (!currentAnswerSaved) {
+                    return;
+                }
+            } else {
+                setInterfaceMessage(
+                    "Time is over. Submitting the last saved attempt state."
+                );
             }
 
             const response = await fetch(
@@ -811,6 +919,7 @@ export default function StudentAttemptPage() {
                 `Attempt #${submittedAttemptNumber} submitted successfully. You can now view result and review.`
             );
             setSubmittedAtMs(Date.now());
+            window.localStorage.removeItem(ACTIVE_ATTEMPT_POSITION_STORAGE_KEY);
             setIsSubmitModalOpen(false);
             setInterfaceMessage("Test submitted successfully.");
         } catch (error) {
@@ -1054,18 +1163,16 @@ export default function StudentAttemptPage() {
                                     return;
                                 }
 
-                                if (isAttemptLocked) {
+                                if (!canOpenSubmitModal) {
                                     setInterfaceMessage(
-                                        remainingSeconds <= 0
-                                            ? "Time is over. This attempt can no longer be submitted from this screen."
-                                            : "This attempt is no longer active. Please return to mock tests."
+                                        "This attempt is no longer active. Please return to mock tests."
                                     );
                                     return;
                                 }
 
                                 setIsSubmitModalOpen(true);
                             }}
-                            disabled={isSubmittingAttempt || Boolean(submitSummaryMessage) || isAttemptLocked || isAttemptMismatch}
+                            disabled={isSubmittingAttempt || !canOpenSubmitModal}
                             className="rounded-2xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
                         >
                             {isSubmittingAttempt
@@ -1073,7 +1180,7 @@ export default function StudentAttemptPage() {
                                 : submitSummaryMessage
                                   ? "Submitted"
                                   : remainingSeconds <= 0
-                                    ? "Time Over"
+                                    ? "Submit Now"
                                     : "Submit Test"}
                         </button>
                     </div>
