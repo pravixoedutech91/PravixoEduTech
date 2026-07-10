@@ -90,6 +90,12 @@ type QuestionsResponse = {
     data?: Question[];
 };
 
+type QuestionMutationResponse = {
+    success: boolean;
+    message?: string;
+    data?: Question;
+};
+
 type CreateQuestionOptionForm = {
     optionId: OptionId;
     textEn: string;
@@ -187,6 +193,7 @@ export default function AdminQuestionBankPage() {
     const [questionGroupsError, setQuestionGroupsError] = useState("");
     const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
     const [isCreateSaving, setIsCreateSaving] = useState(false);
+    const [editingQuestionId, setEditingQuestionId] = useState("");
     const [createQuestionForm, setCreateQuestionForm] =
         useState<CreateQuestionForm>(initialCreateQuestionForm);
     const [toast, setToast] = useState<ToastState | null>(null);
@@ -311,6 +318,64 @@ export default function AdminQuestionBankPage() {
         setCreateQuestionForm(initialCreateQuestionForm);
     };
 
+    const getEditableOptionValue = (
+        question: Question,
+        optionId: OptionId,
+        field: "textEn" | "textHi"
+    ) => {
+        return (
+            question.options?.find((option) => option.optionId === optionId)?.[
+                field
+            ] || ""
+        );
+    };
+
+    const startEditQuestion = (question: Question) => {
+        const group = getQuestionGroupSummary(question.questionGroupId);
+
+        setEditingQuestionId(question._id);
+        setCreateQuestionForm({
+            questionTextEn: question.questionTextEn || "",
+            questionTextHi: question.questionTextHi || "",
+            subject: question.subject || "",
+            topic: question.topic || "",
+            subTopic: question.subTopic || "",
+            sourceType:
+                question.sourceType === "pyq" ? "pyq" : "original",
+            difficulty:
+                question.difficulty === "easy" ||
+                question.difficulty === "hard"
+                    ? question.difficulty
+                    : "medium",
+            marks: String(question.marks ?? 1),
+            negativeMarks: String(question.negativeMarks ?? 0),
+            correctOptionId: OPTION_IDS.includes(
+                question.correctOptionId as OptionId
+            )
+                ? (question.correctOptionId as OptionId)
+                : "A",
+            explanationEn: question.explanationEn || "",
+            explanationHi: question.explanationHi || "",
+            questionGroupId: group?._id || "",
+            groupQuestionOrder: question.groupQuestionOrder
+                ? String(question.groupQuestionOrder)
+                : "",
+            options: OPTION_IDS.map((optionId) => ({
+                optionId,
+                textEn: getEditableOptionValue(question, optionId, "textEn"),
+                textHi: getEditableOptionValue(question, optionId, "textHi"),
+            })),
+        });
+        setIsCreateFormOpen(true);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    const cancelEditQuestion = () => {
+        setEditingQuestionId("");
+        resetCreateQuestionForm();
+        setIsCreateFormOpen(false);
+    };
+
     const buildCreateQuestionPayload = () => {
         const filledOptions = createQuestionForm.options
             .filter((option) => hasText(option.textEn) || hasText(option.textHi))
@@ -429,7 +494,7 @@ export default function AdminQuestionBankPage() {
                 body: JSON.stringify(buildCreateQuestionPayload()),
             });
 
-            const result = (await response.json()) as QuestionsResponse;
+            const result = (await response.json()) as QuestionMutationResponse;
 
             if (response.status === 401 || response.status === 403) {
                 clearAdminSessionStorage();
@@ -441,20 +506,11 @@ export default function AdminQuestionBankPage() {
                 return;
             }
 
-            if (!response.ok || !result.success || !result.data?.[0]) {
-                const createdQuestion = (result.data as unknown as Question) || null;
-
-                if (!createdQuestion || !createdQuestion._id) {
-                    throw new Error(
-                        result.message || "Unable to create question."
-                    );
-                }
+            if (!response.ok || !result.success || !result.data?._id) {
+                throw new Error(result.message || "Unable to create question.");
             }
 
-            const createdQuestion =
-                Array.isArray(result.data)
-                    ? result.data[0]
-                    : (result.data as unknown as Question);
+            const createdQuestion = result.data;
 
             setQuestions((current) => [
                 createdQuestion,
@@ -474,6 +530,94 @@ export default function AdminQuestionBankPage() {
                     error instanceof Error
                         ? error.message
                         : "Unable to create question.",
+            });
+        } finally {
+            setIsCreateSaving(false);
+        }
+    };
+
+    const handleUpdateQuestion = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        if (!editingQuestionId) {
+            return;
+        }
+
+        const validationError = validateCreateQuestionForm();
+
+        if (validationError) {
+            showToast({
+                type: "error",
+                message: validationError,
+            });
+            return;
+        }
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (!savedToken) {
+            clearAdminSessionStorage();
+            setIsAllowed(false);
+            setMessage("Please login with an admin account.");
+            return;
+        }
+
+        setIsCreateSaving(true);
+
+        try {
+            const response = await fetch(
+                API_BASE_URL + "/api/questions/" + editingQuestionId,
+                {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: "Bearer " + savedToken,
+                    },
+                    body: JSON.stringify(buildCreateQuestionPayload()),
+                }
+            );
+
+            const result = (await response.json()) as QuestionMutationResponse;
+
+            if (response.status === 401 || response.status === 403) {
+                clearAdminSessionStorage();
+                setIsAllowed(false);
+                setMessage(
+                    result.message ||
+                        "Your admin session has expired. Please login again."
+                );
+                return;
+            }
+
+            if (!response.ok || !result.success || !result.data?._id) {
+                throw new Error(result.message || "Unable to update question.");
+            }
+
+            const updatedQuestion = result.data;
+
+            setQuestions((current) =>
+                current.map((question) =>
+                    question._id === updatedQuestion._id
+                        ? updatedQuestion
+                        : question
+                )
+            );
+
+            setEditingQuestionId("");
+            resetCreateQuestionForm();
+            setIsCreateFormOpen(false);
+            showToast({
+                type: "success",
+                message: "Question updated successfully.",
+            });
+        } catch (error) {
+            showToast({
+                type: "error",
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : "Unable to update question.",
             });
         } finally {
             setIsCreateSaving(false);
@@ -624,31 +768,51 @@ export default function AdminQuestionBankPage() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                T-42N Step 3
+                                {editingQuestionId
+                                    ? "T-42N Step 4"
+                                    : "T-42N Step 3"}
                             </p>
 
                             <h2 className="mt-2 text-xl font-bold">
-                                Create MCQ Question
+                                {editingQuestionId
+                                    ? "Edit MCQ Question"
+                                    : "Create MCQ Question"}
                             </h2>
 
                             <p className="mt-3 text-sm leading-6 text-slate-600">
-                                Add single-correct MCQ questions and optionally
-                                link them to an active question group.
+                                {editingQuestionId
+                                    ? "Update a single-correct MCQ question safely."
+                                    : "Add single-correct MCQ questions and optionally link them to an active question group."}
                             </p>
                         </div>
 
                         <button
                             type="button"
-                            onClick={() => setIsCreateFormOpen((value) => !value)}
+                            onClick={() => {
+                                if (editingQuestionId) {
+                                    cancelEditQuestion();
+                                    return;
+                                }
+
+                                setIsCreateFormOpen((value) => !value);
+                            }}
                             className="w-fit rounded-2xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"
                         >
-                            {isCreateFormOpen ? "Close Form" : "Add Question"}
+                            {editingQuestionId
+                                ? "Cancel Edit"
+                                : isCreateFormOpen
+                                  ? "Close Form"
+                                  : "Add Question"}
                         </button>
                     </div>
 
                     {isCreateFormOpen ? (
                         <form
-                            onSubmit={handleCreateQuestion}
+                            onSubmit={
+                                editingQuestionId
+                                    ? handleUpdateQuestion
+                                    : handleCreateQuestion
+                            }
                             className="mt-5 grid gap-5 rounded-2xl bg-slate-50 p-5 ring-1 ring-slate-200"
                         >
                             <div className="grid gap-4 md:grid-cols-2">
@@ -974,17 +1138,25 @@ export default function AdminQuestionBankPage() {
                                     className="rounded-2xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-400"
                                 >
                                     {isCreateSaving
-                                        ? "Creating..."
-                                        : "Create Question"}
+                                        ? editingQuestionId
+                                            ? "Saving..."
+                                            : "Creating..."
+                                        : editingQuestionId
+                                          ? "Save Changes"
+                                          : "Create Question"}
                                 </button>
 
                                 <button
                                     type="button"
-                                    onClick={resetCreateQuestionForm}
+                                    onClick={
+                                        editingQuestionId
+                                            ? cancelEditQuestion
+                                            : resetCreateQuestionForm
+                                    }
                                     disabled={isCreateSaving}
                                     className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                                 >
-                                    Reset
+                                    {editingQuestionId ? "Cancel Edit" : "Reset"}
                                 </button>
                             </div>
                         </form>
@@ -1128,18 +1300,30 @@ export default function AdminQuestionBankPage() {
                                                 ) : null}
                                             </div>
 
-                                            <div className="min-w-[170px] rounded-2xl bg-slate-50 p-4 text-sm ring-1 ring-slate-200">
-                                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                                    Correct Option
-                                                </p>
-                                                <p className="mt-1 text-xl font-bold">
-                                                    {question.correctOptionId ||
-                                                        "-"}
-                                                </p>
-                                                <p className="mt-2 text-xs text-slate-500">
-                                                    +{question.marks ?? 1} / -
-                                                    {question.negativeMarks ?? 0}
-                                                </p>
+                                            <div className="grid min-w-[170px] gap-3">
+                                                <div className="rounded-2xl bg-slate-50 p-4 text-sm ring-1 ring-slate-200">
+                                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                        Correct Option
+                                                    </p>
+                                                    <p className="mt-1 text-xl font-bold">
+                                                        {question.correctOptionId ||
+                                                            "-"}
+                                                    </p>
+                                                    <p className="mt-2 text-xs text-slate-500">
+                                                        +{question.marks ?? 1} / -
+                                                        {question.negativeMarks ?? 0}
+                                                    </p>
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        startEditQuestion(question)
+                                                    }
+                                                    className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                                                >
+                                                    Edit
+                                                </button>
                                             </div>
                                         </div>
 
