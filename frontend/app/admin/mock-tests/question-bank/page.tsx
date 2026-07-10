@@ -189,6 +189,8 @@ export default function AdminQuestionBankPage() {
     const [isQuestionsLoading, setIsQuestionsLoading] = useState(false);
     const [isQuestionGroupsLoading, setIsQuestionGroupsLoading] =
         useState(false);
+    const [showInactiveQuestions, setShowInactiveQuestions] = useState(false);
+    const [disablingQuestionId, setDisablingQuestionId] = useState("");
     const [questionsError, setQuestionsError] = useState("");
     const [questionGroupsError, setQuestionGroupsError] = useState("");
     const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
@@ -206,12 +208,19 @@ export default function AdminQuestionBankPage() {
         }, 3000);
     };
 
-    const loadQuestions = async (savedToken: string) => {
+    const loadQuestions = async (
+        savedToken: string,
+        includeInactive = showInactiveQuestions
+    ) => {
         setIsQuestionsLoading(true);
         setQuestionsError("");
 
         try {
-            const response = await fetch(API_BASE_URL + "/api/questions", {
+            const questionsUrl = includeInactive
+                ? API_BASE_URL + "/api/questions"
+                : API_BASE_URL + "/api/questions?isActive=true";
+
+            const response = await fetch(questionsUrl, {
                 headers: {
                     Authorization: "Bearer " + savedToken,
                 },
@@ -624,6 +633,105 @@ export default function AdminQuestionBankPage() {
         }
     };
 
+    const handleShowInactiveQuestionsChange = (checked: boolean) => {
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        setShowInactiveQuestions(checked);
+
+        if (savedToken) {
+            void loadQuestions(savedToken, checked);
+        }
+    };
+
+    const handleDisableQuestion = async (question: Question) => {
+        if (question.isActive === false) {
+            return;
+        }
+
+        const shouldDisable = window.confirm(
+            "Disable this question? It will be hidden from active question lists."
+        );
+
+        if (!shouldDisable) {
+            return;
+        }
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (!savedToken) {
+            clearAdminSessionStorage();
+            setIsAllowed(false);
+            setMessage("Please login with an admin account.");
+            return;
+        }
+
+        setDisablingQuestionId(question._id);
+
+        try {
+            const response = await fetch(
+                API_BASE_URL + "/api/questions/" + question._id + "/disable",
+                {
+                    method: "PATCH",
+                    headers: {
+                        Authorization: "Bearer " + savedToken,
+                    },
+                }
+            );
+
+            const result = (await response.json()) as QuestionMutationResponse;
+
+            if (response.status === 401 || response.status === 403) {
+                clearAdminSessionStorage();
+                setIsAllowed(false);
+                setMessage(
+                    result.message ||
+                        "Your admin session has expired. Please login again."
+                );
+                return;
+            }
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to disable question.");
+            }
+
+            setQuestions((current) => {
+                if (!showInactiveQuestions) {
+                    return current.filter((item) => item._id !== question._id);
+                }
+
+                return current.map((item) =>
+                    item._id === question._id
+                        ? {
+                              ...item,
+                              isActive: false,
+                          }
+                        : item
+                );
+            });
+
+            if (editingQuestionId === question._id) {
+                cancelEditQuestion();
+            }
+
+            showToast({
+                type: "success",
+                message: "Question disabled successfully.",
+            });
+        } catch (error) {
+            showToast({
+                type: "error",
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : "Unable to disable question.",
+            });
+        } finally {
+            setDisablingQuestionId("");
+        }
+    };
+
     useEffect(() => {
         const verifyAdminSession = async () => {
             const savedToken =
@@ -661,7 +769,7 @@ export default function AdminQuestionBankPage() {
 
                 setIsAllowed(true);
                 setMessage("");
-                void loadQuestions(savedToken);
+                void loadQuestions(savedToken, false);
                 void loadQuestionGroups(savedToken);
             } catch (error) {
                 clearAdminSessionStorage();
@@ -1167,7 +1275,7 @@ export default function AdminQuestionBankPage() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                T-42N Step 2
+                                T-42N Step 5
                             </p>
 
                             <h2 className="mt-2 text-xl font-bold">
@@ -1179,30 +1287,49 @@ export default function AdminQuestionBankPage() {
                                 <span className="font-semibold">
                                     /api/questions
                                 </span>{" "}
-                                for admin MCQ listing.
+                                for active and inactive MCQ listing.
                             </p>
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={() => {
-                                const savedToken =
-                                    window.localStorage.getItem(
-                                        ADMIN_TOKEN_STORAGE_KEY
-                                    ) || "";
+                        <div className="flex flex-wrap gap-3">
+                            <label className="flex w-fit items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700">
+                                <input
+                                    type="checkbox"
+                                    checked={showInactiveQuestions}
+                                    onChange={(event) =>
+                                        handleShowInactiveQuestionsChange(
+                                            event.target.checked
+                                        )
+                                    }
+                                    className="h-4 w-4"
+                                />
+                                Show inactive
+                            </label>
 
-                                if (savedToken) {
-                                    void loadQuestions(savedToken);
-                                    void loadQuestionGroups(savedToken);
-                                }
-                            }}
-                            disabled={isQuestionsLoading}
-                            className="w-fit rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                        >
-                            {isQuestionsLoading
-                                ? "Refreshing..."
-                                : "Refresh List"}
-                        </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    const savedToken =
+                                        window.localStorage.getItem(
+                                            ADMIN_TOKEN_STORAGE_KEY
+                                        ) || "";
+
+                                    if (savedToken) {
+                                        void loadQuestions(
+                                            savedToken,
+                                            showInactiveQuestions
+                                        );
+                                        void loadQuestionGroups(savedToken);
+                                    }
+                                }}
+                                disabled={isQuestionsLoading}
+                                className="w-fit rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                            >
+                                {isQuestionsLoading
+                                    ? "Refreshing..."
+                                    : "Refresh List"}
+                            </button>
+                        </div>
                     </div>
 
                     <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -1229,7 +1356,9 @@ export default function AdminQuestionBankPage() {
                                 Scope
                             </p>
                             <p className="mt-2 text-sm font-semibold text-slate-700">
-                                MCQ single-correct question bank
+                                {showInactiveQuestions
+                                    ? "Active and inactive questions"
+                                    : "Active questions only"}
                             </p>
                         </div>
                     </div>
@@ -1279,7 +1408,13 @@ export default function AdminQuestionBankPage() {
                                                         {question.difficulty ||
                                                             "medium"}
                                                     </span>
-                                                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                                                    <span
+                                                        className={
+                                                            question.isActive === false
+                                                                ? "rounded-full bg-red-50 px-3 py-1 text-xs font-semibold text-red-700"
+                                                                : "rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+                                                        }
+                                                    >
                                                         {question.isActive === false
                                                             ? "Inactive"
                                                             : "Active"}
@@ -1324,6 +1459,31 @@ export default function AdminQuestionBankPage() {
                                                 >
                                                     Edit
                                                 </button>
+
+                                                {question.isActive === false ? (
+                                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-sm font-semibold text-slate-500">
+                                                        Disabled
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleDisableQuestion(
+                                                                question
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            disablingQuestionId ===
+                                                            question._id
+                                                        }
+                                                        className="rounded-2xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                    >
+                                                        {disablingQuestionId ===
+                                                        question._id
+                                                            ? "Disabling..."
+                                                            : "Disable"}
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
 
