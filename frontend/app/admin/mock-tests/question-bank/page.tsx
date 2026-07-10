@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_URL ||
@@ -12,6 +12,9 @@ const ADMIN_TOKEN_STORAGE_KEY = "pravixoAdminToken";
 const ADMIN_PROFILE_STORAGE_KEY = "pravixoAdminProfile";
 
 const ALLOWED_ADMIN_ROLES = ["super_admin", "tenant_admin", "content_admin"];
+const OPTION_IDS = ["A", "B", "C", "D"] as const;
+
+type OptionId = (typeof OPTION_IDS)[number];
 
 type AdminProfile = {
     id?: string;
@@ -33,6 +36,13 @@ type QuestionGroupSummary = {
     groupType?: string;
     displayMode?: string;
     isActive?: boolean;
+};
+
+type QuestionGroupsResponse = {
+    success: boolean;
+    message?: string;
+    count?: number;
+    data?: QuestionGroupSummary[];
 };
 
 type CategorySummary = {
@@ -80,8 +90,63 @@ type QuestionsResponse = {
     data?: Question[];
 };
 
+type CreateQuestionOptionForm = {
+    optionId: OptionId;
+    textEn: string;
+    textHi: string;
+};
+
+type CreateQuestionForm = {
+    questionTextEn: string;
+    questionTextHi: string;
+    subject: string;
+    topic: string;
+    subTopic: string;
+    sourceType: "original" | "pyq";
+    difficulty: "easy" | "medium" | "hard";
+    marks: string;
+    negativeMarks: string;
+    correctOptionId: OptionId;
+    explanationEn: string;
+    explanationHi: string;
+    questionGroupId: string;
+    groupQuestionOrder: string;
+    options: CreateQuestionOptionForm[];
+};
+
+type ToastState = {
+    type: "success" | "error";
+    message: string;
+};
+
+const initialCreateQuestionForm: CreateQuestionForm = {
+    questionTextEn: "",
+    questionTextHi: "",
+    subject: "",
+    topic: "",
+    subTopic: "",
+    sourceType: "original",
+    difficulty: "medium",
+    marks: "1",
+    negativeMarks: "0",
+    correctOptionId: "A",
+    explanationEn: "",
+    explanationHi: "",
+    questionGroupId: "",
+    groupQuestionOrder: "",
+    options: OPTION_IDS.map((optionId) => ({
+        optionId,
+        textEn: "",
+        textHi: "",
+    })),
+};
+
 const isAllowedAdminRole = (role?: string) => {
     return Boolean(role && ALLOWED_ADMIN_ROLES.includes(role));
+};
+
+const hasText = (value: string) => {
+    return value.trim().length > 0;
 };
 
 const clearAdminSessionStorage = () => {
@@ -112,8 +177,27 @@ export default function AdminQuestionBankPage() {
     const [isAllowed, setIsAllowed] = useState(false);
     const [message, setMessage] = useState("");
     const [questions, setQuestions] = useState<Question[]>([]);
+    const [questionGroups, setQuestionGroups] = useState<QuestionGroupSummary[]>(
+        []
+    );
     const [isQuestionsLoading, setIsQuestionsLoading] = useState(false);
+    const [isQuestionGroupsLoading, setIsQuestionGroupsLoading] =
+        useState(false);
     const [questionsError, setQuestionsError] = useState("");
+    const [questionGroupsError, setQuestionGroupsError] = useState("");
+    const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+    const [isCreateSaving, setIsCreateSaving] = useState(false);
+    const [createQuestionForm, setCreateQuestionForm] =
+        useState<CreateQuestionForm>(initialCreateQuestionForm);
+    const [toast, setToast] = useState<ToastState | null>(null);
+
+    const showToast = (nextToast: ToastState) => {
+        setToast(nextToast);
+
+        window.setTimeout(() => {
+            setToast(null);
+        }, 3000);
+    };
 
     const loadQuestions = async (savedToken: string) => {
         setIsQuestionsLoading(true);
@@ -151,6 +235,248 @@ export default function AdminQuestionBankPage() {
             );
         } finally {
             setIsQuestionsLoading(false);
+        }
+    };
+
+    const loadQuestionGroups = async (savedToken: string) => {
+        setIsQuestionGroupsLoading(true);
+        setQuestionGroupsError("");
+
+        try {
+            const response = await fetch(API_BASE_URL + "/api/question-groups", {
+                headers: {
+                    Authorization: "Bearer " + savedToken,
+                },
+            });
+
+            const result = (await response.json()) as QuestionGroupsResponse;
+
+            if (response.status === 401 || response.status === 403) {
+                clearAdminSessionStorage();
+                setIsAllowed(false);
+                setMessage(
+                    result.message ||
+                        "Your admin session has expired. Please login again."
+                );
+                return;
+            }
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message || "Unable to load question groups."
+                );
+            }
+
+            setQuestionGroups(result.data || []);
+        } catch (error) {
+            setQuestionGroupsError(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to load question groups."
+            );
+        } finally {
+            setIsQuestionGroupsLoading(false);
+        }
+    };
+
+    const updateCreateQuestionForm = (
+        field: keyof Omit<CreateQuestionForm, "options">,
+        value: string
+    ) => {
+        setCreateQuestionForm((current) => ({
+            ...current,
+            [field]: value,
+        }));
+    };
+
+    const updateCreateOption = (
+        optionId: OptionId,
+        field: "textEn" | "textHi",
+        value: string
+    ) => {
+        setCreateQuestionForm((current) => ({
+            ...current,
+            options: current.options.map((option) =>
+                option.optionId === optionId
+                    ? {
+                          ...option,
+                          [field]: value,
+                      }
+                    : option
+            ),
+        }));
+    };
+
+    const resetCreateQuestionForm = () => {
+        setCreateQuestionForm(initialCreateQuestionForm);
+    };
+
+    const buildCreateQuestionPayload = () => {
+        const filledOptions = createQuestionForm.options
+            .filter((option) => hasText(option.textEn) || hasText(option.textHi))
+            .map((option) => ({
+                optionId: option.optionId,
+                textEn: option.textEn.trim(),
+                textHi: option.textHi.trim(),
+                imageUrl: "",
+            }));
+
+        const marks = Number(createQuestionForm.marks);
+        const negativeMarks = Number(createQuestionForm.negativeMarks);
+
+        return {
+            questionType: "mcq",
+            sourceType: createQuestionForm.sourceType,
+            questionTextEn: createQuestionForm.questionTextEn.trim(),
+            questionTextHi: createQuestionForm.questionTextHi.trim(),
+            questionImageUrl: "",
+            subject: createQuestionForm.subject.trim(),
+            topic: createQuestionForm.topic.trim(),
+            subTopic: createQuestionForm.subTopic.trim(),
+            difficulty: createQuestionForm.difficulty,
+            marks,
+            negativeMarks,
+            options: filledOptions,
+            correctOptionId: createQuestionForm.correctOptionId,
+            explanationEn: createQuestionForm.explanationEn.trim(),
+            explanationHi: createQuestionForm.explanationHi.trim(),
+            questionGroupId: createQuestionForm.questionGroupId || null,
+            groupQuestionOrder: createQuestionForm.questionGroupId
+                ? Number(createQuestionForm.groupQuestionOrder)
+                : null,
+        };
+    };
+
+    const validateCreateQuestionForm = () => {
+        if (
+            !hasText(createQuestionForm.questionTextEn) &&
+            !hasText(createQuestionForm.questionTextHi)
+        ) {
+            return "Question text is required.";
+        }
+
+        const marks = Number(createQuestionForm.marks);
+        const negativeMarks = Number(createQuestionForm.negativeMarks);
+
+        if (!Number.isFinite(marks) || marks < 0) {
+            return "Marks must be zero or more.";
+        }
+
+        if (!Number.isFinite(negativeMarks) || negativeMarks < 0) {
+            return "Negative marks must be zero or more.";
+        }
+
+        const filledOptions = createQuestionForm.options.filter(
+            (option) => hasText(option.textEn) || hasText(option.textHi)
+        );
+
+        if (filledOptions.length < 2) {
+            return "At least two options are required.";
+        }
+
+        if (
+            !filledOptions.some(
+                (option) =>
+                    option.optionId === createQuestionForm.correctOptionId
+            )
+        ) {
+            return "Correct option must have option text.";
+        }
+
+        if (createQuestionForm.questionGroupId) {
+            const order = Number(createQuestionForm.groupQuestionOrder);
+
+            if (!Number.isInteger(order) || order < 1) {
+                return "Group question order must be a positive integer.";
+            }
+        }
+
+        return "";
+    };
+
+    const handleCreateQuestion = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        const validationError = validateCreateQuestionForm();
+
+        if (validationError) {
+            showToast({
+                type: "error",
+                message: validationError,
+            });
+            return;
+        }
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (!savedToken) {
+            clearAdminSessionStorage();
+            setIsAllowed(false);
+            setMessage("Please login with an admin account.");
+            return;
+        }
+
+        setIsCreateSaving(true);
+
+        try {
+            const response = await fetch(API_BASE_URL + "/api/questions", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: "Bearer " + savedToken,
+                },
+                body: JSON.stringify(buildCreateQuestionPayload()),
+            });
+
+            const result = (await response.json()) as QuestionsResponse;
+
+            if (response.status === 401 || response.status === 403) {
+                clearAdminSessionStorage();
+                setIsAllowed(false);
+                setMessage(
+                    result.message ||
+                        "Your admin session has expired. Please login again."
+                );
+                return;
+            }
+
+            if (!response.ok || !result.success || !result.data?.[0]) {
+                const createdQuestion = (result.data as unknown as Question) || null;
+
+                if (!createdQuestion || !createdQuestion._id) {
+                    throw new Error(
+                        result.message || "Unable to create question."
+                    );
+                }
+            }
+
+            const createdQuestion =
+                Array.isArray(result.data)
+                    ? result.data[0]
+                    : (result.data as unknown as Question);
+
+            setQuestions((current) => [
+                createdQuestion,
+                ...current.filter((question) => question._id !== createdQuestion._id),
+            ]);
+
+            resetCreateQuestionForm();
+            setIsCreateFormOpen(false);
+            showToast({
+                type: "success",
+                message: "Question created successfully.",
+            });
+        } catch (error) {
+            showToast({
+                type: "error",
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : "Unable to create question.",
+            });
+        } finally {
+            setIsCreateSaving(false);
         }
     };
 
@@ -192,6 +518,7 @@ export default function AdminQuestionBankPage() {
                 setIsAllowed(true);
                 setMessage("");
                 void loadQuestions(savedToken);
+                void loadQuestionGroups(savedToken);
             } catch (error) {
                 clearAdminSessionStorage();
                 setIsAllowed(false);
@@ -249,6 +576,20 @@ export default function AdminQuestionBankPage() {
 
     return (
         <main className="min-h-screen bg-slate-100 px-4 py-6 text-slate-950 sm:px-6 lg:px-8">
+            {toast ? (
+                <div className="fixed right-4 top-4 z-50 max-w-sm rounded-2xl bg-white p-4 text-sm font-semibold shadow-lg ring-1 ring-slate-200">
+                    <p
+                        className={
+                            toast.type === "success"
+                                ? "text-emerald-700"
+                                : "text-red-700"
+                        }
+                    >
+                        {toast.message}
+                    </p>
+                </div>
+            ) : null}
+
             <div className="mx-auto flex max-w-6xl flex-col gap-6">
                 <header className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
                     <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -271,27 +612,384 @@ export default function AdminQuestionBankPage() {
                         <div className="flex flex-wrap gap-3">
                             <Link
                                 href="/admin/dashboard"
-                                className="rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                                Dashboard
-                            </Link>
-
-                            <Link
-                                href="/admin/mock-tests/question-groups"
-                                className="rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                                Question Groups
-                            </Link>
-
-                            <Link
-                                href="/admin/mock-tests/exam-patterns"
                                 className="rounded-2xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
                             >
-                                Exam Patterns
+                                Dashboard
                             </Link>
                         </div>
                     </div>
                 </header>
+
+                <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                T-42N Step 3
+                            </p>
+
+                            <h2 className="mt-2 text-xl font-bold">
+                                Create MCQ Question
+                            </h2>
+
+                            <p className="mt-3 text-sm leading-6 text-slate-600">
+                                Add single-correct MCQ questions and optionally
+                                link them to an active question group.
+                            </p>
+                        </div>
+
+                        <button
+                            type="button"
+                            onClick={() => setIsCreateFormOpen((value) => !value)}
+                            className="w-fit rounded-2xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"
+                        >
+                            {isCreateFormOpen ? "Close Form" : "Add Question"}
+                        </button>
+                    </div>
+
+                    {isCreateFormOpen ? (
+                        <form
+                            onSubmit={handleCreateQuestion}
+                            className="mt-5 grid gap-5 rounded-2xl bg-slate-50 p-5 ring-1 ring-slate-200"
+                        >
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Question Text English
+                                    <textarea
+                                        value={createQuestionForm.questionTextEn}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "questionTextEn",
+                                                event.target.value
+                                            )
+                                        }
+                                        rows={4}
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                                        placeholder="Enter English question text"
+                                    />
+                                </label>
+
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Question Text Hindi
+                                    <textarea
+                                        value={createQuestionForm.questionTextHi}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "questionTextHi",
+                                                event.target.value
+                                            )
+                                        }
+                                        rows={4}
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                                        placeholder="Hindi question text"
+                                    />
+                                </label>
+                            </div>
+
+                            <div className="grid gap-4 md:grid-cols-3">
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Subject
+                                    <input
+                                        value={createQuestionForm.subject}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "subject",
+                                                event.target.value
+                                            )
+                                        }
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                                        placeholder="Reasoning"
+                                    />
+                                </label>
+
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Topic
+                                    <input
+                                        value={createQuestionForm.topic}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "topic",
+                                                event.target.value
+                                            )
+                                        }
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                                        placeholder="Seating Arrangement"
+                                    />
+                                </label>
+
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Sub Topic
+                                    <input
+                                        value={createQuestionForm.subTopic}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "subTopic",
+                                                event.target.value
+                                            )
+                                        }
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                                        placeholder="Linear arrangement"
+                                    />
+                                </label>
+                            </div>
+
+                            <div className="grid gap-4 md:grid-cols-5">
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Source
+                                    <select
+                                        value={createQuestionForm.sourceType}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "sourceType",
+                                                event.target.value
+                                            )
+                                        }
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                                    >
+                                        <option value="original">Original</option>
+                                        <option value="pyq">PYQ</option>
+                                    </select>
+                                </label>
+
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Difficulty
+                                    <select
+                                        value={createQuestionForm.difficulty}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "difficulty",
+                                                event.target.value
+                                            )
+                                        }
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                                    >
+                                        <option value="easy">Easy</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="hard">Hard</option>
+                                    </select>
+                                </label>
+
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Marks
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.25"
+                                        value={createQuestionForm.marks}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "marks",
+                                                event.target.value
+                                            )
+                                        }
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                                    />
+                                </label>
+
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Negative
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.25"
+                                        value={createQuestionForm.negativeMarks}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "negativeMarks",
+                                                event.target.value
+                                            )
+                                        }
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                                    />
+                                </label>
+
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Correct Option
+                                    <select
+                                        value={createQuestionForm.correctOptionId}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "correctOptionId",
+                                                event.target.value
+                                            )
+                                        }
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                                    >
+                                        {OPTION_IDS.map((optionId) => (
+                                            <option key={optionId} value={optionId}>
+                                                {optionId}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                            </div>
+
+                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                <div className="flex flex-col gap-1">
+                                    <h3 className="text-sm font-bold text-slate-950">
+                                        Options
+                                    </h3>
+                                    <p className="text-xs text-slate-500">
+                                        At least two options are required. Correct
+                                        option must have text.
+                                    </p>
+                                </div>
+
+                                <div className="mt-4 grid gap-4 md:grid-cols-2">
+                                    {createQuestionForm.options.map((option) => (
+                                        <div
+                                            key={option.optionId}
+                                            className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200"
+                                        >
+                                            <p className="text-sm font-bold text-slate-900">
+                                                Option {option.optionId}
+                                            </p>
+
+                                            <div className="mt-3 grid gap-3">
+                                                <input
+                                                    value={option.textEn}
+                                                    onChange={(event) =>
+                                                        updateCreateOption(
+                                                            option.optionId,
+                                                            "textEn",
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500"
+                                                    placeholder="English option text"
+                                                />
+
+                                                <input
+                                                    value={option.textHi}
+                                                    onChange={(event) =>
+                                                        updateCreateOption(
+                                                            option.optionId,
+                                                            "textHi",
+                                                            event.target.value
+                                                        )
+                                                    }
+                                                    className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm outline-none focus:border-blue-500"
+                                                    placeholder="Hindi option text"
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="grid gap-4 md:grid-cols-2">
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Explanation English
+                                    <textarea
+                                        value={createQuestionForm.explanationEn}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "explanationEn",
+                                                event.target.value
+                                            )
+                                        }
+                                        rows={3}
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                                        placeholder="Optional explanation"
+                                    />
+                                </label>
+
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Explanation Hindi
+                                    <textarea
+                                        value={createQuestionForm.explanationHi}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "explanationHi",
+                                                event.target.value
+                                            )
+                                        }
+                                        rows={3}
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                                        placeholder="Optional Hindi explanation"
+                                    />
+                                </label>
+                            </div>
+
+                            <div className="grid gap-4 rounded-2xl bg-blue-50 p-4 ring-1 ring-blue-100 md:grid-cols-2">
+                                <label className="grid gap-2 text-sm font-semibold text-blue-950">
+                                    Optional Question Group
+                                    <select
+                                        value={createQuestionForm.questionGroupId}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "questionGroupId",
+                                                event.target.value
+                                            )
+                                        }
+                                        className="rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm font-normal text-slate-900 outline-none focus:border-blue-500"
+                                    >
+                                        <option value="">No group</option>
+                                        {questionGroups.map((group) => (
+                                            <option key={group._id} value={group._id}>
+                                                {group.title || group.slug}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <span className="text-xs font-normal text-blue-800">
+                                        {isQuestionGroupsLoading
+                                            ? "Loading active groups..."
+                                            : questionGroups.length +
+                                              " active groups available"}
+                                    </span>
+                                </label>
+
+                                <label className="grid gap-2 text-sm font-semibold text-blue-950">
+                                    Group Question Order
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={createQuestionForm.groupQuestionOrder}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "groupQuestionOrder",
+                                                event.target.value
+                                            )
+                                        }
+                                        disabled={!createQuestionForm.questionGroupId}
+                                        className="rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm font-normal text-slate-900 outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
+                                        placeholder="Required if group selected"
+                                    />
+                                    <span className="text-xs font-normal text-blue-800">
+                                        Use 1, 2, 3... for questions inside a
+                                        linked group.
+                                    </span>
+                                </label>
+
+                                {questionGroupsError ? (
+                                    <div className="md:col-span-2 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700 ring-1 ring-red-100">
+                                        {questionGroupsError}
+                                    </div>
+                                ) : null}
+                            </div>
+
+                            <div className="flex flex-wrap gap-3">
+                                <button
+                                    type="submit"
+                                    disabled={isCreateSaving}
+                                    className="rounded-2xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                                >
+                                    {isCreateSaving
+                                        ? "Creating..."
+                                        : "Create Question"}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={resetCreateQuestionForm}
+                                    disabled={isCreateSaving}
+                                    className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                >
+                                    Reset
+                                </button>
+                            </div>
+                        </form>
+                    ) : null}
+                </section>
 
                 <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -323,6 +1021,7 @@ export default function AdminQuestionBankPage() {
 
                                 if (savedToken) {
                                     void loadQuestions(savedToken);
+                                    void loadQuestionGroups(savedToken);
                                 }
                             }}
                             disabled={isQuestionsLoading}
@@ -375,8 +1074,8 @@ export default function AdminQuestionBankPage() {
                         </div>
                     ) : questions.length === 0 ? (
                         <div className="mt-5 rounded-2xl bg-blue-50 p-5 text-sm text-blue-900 ring-1 ring-blue-100">
-                            No questions found yet. The create form will be added
-                            in the next step.
+                            No questions found yet. Use Add Question to create
+                            your first MCQ.
                         </div>
                     ) : (
                         <div className="mt-5 grid gap-4">
