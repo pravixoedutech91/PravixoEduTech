@@ -225,7 +225,7 @@ export default function AdminDashboardPage() {
                                     "Mock Tests",
                                     "Published Versions",
                                 ].map((item) => (
-                                    ["Exam Patterns", "Question Groups", "Question Bank"].includes(item) ? (
+                                    ["Exam Patterns", "Question Groups", "Question Bank", "Mock Tests"].includes(item) ? (
                                         <Link
                                             key={item}
                                             href={
@@ -233,7 +233,9 @@ export default function AdminDashboardPage() {
                                                     ? "/admin/mock-tests/exam-patterns"
                                                     : item === "Question Groups"
                                                       ? "/admin/mock-tests/question-groups"
-                                                      : "/admin/mock-tests/question-bank"
+                                                      : item === "Question Bank"
+                                                        ? "/admin/mock-tests/question-bank"
+                                                        : "/admin/mock-tests/tests"
                                             }
                                             className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
                                         >
