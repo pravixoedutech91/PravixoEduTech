@@ -100,7 +100,14 @@ type MockTest = {
     salePrice?: number;
     examPatternId?: ExamPatternSummary | string | null;
     categoryId?: CategorySummary | string | null;
+    instructionsEn?: string;
+    instructionsHi?: string;
     sections?: MockTestSection[];
+    settings?: {
+        maxAttempts?: number;
+        solutionVisibility?: string;
+        interfaceMode?: string;
+    };
     isPublished?: boolean;
     activeVersionId?: ActiveVersionSummary | string | null;
     isActive?: boolean;
@@ -230,6 +237,7 @@ export default function AdminMockTestsPage() {
     const [examPatternsError, setExamPatternsError] = useState("");
     const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
     const [isCreateSaving, setIsCreateSaving] = useState(false);
+    const [editingMockTestId, setEditingMockTestId] = useState("");
     const [createMockTestForm, setCreateMockTestForm] =
         useState<CreateMockTestForm>(initialCreateMockTestForm);
     const [toast, setToast] = useState<ToastState | null>(null);
@@ -238,6 +246,14 @@ export default function AdminMockTestsPage() {
         examPatterns.find(
             (pattern) => pattern._id === createMockTestForm.examPatternId
         ) || null;
+
+    const editingMockTest =
+        mockTests.find((mockTest) => mockTest._id === editingMockTestId) ||
+        null;
+
+    const editingExamPattern = getExamPatternSummary(
+        editingMockTest?.examPatternId
+    );
 
     const showToast = (nextToast: ToastState) => {
         setToast(nextToast);
@@ -366,6 +382,53 @@ export default function AdminMockTestsPage() {
         setCreateMockTestForm(initialCreateMockTestForm);
     };
 
+    const startEditMockTest = (mockTest: MockTest) => {
+        const examPattern = getExamPatternSummary(mockTest.examPatternId);
+
+        setEditingMockTestId(mockTest._id);
+        setCreateMockTestForm({
+            title: mockTest.title || "",
+            slug: mockTest.slug || "",
+            description: mockTest.description || "",
+            testType:
+                mockTest.testType === "pyq" ||
+                mockTest.testType === "practice"
+                    ? mockTest.testType
+                    : "mock",
+            accessType:
+                mockTest.accessType === "paid" ||
+                mockTest.accessType === "assigned"
+                    ? mockTest.accessType
+                    : "free",
+            price: String(mockTest.price ?? 0),
+            salePrice: String(mockTest.salePrice ?? 0),
+            examPatternId: examPattern?._id || "",
+            instructionsEn: mockTest.instructionsEn || "",
+            instructionsHi: mockTest.instructionsHi || "",
+            maxAttempts: String(mockTest.settings?.maxAttempts ?? 1),
+            solutionVisibility:
+                mockTest.settings?.solutionVisibility === "after_test_end" ||
+                mockTest.settings?.solutionVisibility === "never"
+                    ? mockTest.settings.solutionVisibility
+                    : "after_submit",
+            interfaceMode:
+                mockTest.settings?.interfaceMode === "ssc" ||
+                mockTest.settings?.interfaceMode === "banking" ||
+                mockTest.settings?.interfaceMode === "railway" ||
+                mockTest.settings?.interfaceMode === "cpct"
+                    ? mockTest.settings.interfaceMode
+                    : "default",
+        });
+        setIsCreateFormOpen(true);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    const cancelEditMockTest = () => {
+        setEditingMockTestId("");
+        resetCreateMockTestForm();
+        setIsCreateFormOpen(false);
+    };
+
     const buildSectionsFromSelectedPattern = () => {
         if (!selectedExamPattern) {
             return [];
@@ -395,12 +458,17 @@ export default function AdminMockTestsPage() {
             return "Mock test slug is required.";
         }
 
-        if (!createMockTestForm.examPatternId || !selectedExamPattern) {
-            return "Please select an active exam pattern.";
-        }
+        if (!editingMockTestId) {
+            if (!createMockTestForm.examPatternId || !selectedExamPattern) {
+                return "Please select an active exam pattern.";
+            }
 
-        if (!Array.isArray(selectedExamPattern.sections) || selectedExamPattern.sections.length === 0) {
-            return "Selected exam pattern has no sections.";
+            if (
+                !Array.isArray(selectedExamPattern.sections) ||
+                selectedExamPattern.sections.length === 0
+            ) {
+                return "Selected exam pattern has no sections.";
+            }
         }
 
         const price = Number(createMockTestForm.price);
@@ -457,6 +525,30 @@ export default function AdminMockTestsPage() {
                 showTopicWiseAnalysis: true,
                 showDifficultyAnalysis: true,
                 showTimeAnalysis: true,
+                interfaceMode: createMockTestForm.interfaceMode,
+            },
+        };
+    };
+
+    const buildUpdateMockTestPayload = () => {
+        const price = Number(createMockTestForm.price);
+        const salePrice = Number(createMockTestForm.salePrice);
+        const maxAttempts = Number(createMockTestForm.maxAttempts);
+
+        return {
+            title: createMockTestForm.title.trim(),
+            slug: createSlugFromText(createMockTestForm.slug),
+            description: createMockTestForm.description.trim(),
+            testType: createMockTestForm.testType,
+            accessType: createMockTestForm.accessType,
+            price,
+            salePrice,
+            isPurchasable: createMockTestForm.accessType === "paid",
+            instructionsEn: createMockTestForm.instructionsEn.trim(),
+            instructionsHi: createMockTestForm.instructionsHi.trim(),
+            settings: {
+                maxAttempts,
+                solutionVisibility: createMockTestForm.solutionVisibility,
                 interfaceMode: createMockTestForm.interfaceMode,
             },
         };
@@ -530,6 +622,96 @@ export default function AdminMockTestsPage() {
                     error instanceof Error
                         ? error.message
                         : "Unable to create mock test.",
+            });
+        } finally {
+            setIsCreateSaving(false);
+        }
+    };
+
+    const handleUpdateMockTest = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        if (!editingMockTestId) {
+            return;
+        }
+
+        const validationError = validateCreateMockTestForm();
+
+        if (validationError) {
+            showToast({
+                type: "error",
+                message: validationError,
+            });
+            return;
+        }
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (!savedToken) {
+            clearAdminSessionStorage();
+            setIsAllowed(false);
+            setMessage("Please login with an admin account.");
+            return;
+        }
+
+        setIsCreateSaving(true);
+
+        try {
+            const response = await fetch(
+                API_BASE_URL + "/api/mock-tests/" + editingMockTestId,
+                {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: "Bearer " + savedToken,
+                    },
+                    body: JSON.stringify(buildUpdateMockTestPayload()),
+                }
+            );
+
+            const result = (await response.json()) as MockTestMutationResponse;
+
+            if (response.status === 401 || response.status === 403) {
+                clearAdminSessionStorage();
+                setIsAllowed(false);
+                setMessage(
+                    result.message ||
+                        "Your admin session has expired. Please login again."
+                );
+                return;
+            }
+
+            if (!response.ok || !result.success || !result.data?._id) {
+                throw new Error(
+                    result.message || "Unable to update mock test."
+                );
+            }
+
+            const updatedMockTest = result.data;
+
+            setMockTests((current) =>
+                current.map((mockTest) =>
+                    mockTest._id === updatedMockTest._id
+                        ? updatedMockTest
+                        : mockTest
+                )
+            );
+
+            setEditingMockTestId("");
+            resetCreateMockTestForm();
+            setIsCreateFormOpen(false);
+            showToast({
+                type: "success",
+                message: "Mock test updated successfully.",
+            });
+        } catch (error) {
+            showToast({
+                type: "error",
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : "Unable to update mock test.",
             });
         } finally {
             setIsCreateSaving(false);
@@ -678,32 +860,51 @@ export default function AdminMockTestsPage() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                T-42O Step 3
+                                {editingMockTestId
+                                    ? "T-42O Step 4"
+                                    : "T-42O Step 3"}
                             </p>
 
                             <h2 className="mt-2 text-xl font-bold">
-                                Create Draft Mock Test
+                                {editingMockTestId
+                                    ? "Edit Mock Test Metadata"
+                                    : "Create Draft Mock Test"}
                             </h2>
 
                             <p className="mt-3 text-sm leading-6 text-slate-600">
-                                Create a draft from an active exam pattern. The
-                                section structure is copied from the selected
-                                pattern with empty question lists.
+                                {editingMockTestId
+                                    ? "Update mock test metadata safely. Exam pattern and sections are not changed in this step."
+                                    : "Create a draft from an active exam pattern. The section structure is copied from the selected pattern with empty question lists."}
                             </p>
                         </div>
 
                         <button
                             type="button"
-                            onClick={() => setIsCreateFormOpen((value) => !value)}
+                            onClick={() => {
+                                if (editingMockTestId) {
+                                    cancelEditMockTest();
+                                    return;
+                                }
+
+                                setIsCreateFormOpen((value) => !value);
+                            }}
                             className="w-fit rounded-2xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"
                         >
-                            {isCreateFormOpen ? "Close Form" : "Create Draft"}
+                            {editingMockTestId
+                                ? "Cancel Edit"
+                                : isCreateFormOpen
+                                  ? "Close Form"
+                                  : "Create Draft"}
                         </button>
                     </div>
 
                     {isCreateFormOpen ? (
                         <form
-                            onSubmit={handleCreateMockTest}
+                            onSubmit={
+                                editingMockTestId
+                                    ? handleUpdateMockTest
+                                    : handleCreateMockTest
+                            }
                             className="mt-5 grid gap-5 rounded-2xl bg-slate-50 p-5 ring-1 ring-slate-200"
                         >
                             <div className="grid gap-4 md:grid-cols-2">
@@ -717,11 +918,26 @@ export default function AdminMockTestsPage() {
                                                 event.target.value
                                             )
                                         }
-                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500"
+                                        disabled={Boolean(editingMockTestId)}
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
                                     >
                                         <option value="">
                                             Select active exam pattern
                                         </option>
+
+                                        {editingMockTestId &&
+                                        editingExamPattern &&
+                                        !examPatterns.some(
+                                            (pattern) =>
+                                                pattern._id ===
+                                                editingExamPattern._id
+                                        ) ? (
+                                            <option value={editingExamPattern._id}>
+                                                {editingExamPattern.name ||
+                                                    editingExamPattern.slug}
+                                            </option>
+                                        ) : null}
+
                                         {examPatterns.map((pattern) => (
                                             <option key={pattern._id} value={pattern._id}>
                                                 {pattern.name || pattern.slug}
@@ -729,10 +945,12 @@ export default function AdminMockTestsPage() {
                                         ))}
                                     </select>
                                     <span className="text-xs font-normal text-slate-500">
-                                        {isExamPatternsLoading
-                                            ? "Loading active exam patterns..."
-                                            : examPatterns.length +
-                                              " active patterns available"}
+                                        {editingMockTestId
+                                            ? "Exam pattern cannot be changed in metadata edit mode."
+                                            : isExamPatternsLoading
+                                              ? "Loading active exam patterns..."
+                                              : examPatterns.length +
+                                                " active patterns available"}
                                     </span>
                                 </label>
 
@@ -956,7 +1174,7 @@ export default function AdminMockTestsPage() {
                                 </label>
                             </div>
 
-                            {selectedExamPattern ? (
+                            {!editingMockTestId && selectedExamPattern ? (
                                 <div className="rounded-2xl bg-blue-50 p-4 text-sm text-blue-950 ring-1 ring-blue-100">
                                     <p className="font-bold">
                                         Section preview copied from pattern
@@ -1021,17 +1239,25 @@ export default function AdminMockTestsPage() {
                                     className="rounded-2xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-400"
                                 >
                                     {isCreateSaving
-                                        ? "Creating..."
-                                        : "Create Draft"}
+                                        ? editingMockTestId
+                                            ? "Saving..."
+                                            : "Creating..."
+                                        : editingMockTestId
+                                          ? "Save Changes"
+                                          : "Create Draft"}
                                 </button>
 
                                 <button
                                     type="button"
-                                    onClick={resetCreateMockTestForm}
+                                    onClick={
+                                        editingMockTestId
+                                            ? cancelEditMockTest
+                                            : resetCreateMockTestForm
+                                    }
                                     disabled={isCreateSaving}
                                     className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
                                 >
-                                    Reset
+                                    {editingMockTestId ? "Cancel Edit" : "Reset"}
                                 </button>
                             </div>
                         </form>
@@ -1198,18 +1424,31 @@ export default function AdminMockTestsPage() {
                                                 ) : null}
                                             </div>
 
-                                            <div className="min-w-[190px] rounded-2xl bg-slate-50 p-4 text-sm ring-1 ring-slate-200">
-                                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                                    Questions
-                                                </p>
-                                                <p className="mt-1 text-2xl font-bold">
-                                                    {assignedQuestionCount}/
-                                                    {requiredQuestionCount}
-                                                </p>
-                                                <p className="mt-2 text-xs text-slate-500">
-                                                    Sections:{" "}
-                                                    {mockTest.sections?.length || 0}
-                                                </p>
+                                            <div className="grid min-w-[190px] gap-3">
+                                                <div className="rounded-2xl bg-slate-50 p-4 text-sm ring-1 ring-slate-200">
+                                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                        Questions
+                                                    </p>
+                                                    <p className="mt-1 text-2xl font-bold">
+                                                        {assignedQuestionCount}/
+                                                        {requiredQuestionCount}
+                                                    </p>
+                                                    <p className="mt-2 text-xs text-slate-500">
+                                                        Sections:{" "}
+                                                        {mockTest.sections?.length ||
+                                                            0}
+                                                    </p>
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        startEditMockTest(mockTest)
+                                                    }
+                                                    className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+                                                >
+                                                    Edit
+                                                </button>
                                             </div>
                                         </div>
 
