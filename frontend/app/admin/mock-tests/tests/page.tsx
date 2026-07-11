@@ -74,6 +74,11 @@ type ActiveVersionSummary = {
     publishedAt?: string;
 };
 
+type MockTestSectionQuestion = {
+    questionId?: string | { _id?: string };
+    order?: number;
+};
+
 type MockTestSection = {
     sectionSlug?: string;
     name?: string;
@@ -83,10 +88,7 @@ type MockTestSection = {
     marksPerQuestion?: number;
     negativeMarks?: number;
     order?: number;
-    questions?: {
-        questionId?: string;
-        order?: number;
-    }[];
+    questions?: MockTestSectionQuestion[];
 };
 
 type MockTest = {
@@ -125,6 +127,38 @@ type MockTestMutationResponse = {
     success: boolean;
     message?: string;
     data?: MockTest;
+};
+
+type QuestionGroupSummary = {
+    _id: string;
+    title?: string;
+    slug?: string;
+};
+
+type Question = {
+    _id: string;
+    subject?: string;
+    topic?: string;
+    subTopic?: string;
+    questionTextEn?: string;
+    questionTextHi?: string;
+    difficulty?: string;
+    questionGroupId?: QuestionGroupSummary | string | null;
+};
+
+type QuestionsResponse = {
+    success: boolean;
+    message?: string;
+    count?: number;
+    data?: Question[];
+};
+
+type AssignmentQuestionSlot = {
+    questionId: string;
+};
+
+type AssignmentSectionForm = Omit<MockTestSection, "questions"> & {
+    questionSlots: AssignmentQuestionSlot[];
 };
 
 type CreateMockTestForm = {
@@ -231,13 +265,21 @@ export default function AdminMockTestsPage() {
     const [message, setMessage] = useState("");
     const [mockTests, setMockTests] = useState<MockTest[]>([]);
     const [examPatterns, setExamPatterns] = useState<ExamPattern[]>([]);
+    const [activeQuestions, setActiveQuestions] = useState<Question[]>([]);
     const [isMockTestsLoading, setIsMockTestsLoading] = useState(false);
     const [isExamPatternsLoading, setIsExamPatternsLoading] = useState(false);
+    const [isQuestionsLoading, setIsQuestionsLoading] = useState(false);
     const [mockTestsError, setMockTestsError] = useState("");
     const [examPatternsError, setExamPatternsError] = useState("");
+    const [questionsError, setQuestionsError] = useState("");
     const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
     const [isCreateSaving, setIsCreateSaving] = useState(false);
     const [editingMockTestId, setEditingMockTestId] = useState("");
+    const [assignmentMockTestId, setAssignmentMockTestId] = useState("");
+    const [assignmentSections, setAssignmentSections] = useState<
+        AssignmentSectionForm[]
+    >([]);
+    const [isAssignmentSaving, setIsAssignmentSaving] = useState(false);
     const [createMockTestForm, setCreateMockTestForm] =
         useState<CreateMockTestForm>(initialCreateMockTestForm);
     const [toast, setToast] = useState<ToastState | null>(null);
@@ -249,6 +291,10 @@ export default function AdminMockTestsPage() {
 
     const editingMockTest =
         mockTests.find((mockTest) => mockTest._id === editingMockTestId) ||
+        null;
+
+    const assignmentMockTest =
+        mockTests.find((mockTest) => mockTest._id === assignmentMockTestId) ||
         null;
 
     const editingExamPattern = getExamPatternSummary(
@@ -343,6 +389,50 @@ export default function AdminMockTestsPage() {
         }
     };
 
+    const loadActiveQuestions = async (savedToken: string) => {
+        setIsQuestionsLoading(true);
+        setQuestionsError("");
+
+        try {
+            const response = await fetch(
+                API_BASE_URL + "/api/questions?isActive=true&questionType=mcq",
+                {
+                    headers: {
+                        Authorization: "Bearer " + savedToken,
+                    },
+                }
+            );
+
+            const result = (await response.json()) as QuestionsResponse;
+
+            if (response.status === 401 || response.status === 403) {
+                clearAdminSessionStorage();
+                setIsAllowed(false);
+                setMessage(
+                    result.message ||
+                        "Your admin session has expired. Please login again."
+                );
+                return;
+            }
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message || "Unable to load active questions."
+                );
+            }
+
+            setActiveQuestions(result.data || []);
+        } catch (error) {
+            setQuestionsError(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to load active questions."
+            );
+        } finally {
+            setIsQuestionsLoading(false);
+        }
+    };
+
     const updateCreateMockTestForm = (
         field: keyof CreateMockTestForm,
         value: string
@@ -427,6 +517,247 @@ export default function AdminMockTestsPage() {
         setEditingMockTestId("");
         resetCreateMockTestForm();
         setIsCreateFormOpen(false);
+    };
+
+    const getQuestionIdValue = (
+        questionId?: string | { _id?: string } | null
+    ) => {
+        if (!questionId) {
+            return "";
+        }
+
+        if (typeof questionId === "string") {
+            return questionId;
+        }
+
+        return questionId._id || "";
+    };
+
+    const getQuestionLabel = (question: Question) => {
+        const text =
+            question.questionTextEn ||
+            question.questionTextHi ||
+            "Untitled question";
+
+        const shortText = text.length > 80 ? text.slice(0, 80) + "..." : text;
+
+        return [
+            shortText,
+            question.subject || "",
+            question.topic || "",
+            question.difficulty || "",
+        ]
+            .filter(Boolean)
+            .join(" | ");
+    };
+
+    const startAssignQuestions = (mockTest: MockTest) => {
+        const sections = (mockTest.sections || []).map((section) => {
+            const sortedQuestions = [...(section.questions || [])].sort(
+                (a, b) => Number(a.order || 0) - Number(b.order || 0)
+            );
+            const questionCount = Number(section.questionCount || 0);
+
+            return {
+                sectionSlug: section.sectionSlug || "",
+                name: section.name || "",
+                sectionType: section.sectionType || "mcq",
+                durationMinutes: Number(section.durationMinutes || 0),
+                questionCount,
+                marksPerQuestion: Number(section.marksPerQuestion || 0),
+                negativeMarks: Number(section.negativeMarks || 0),
+                order: Number(section.order || 1),
+                questionSlots: Array.from(
+                    { length: questionCount },
+                    (_, index) => ({
+                        questionId: getQuestionIdValue(
+                            sortedQuestions[index]?.questionId
+                        ),
+                    })
+                ),
+            };
+        });
+
+        setAssignmentMockTestId(mockTest._id);
+        setAssignmentSections(sections);
+        setEditingMockTestId("");
+        resetCreateMockTestForm();
+        setIsCreateFormOpen(false);
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (savedToken && activeQuestions.length === 0) {
+            void loadActiveQuestions(savedToken);
+        }
+
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    };
+
+    const cancelAssignQuestions = () => {
+        setAssignmentMockTestId("");
+        setAssignmentSections([]);
+    };
+
+    const updateAssignmentQuestion = (
+        sectionIndex: number,
+        slotIndex: number,
+        questionId: string
+    ) => {
+        setAssignmentSections((current) =>
+            current.map((section, currentSectionIndex) => {
+                if (currentSectionIndex !== sectionIndex) {
+                    return section;
+                }
+
+                return {
+                    ...section,
+                    questionSlots: section.questionSlots.map(
+                        (slot, currentSlotIndex) =>
+                            currentSlotIndex === slotIndex
+                                ? {
+                                      questionId,
+                                  }
+                                : slot
+                    ),
+                };
+            })
+        );
+    };
+
+    const buildAssignmentSectionsPayload = () => {
+        return assignmentSections.map((section) => ({
+            sectionSlug: section.sectionSlug || "",
+            name: section.name || "",
+            sectionType: section.sectionType || "mcq",
+            durationMinutes: Number(section.durationMinutes || 0),
+            questionCount: Number(section.questionCount || 0),
+            marksPerQuestion: Number(section.marksPerQuestion || 0),
+            negativeMarks: Number(section.negativeMarks || 0),
+            order: Number(section.order || 1),
+            questions: section.questionSlots
+                .map((slot, index) => ({
+                    questionId: slot.questionId,
+                    order: index + 1,
+                }))
+                .filter((slot) => Boolean(slot.questionId)),
+        }));
+    };
+
+    const validateAssignmentForm = () => {
+        if (!assignmentMockTestId) {
+            return "Please select a mock test first.";
+        }
+
+        const selectedQuestionIds = assignmentSections.flatMap((section) =>
+            section.questionSlots
+                .map((slot) => slot.questionId)
+                .filter(Boolean)
+        );
+
+        const uniqueQuestionIds = new Set(selectedQuestionIds);
+
+        if (uniqueQuestionIds.size !== selectedQuestionIds.length) {
+            return "Same question cannot be used multiple times in one mock test.";
+        }
+
+        const activeQuestionIds = new Set(
+            activeQuestions.map((question) => question._id)
+        );
+
+        for (const questionId of selectedQuestionIds) {
+            if (!activeQuestionIds.has(questionId)) {
+                return "Only active question bank questions can be assigned.";
+            }
+        }
+
+        return "";
+    };
+
+    const handleSaveAssignments = async () => {
+        const validationError = validateAssignmentForm();
+
+        if (validationError) {
+            showToast({
+                type: "error",
+                message: validationError,
+            });
+            return;
+        }
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (!savedToken) {
+            clearAdminSessionStorage();
+            setIsAllowed(false);
+            setMessage("Please login with an admin account.");
+            return;
+        }
+
+        setIsAssignmentSaving(true);
+
+        try {
+            const response = await fetch(
+                API_BASE_URL + "/api/mock-tests/" + assignmentMockTestId,
+                {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: "Bearer " + savedToken,
+                    },
+                    body: JSON.stringify({
+                        sections: buildAssignmentSectionsPayload(),
+                    }),
+                }
+            );
+
+            const result = (await response.json()) as MockTestMutationResponse;
+
+            if (response.status === 401 || response.status === 403) {
+                clearAdminSessionStorage();
+                setIsAllowed(false);
+                setMessage(
+                    result.message ||
+                        "Your admin session has expired. Please login again."
+                );
+                return;
+            }
+
+            if (!response.ok || !result.success || !result.data?._id) {
+                throw new Error(
+                    result.message || "Unable to save question assignments."
+                );
+            }
+
+            const updatedMockTest = result.data;
+
+            setMockTests((current) =>
+                current.map((mockTest) =>
+                    mockTest._id === updatedMockTest._id
+                        ? updatedMockTest
+                        : mockTest
+                )
+            );
+
+            setAssignmentMockTestId("");
+            setAssignmentSections([]);
+
+            showToast({
+                type: "success",
+                message: "Question assignments saved successfully.",
+            });
+        } catch (error) {
+            showToast({
+                type: "error",
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : "Unable to save question assignments.",
+            });
+        } finally {
+            setIsAssignmentSaving(false);
+        }
     };
 
     const buildSectionsFromSelectedPattern = () => {
@@ -757,6 +1088,7 @@ export default function AdminMockTestsPage() {
                 setMessage("");
                 void loadMockTests(savedToken);
                 void loadExamPatterns(savedToken);
+                void loadActiveQuestions(savedToken);
             } catch (error) {
                 clearAdminSessionStorage();
                 setIsAllowed(false);
@@ -1264,6 +1596,217 @@ export default function AdminMockTestsPage() {
                     ) : null}
                 </section>
 
+                {assignmentMockTest ? (
+                    <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    T-42O Step 5
+                                </p>
+
+                                <h2 className="mt-2 text-xl font-bold">
+                                    Assign Questions
+                                </h2>
+
+                                <p className="mt-3 text-sm leading-6 text-slate-600">
+                                    Assign active MCQ questions section-wise to{" "}
+                                    <span className="font-semibold">
+                                        {assignmentMockTest.title ||
+                                            "selected mock test"}
+                                    </span>
+                                    .
+                                </p>
+                            </div>
+
+                            <button
+                                type="button"
+                                onClick={cancelAssignQuestions}
+                                disabled={isAssignmentSaving}
+                                className="w-fit rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                            >
+                                Cancel Assignment
+                            </button>
+                        </div>
+
+                        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                            <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Active Questions
+                                </p>
+                                <p className="mt-2 text-2xl font-bold">
+                                    {activeQuestions.length}
+                                </p>
+                            </div>
+
+                            <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Sections
+                                </p>
+                                <p className="mt-2 text-2xl font-bold">
+                                    {assignmentSections.length}
+                                </p>
+                            </div>
+
+                            <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Rule
+                                </p>
+                                <p className="mt-2 text-sm font-semibold text-slate-700">
+                                    No duplicate questions in one test
+                                </p>
+                            </div>
+                        </div>
+
+                        {questionsError ? (
+                            <div className="mt-5 rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700 ring-1 ring-red-100">
+                                {questionsError}
+                            </div>
+                        ) : null}
+
+                        {isQuestionsLoading ? (
+                            <div className="mt-5 rounded-2xl bg-slate-50 p-5 text-sm font-semibold text-slate-600 ring-1 ring-slate-200">
+                                Loading active questions...
+                            </div>
+                        ) : activeQuestions.length === 0 ? (
+                            <div className="mt-5 rounded-2xl bg-amber-50 p-5 text-sm font-semibold text-amber-800 ring-1 ring-amber-100">
+                                No active questions available. Add active MCQ
+                                questions in Question Bank first.
+                            </div>
+                        ) : (
+                            <div className="mt-5 grid gap-4">
+                                {assignmentSections.map(
+                                    (section, sectionIndex) => {
+                                        const selectedCount =
+                                            section.questionSlots.filter(
+                                                (slot) => slot.questionId
+                                            ).length;
+
+                                        return (
+                                            <div
+                                                key={
+                                                    section.sectionSlug ||
+                                                    section.name ||
+                                                    String(sectionIndex)
+                                                }
+                                                className="rounded-2xl bg-slate-50 p-5 ring-1 ring-slate-200"
+                                            >
+                                                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                                                    <div>
+                                                        <h3 className="font-bold text-slate-950">
+                                                            {section.name ||
+                                                                section.sectionSlug ||
+                                                                "Section"}
+                                                        </h3>
+
+                                                        <p className="mt-1 text-xs text-slate-500">
+                                                            {section.durationMinutes ||
+                                                                0}{" "}
+                                                            min - +{" "}
+                                                            {section.marksPerQuestion ??
+                                                                0}{" "}
+                                                            / -{" "}
+                                                            {section.negativeMarks ??
+                                                                0}
+                                                        </p>
+                                                    </div>
+
+                                                    <p className="text-sm font-semibold text-slate-700">
+                                                        Assigned {selectedCount}/
+                                                        {section.questionCount || 0}
+                                                    </p>
+                                                </div>
+
+                                                <div className="mt-4 grid gap-3">
+                                                    {section.questionSlots.map(
+                                                        (slot, slotIndex) => (
+                                                            <label
+                                                                key={
+                                                                    sectionIndex +
+                                                                    "-" +
+                                                                    slotIndex
+                                                                }
+                                                                className="grid gap-2 text-sm font-semibold text-slate-700"
+                                                            >
+                                                                Question{" "}
+                                                                {slotIndex + 1}
+                                                                <select
+                                                                    value={
+                                                                        slot.questionId
+                                                                    }
+                                                                    onChange={(
+                                                                        event
+                                                                    ) =>
+                                                                        updateAssignmentQuestion(
+                                                                            sectionIndex,
+                                                                            slotIndex,
+                                                                            event
+                                                                                .target
+                                                                                .value
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        isAssignmentSaving
+                                                                    }
+                                                                    className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
+                                                                >
+                                                                    <option value="">
+                                                                        Not assigned
+                                                                    </option>
+
+                                                                    {activeQuestions.map(
+                                                                        (
+                                                                            question
+                                                                        ) => (
+                                                                            <option
+                                                                                key={
+                                                                                    question._id
+                                                                                }
+                                                                                value={
+                                                                                    question._id
+                                                                                }
+                                                                            >
+                                                                                {getQuestionLabel(
+                                                                                    question
+                                                                                )}
+                                                                            </option>
+                                                                        )
+                                                                    )}
+                                                                </select>
+                                                            </label>
+                                                        )
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+                                )}
+
+                                <div className="flex flex-wrap gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveAssignments}
+                                        disabled={isAssignmentSaving}
+                                        className="rounded-2xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                                    >
+                                        {isAssignmentSaving
+                                            ? "Saving..."
+                                            : "Save Assignments"}
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={cancelAssignQuestions}
+                                        disabled={isAssignmentSaving}
+                                        className="rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </section>
+                ) : null}
+
                 <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
@@ -1295,6 +1838,7 @@ export default function AdminMockTestsPage() {
                                 if (savedToken) {
                                     void loadMockTests(savedToken);
                                     void loadExamPatterns(savedToken);
+                                    void loadActiveQuestions(savedToken);
                                 }
                             }}
                             disabled={isMockTestsLoading}
@@ -1448,6 +1992,21 @@ export default function AdminMockTestsPage() {
                                                     className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100"
                                                 >
                                                     Edit
+                                                </button>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        startAssignQuestions(
+                                                            mockTest
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        mockTest.isActive === false
+                                                    }
+                                                    className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                >
+                                                    Assign Questions
                                                 </button>
                                             </div>
                                         </div>
