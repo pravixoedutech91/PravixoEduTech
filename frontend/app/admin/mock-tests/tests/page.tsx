@@ -129,6 +129,15 @@ type MockTestMutationResponse = {
     data?: MockTest;
 };
 
+type PublishMockTestResponse = {
+    success: boolean;
+    message?: string;
+    data?: {
+        mockTest?: MockTest;
+        version?: ActiveVersionSummary;
+    };
+};
+
 type QuestionGroupSummary = {
     _id: string;
     title?: string;
@@ -263,6 +272,18 @@ export default function AdminMockTestsPage() {
     const [isReady, setIsReady] = useState(false);
     const [isAllowed, setIsAllowed] = useState(false);
     const [message, setMessage] = useState("");
+    const isMockTestPublishReady = (mockTest: MockTest) => {
+        const requiredQuestionCount = getRequiredQuestionCount(mockTest);
+        const assignedQuestionCount = getAssignedQuestionCount(mockTest);
+
+        return (
+            mockTest.isActive !== false &&
+            !mockTest.isPublished &&
+            requiredQuestionCount > 0 &&
+            assignedQuestionCount === requiredQuestionCount
+        );
+    };
+
     const [mockTests, setMockTests] = useState<MockTest[]>([]);
     const [examPatterns, setExamPatterns] = useState<ExamPattern[]>([]);
     const [activeQuestions, setActiveQuestions] = useState<Question[]>([]);
@@ -280,6 +301,7 @@ export default function AdminMockTestsPage() {
         AssignmentSectionForm[]
     >([]);
     const [isAssignmentSaving, setIsAssignmentSaving] = useState(false);
+    const [publishingMockTestId, setPublishingMockTestId] = useState("");
     const [createMockTestForm, setCreateMockTestForm] =
         useState<CreateMockTestForm>(initialCreateMockTestForm);
     const [toast, setToast] = useState<ToastState | null>(null);
@@ -1046,6 +1068,84 @@ export default function AdminMockTestsPage() {
             });
         } finally {
             setIsCreateSaving(false);
+        }
+    };
+
+    const handlePublishMockTest = async (mockTest: MockTest) => {
+        if (!isMockTestPublishReady(mockTest)) {
+            showToast({
+                type: "error",
+                message:
+                    "Mock test is not ready. Complete all section questions before publishing.",
+            });
+            return;
+        }
+
+        const confirmed = window.confirm(
+            "Publish this mock test now? A frozen version snapshot will be created."
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (!savedToken) {
+            clearAdminSessionStorage();
+            setIsAllowed(false);
+            setMessage("Please login with an admin account.");
+            return;
+        }
+
+        setPublishingMockTestId(mockTest._id);
+
+        try {
+            const response = await fetch(
+                API_BASE_URL + "/api/mock-tests/" + mockTest._id + "/publish",
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: "Bearer " + savedToken,
+                    },
+                }
+            );
+
+            const result = (await response.json()) as PublishMockTestResponse;
+
+            if (response.status === 401 || response.status === 403) {
+                clearAdminSessionStorage();
+                setIsAllowed(false);
+                setMessage(
+                    result.message ||
+                        "Your admin session has expired. Please login again."
+                );
+                return;
+            }
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message || "Unable to publish mock test."
+                );
+            }
+
+            await loadMockTests(savedToken);
+
+            showToast({
+                type: "success",
+                message: result.message || "Mock test published successfully.",
+            });
+        } catch (error) {
+            showToast({
+                type: "error",
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : "Unable to publish mock test.",
+            });
+        } finally {
+            setPublishingMockTestId("");
         }
     };
 
@@ -2008,6 +2108,35 @@ export default function AdminMockTestsPage() {
                                                 >
                                                     Assign Questions
                                                 </button>
+
+                                                {isMockTestPublishReady(
+                                                    mockTest
+                                                ) ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handlePublishMockTest(
+                                                                mockTest
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            publishingMockTestId ===
+                                                            mockTest._id
+                                                        }
+                                                        className="rounded-2xl border border-violet-200 bg-violet-50 px-4 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                    >
+                                                        {publishingMockTestId ===
+                                                        mockTest._id
+                                                            ? "Publishing..."
+                                                            : "Publish"}
+                                                    </button>
+                                                ) : !mockTest.isPublished &&
+                                                  mockTest.isActive !== false ? (
+                                                    <p className="rounded-2xl bg-amber-50 px-4 py-2.5 text-center text-xs font-semibold text-amber-800 ring-1 ring-amber-100">
+                                                        Complete questions to
+                                                        publish
+                                                    </p>
+                                                ) : null}
                                             </div>
                                         </div>
 
