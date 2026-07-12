@@ -177,6 +177,37 @@ const getPublishedByLabel = (publishedBy?: PublishedBySummary | string | null) =
     return publishedBy.name || publishedBy.email || publishedBy.role || "-";
 };
 
+const formatBooleanSetting = (value?: boolean) => {
+    if (typeof value !== "boolean") {
+        return "-";
+    }
+
+    return value ? "Yes" : "No";
+};
+
+const formatTextSetting = (value?: string) => {
+    if (!value) {
+        return "-";
+    }
+
+    return value
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+};
+
+const formatNumberSetting = (value?: number) => {
+    if (typeof value !== "number") {
+        return "-";
+    }
+
+    if (value <= 0) {
+        return "Unlimited";
+    }
+
+    return String(value);
+};
+
 export default function AdminPublishedVersionsPage() {
     const [isChecking, setIsChecking] = useState(true);
     const [isAllowed, setIsAllowed] = useState(false);
@@ -676,8 +707,14 @@ export default function AdminPublishedVersionsPage() {
                             Loading published versions...
                         </div>
                     ) : versions.length === 0 ? (
-                        <div className="mt-5 rounded-2xl bg-amber-50 p-5 text-sm font-semibold text-amber-800 ring-1 ring-amber-100">
-                            No published versions found for this mock test yet.
+                        <div className="mt-5 rounded-2xl bg-amber-50 p-5 text-sm text-amber-800 ring-1 ring-amber-100">
+                            <p className="font-semibold">
+                                No published versions found for this mock test yet.
+                            </p>
+                            <p className="mt-2">
+                                Publish this mock test from Mock Test Builder to
+                                create the first frozen read-only snapshot.
+                            </p>
                         </div>
                     ) : (
                         <div className="mt-5 grid gap-4">
@@ -707,6 +744,10 @@ export default function AdminPublishedVersionsPage() {
                                                 <div className="flex flex-wrap gap-2">
                                                     <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-white">
                                                         v{version.versionNumber}
+                                                    </span>
+
+                                                    <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-bold text-purple-700 ring-1 ring-purple-100">
+                                                        Read-only Snapshot
                                                     </span>
 
                                                     {isActiveVersion ? (
@@ -823,6 +864,116 @@ export default function AdminPublishedVersionsPage() {
                                                     {requiredQuestionCount}
                                                 </p>
                                             </div>
+                                        </div>
+
+                                        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                    Version Settings Snapshot
+                                                </p>
+
+                                                <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+                                                    <p>
+                                                        <span className="font-semibold text-slate-800">
+                                                            Max Attempts:
+                                                        </span>{" "}
+                                                        {formatNumberSetting(
+                                                            version.settings
+                                                                ?.maxAttempts
+                                                        )}
+                                                    </p>
+
+                                                    <p>
+                                                        <span className="font-semibold text-slate-800">
+                                                            Resume:
+                                                        </span>{" "}
+                                                        {formatBooleanSetting(
+                                                            version.settings
+                                                                ?.allowResume
+                                                        )}
+                                                    </p>
+
+                                                    <p>
+                                                        <span className="font-semibold text-slate-800">
+                                                            Result Immediate:
+                                                        </span>{" "}
+                                                        {formatBooleanSetting(
+                                                            version.settings
+                                                                ?.showResultImmediately
+                                                        )}
+                                                    </p>
+
+                                                    <p>
+                                                        <span className="font-semibold text-slate-800">
+                                                            Solutions:
+                                                        </span>{" "}
+                                                        {formatTextSetting(
+                                                            version.settings
+                                                                ?.solutionVisibility
+                                                        )}
+                                                    </p>
+
+                                                    <p>
+                                                        <span className="font-semibold text-slate-800">
+                                                            Interface:
+                                                        </span>{" "}
+                                                        {formatTextSetting(
+                                                            version.settings
+                                                                ?.interfaceMode
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                    Exam Behavior Snapshot
+                                                </p>
+
+                                                <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+                                                    <p>
+                                                        <span className="font-semibold text-slate-800">
+                                                            Section Switching:
+                                                        </span>{" "}
+                                                        {formatBooleanSetting(
+                                                            examPattern.allowSectionSwitching
+                                                        )}
+                                                    </p>
+
+                                                    <p>
+                                                        <span className="font-semibold text-slate-800">
+                                                            Question Navigation:
+                                                        </span>{" "}
+                                                        {formatBooleanSetting(
+                                                            examPattern.allowQuestionNavigation
+                                                        )}
+                                                    </p>
+
+                                                    <p>
+                                                        <span className="font-semibold text-slate-800">
+                                                            Language Switching:
+                                                        </span>{" "}
+                                                        {formatBooleanSetting(
+                                                            examPattern.allowLanguageSwitching
+                                                        )}
+                                                    </p>
+
+                                                    <p>
+                                                        <span className="font-semibold text-slate-800">
+                                                            Pattern Result:
+                                                        </span>{" "}
+                                                        {formatBooleanSetting(
+                                                            examPattern.showResultImmediately
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-4 rounded-2xl bg-blue-50 p-4 text-sm text-blue-800 ring-1 ring-blue-100">
+                                            This is a frozen read-only snapshot.
+                                            Editing the draft mock test will not
+                                            change this published version.
                                         </div>
 
                                         {(version.sections || []).length > 0 ? (
