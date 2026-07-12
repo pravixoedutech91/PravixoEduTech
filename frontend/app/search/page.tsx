@@ -1,6 +1,17 @@
+import type { Metadata } from "next";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import PublicSearchBar from "@/components/common/PublicSearchBar";
+
+export const metadata: Metadata = {
+  title: "Search",
+  description:
+    "Search PravixoEduTech public exam preparation content including notes, current affairs, notifications, vacancies and syllabus.",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 type SearchPageProps = {
   searchParams?: Promise<{
