@@ -2269,6 +2269,16 @@ export default function AdminMockTestsPage() {
                                                     Assign Questions
                                                 </button>
 
+                                                <Link
+                                                    href={
+                                                        "/admin/mock-tests/published-versions?mockTestId=" +
+                                                        mockTest._id
+                                                    }
+                                                    className="rounded-2xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-center text-sm font-semibold text-indigo-700 hover:bg-indigo-100"
+                                                >
+                                                    View Versions
+                                                </Link>
+
                                                 {isMockTestPublishReady(
                                                     mockTest
                                                 ) ? (

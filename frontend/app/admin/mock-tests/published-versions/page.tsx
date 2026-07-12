@@ -305,16 +305,29 @@ export default function AdminPublishedVersionsPage() {
             const nextMockTests = result.data || [];
             setMockTests(nextMockTests);
 
+            const requestedMockTestId =
+                typeof window !== "undefined"
+                    ? new URLSearchParams(window.location.search).get(
+                          "mockTestId"
+                      ) || ""
+                    : "";
+
+            const requestedMockTestExists = nextMockTests.some(
+                (mockTest) => mockTest._id === requestedMockTestId
+            );
+
             const currentSelectionStillExists = nextMockTests.some(
                 (mockTest) => mockTest._id === selectedMockTestId
             );
 
-            const nextSelectedMockTestId = currentSelectionStillExists
-                ? selectedMockTestId
-                : nextMockTests.find((mockTest) => mockTest.activeVersionId)
-                      ?._id ||
-                  nextMockTests[0]?._id ||
-                  "";
+            const nextSelectedMockTestId = requestedMockTestExists
+                ? requestedMockTestId
+                : currentSelectionStillExists
+                  ? selectedMockTestId
+                  : nextMockTests.find((mockTest) => mockTest.activeVersionId)
+                        ?._id ||
+                    nextMockTests[0]?._id ||
+                    "";
 
             setSelectedMockTestId(nextSelectedMockTestId);
 
