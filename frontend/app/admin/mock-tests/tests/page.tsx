@@ -302,6 +302,7 @@ export default function AdminMockTestsPage() {
     >([]);
     const [isAssignmentSaving, setIsAssignmentSaving] = useState(false);
     const [publishingMockTestId, setPublishingMockTestId] = useState("");
+    const [unpublishingMockTestId, setUnpublishingMockTestId] = useState("");
     const [createMockTestForm, setCreateMockTestForm] =
         useState<CreateMockTestForm>(initialCreateMockTestForm);
     const [toast, setToast] = useState<ToastState | null>(null);
@@ -1146,6 +1147,84 @@ export default function AdminMockTestsPage() {
             });
         } finally {
             setPublishingMockTestId("");
+        }
+    };
+
+    const handleUnpublishMockTest = async (mockTest: MockTest) => {
+        if (!mockTest.isPublished) {
+            showToast({
+                type: "error",
+                message: "Only published mock tests can be unpublished.",
+            });
+            return;
+        }
+
+        const confirmed = window.confirm(
+            "Unpublish this mock test now? Students will no longer see it in the mock test list."
+        );
+
+        if (!confirmed) {
+            return;
+        }
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (!savedToken) {
+            clearAdminSessionStorage();
+            setIsAllowed(false);
+            setMessage("Please login with an admin account.");
+            return;
+        }
+
+        setUnpublishingMockTestId(mockTest._id);
+
+        try {
+            const response = await fetch(
+                API_BASE_URL + "/api/mock-tests/" + mockTest._id + "/unpublish",
+                {
+                    method: "PATCH",
+                    headers: {
+                        Authorization: "Bearer " + savedToken,
+                    },
+                }
+            );
+
+            const result = (await response.json()) as MockTestMutationResponse;
+
+            if (response.status === 401 || response.status === 403) {
+                clearAdminSessionStorage();
+                setIsAllowed(false);
+                setMessage(
+                    result.message ||
+                        "Your admin session has expired. Please login again."
+                );
+                return;
+            }
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message || "Unable to unpublish mock test."
+                );
+            }
+
+            await loadMockTests(savedToken);
+
+            showToast({
+                type: "success",
+                message:
+                    result.message || "Mock test unpublished successfully.",
+            });
+        } catch (error) {
+            showToast({
+                type: "error",
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : "Unable to unpublish mock test.",
+            });
+        } finally {
+            setUnpublishingMockTestId("");
         }
     };
 
@@ -2136,6 +2215,28 @@ export default function AdminMockTestsPage() {
                                                         Complete questions to
                                                         publish
                                                     </p>
+                                                ) : null}
+
+                                                {mockTest.isPublished &&
+                                                mockTest.isActive !== false ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            handleUnpublishMockTest(
+                                                                mockTest
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            unpublishingMockTestId ===
+                                                            mockTest._id
+                                                        }
+                                                        className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-2.5 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                    >
+                                                        {unpublishingMockTestId ===
+                                                        mockTest._id
+                                                            ? "Unpublishing..."
+                                                            : "Unpublish"}
+                                                    </button>
                                                 ) : null}
                                             </div>
                                         </div>
