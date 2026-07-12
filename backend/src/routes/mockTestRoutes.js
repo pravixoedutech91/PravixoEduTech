@@ -5,6 +5,7 @@ const {
   createMockTest,
   getAllMockTests,
   getSingleMockTest,
+  getMockTestVersions,
   updateMockTest,
   disableMockTest,
   publishMockTest,
@@ -37,6 +38,15 @@ router.get(
   authorize(...adminRoles),
   checkFeatureAccess("mockTests"),
   getAllMockTests
+);
+
+// Get Mock Test Published Versions
+router.get(
+  "/:id/versions",
+  protect,
+  authorize(...adminRoles),
+  checkFeatureAccess("mockTests"),
+  getMockTestVersions
 );
 
 // Get Single Mock Test

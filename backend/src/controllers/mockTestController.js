@@ -752,6 +752,60 @@ const getSingleMockTest = async (req, res) => {
 };
 
 
+
+const getMockTestVersions = async (req, res) => {
+    try {
+        const tenantFilter = getTenantFilter(req);
+
+        const mockTest = await MockTest.findOne({
+            _id: req.params.id,
+            ...tenantFilter,
+        }).select(
+            "_id tenantId title slug testType isActive isPublished activeVersionId publishedAt"
+        );
+
+        if (!mockTest) {
+            return res.status(404).json({
+                success: false,
+                message: "Mock test not found or access denied",
+            });
+        }
+
+        const versions = await MockTestVersion.find({
+            tenantId: mockTest.tenantId,
+            mockTestId: mockTest._id,
+        })
+            .select(
+                "mockTestId versionNumber title slug description testType accessType price salePrice instructionsEn instructionsHi examPatternSnapshot sections settings publishedBy publishedAt isActive createdAt updatedAt"
+            )
+            .populate("publishedBy", "name email role")
+            .sort({ versionNumber: -1 });
+
+        return res.status(200).json({
+            success: true,
+            count: versions.length,
+            mockTest: {
+                _id: mockTest._id,
+                title: mockTest.title,
+                slug: mockTest.slug,
+                testType: mockTest.testType,
+                isActive: mockTest.isActive,
+                isPublished: mockTest.isPublished,
+                activeVersionId: mockTest.activeVersionId,
+                publishedAt: mockTest.publishedAt,
+            },
+            data: versions,
+        });
+    } catch (error) {
+        console.error(error);
+
+        return res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
+};
+
 const updateMockTest = async (req, res) => {
     try {
         const tenantFilter = getTenantFilter(req);
@@ -1147,6 +1201,7 @@ module.exports = {
     createMockTest,
     getAllMockTests,
     getSingleMockTest,
+    getMockTestVersions,
     updateMockTest,
     disableMockTest,
     publishMockTest,
