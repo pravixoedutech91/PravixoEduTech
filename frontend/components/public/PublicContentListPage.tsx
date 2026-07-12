@@ -1,3 +1,4 @@
+import Link from "next/link";
 import PublicSearchBar from "@/components/common/PublicSearchBar";
 import Footer from "@/components/layout/Footer";
 import Navbar from "@/components/layout/Navbar";
@@ -118,9 +119,12 @@ export default async function PublicContentListPage({
                   </div>
 
                   <div className="mt-auto pt-6">
-                    <span className="inline-flex rounded-full bg-slate-100 px-4 py-2 text-xs font-black text-slate-600">
-                      Detail page coming next
-                    </span>
+                    <Link
+                      href={`${routeBase}/${item.slug}`}
+                      className="text-sm font-black text-blue-700 hover:text-blue-900"
+                    >
+                      Read details &gt;
+                    </Link>
                   </div>
                 </article>
               ))}

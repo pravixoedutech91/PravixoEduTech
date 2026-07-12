@@ -25,6 +25,7 @@ export type PublicContentItem = {
   type: PublicContentType;
   category?: PublicCategory | null;
   summary?: string;
+  content?: string;
   featuredImage?: string;
   tags?: string[];
   status?: "draft" | "published";
@@ -39,6 +40,11 @@ export type PublicContentListResponse = {
   success: boolean;
   count: number;
   data: PublicContentItem[];
+};
+
+export type PublicContentSingleResponse = {
+  success: boolean;
+  data: PublicContentItem;
 };
 
 const API_BASE =
@@ -79,6 +85,48 @@ export const getPublicContentList = async (
     return {
       items: [],
       error: "Unable to load public content right now.",
+    };
+  }
+};
+
+export const getPublicContentBySlug = async (
+  slug: string
+): Promise<{
+  item: PublicContentItem | null;
+  error: string;
+}> => {
+  try {
+    const response = await fetch(
+      `${API_BASE}/api/content/public/${encodeURIComponent(slug)}`,
+      {
+        cache: "no-store",
+      }
+    );
+
+    if (response.status === 404) {
+      return {
+        item: null,
+        error: "",
+      };
+    }
+
+    if (!response.ok) {
+      return {
+        item: null,
+        error: `Content API returned ${response.status}`,
+      };
+    }
+
+    const body = (await response.json()) as PublicContentSingleResponse;
+
+    return {
+      item: body.data || null,
+      error: "",
+    };
+  } catch {
+    return {
+      item: null,
+      error: "Unable to load this public content right now.",
     };
   }
 };
