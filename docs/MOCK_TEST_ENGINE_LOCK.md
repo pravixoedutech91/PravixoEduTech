@@ -1,6 +1,6 @@
 ﻿# PravixoEduTech Mock Test Engine Lock
 
-Last Updated: 2026-06-21  
+Last Updated: 2026-06-21
 Branch: feature/question-group-stimulus-support
 
 ---
@@ -38,6 +38,7 @@ PravixoEduTech core requirements are:
 15. E-books / PDFs
 
 ---
+
 
 ## Final Locked Mock Test Engine Decisions
 
@@ -386,59 +387,42 @@ Pending:
 
 ## Frontend Roadmap
 
-Frontend must be built in this order:
+Current frontend status after T-42Q:
 
-1. Student Mock Test Listing
-2. Start/Resume Test
-3. MCQ Attempt Interface
-4. Submit Confirmation
-5. Result Page
-6. Review Page
-7. My Attempts Page
-8. Public content pages
-9. Admin content UI
-10. Admin mock-test builder UI
+Completed:
 
----
+- Student Mock Test Listing.
+- Start / Resume Test.
+- MCQ Attempt Interface.
+- Submit flow.
+- Result Page.
+- Review Page.
+- My Attempts Page.
+- Student pause and resume flow.
+- Student attempt expiry and edge-case handling.
+- Admin Exam Patterns page.
+- Admin Question Groups page.
+- Admin Question Bank page.
+- Admin Mock Test Builder.
+- Admin mock test draft create/edit flow.
+- Admin question assignment flow.
+- Admin publish / unpublish / disable flow.
+- Admin Published Versions page.
+- Admin read-only published version snapshot visibility.
+- Mock Test Builder View Versions action.
 
-## Immediate Next Tasks
+Historical completed frontend milestones:
 
-### T-32: Student Mock Test Listing Frontend
+- T-32: Student Mock Test Listing Frontend.
+- T-33: Start / Resume Test Frontend.
+- T-34: MCQ Attempt Interface.
+- T-35 to T-42K: Student attempt, result, review, resume, edge-case, and polish flow.
+- T-42M: Admin Question Groups UI.
+- T-42N: Admin Question Bank UI.
+- T-42O: Admin Mock Test Builder UI.
+- T-42P: Admin Published Versions UI.
 
-Use:
-
-GET /api/student/mock-tests
-
-Frontend should use:
-
-studentAttemptSummary.primaryAction
-
-Possible actions:
-
-- start
-- resume
-- view_result
-- view_review
-- retake
-- limit_reached
-
----
-
-### T-33: Start/Resume Test Frontend
-
-Use:
-
-POST /api/student/mock-tests/:mockTestId/start
-
----
-
-### T-34: MCQ Attempt Interface
-
-Use:
-
-PATCH /api/student/attempts/:attemptId/answer
-
-POST /api/student/attempts/:attemptId/submit
+Next frontend work should be selected from post-Mock-Test MVP modules. Do not redesign the locked Mock Test foundation.
 
 ---
 
@@ -474,7 +458,7 @@ Not immediate:
 - Referral payout automation
 - Advanced admin visual builder
 
-These come after the MCQ test frontend is usable.
+These come after the Mock Test MCQ MVP is stable in production and the next revenue/growth modules are prioritized.
 
 ---
 
@@ -491,11 +475,60 @@ PravixoEduTech Mock Test MVP is complete only when real students can:
 7. See previous attempts.
 8. Use a safe snapshot-based test engine.
 
-Current status:
+Current status after T-42Q final smoke test:
 
-Backend: mostly complete for MCQ MVP.  
-Frontend: pending.  
-Advanced exams: pending.
+Backend: complete for current single-correct MCQ Mock Test MVP.
+Admin frontend: complete for current Mock Test MVP management flow.
+Student frontend: complete for current Mock Test MVP attempt flow.
+Published Versions admin page: complete for read-only snapshot visibility.
+Question Groups / stimulus: complete for current grouped MCQ snapshot flow.
+Advanced exams: pending and intentionally out of current MVP scope.
+
+---
+
+
+## T-42Q Final Smoke Test Lock
+
+Date: 12 July 2026
+
+Final smoke test status: PASSED.
+
+Admin smoke test completed:
+
+- Admin Dashboard loads.
+- Exam Patterns page loads existing patterns.
+- Exam pattern active/inactive status is visible.
+- Exam pattern Disable / Re-enable / Delete controls are available as designed.
+- Question Groups page loads grouped stimulus content.
+- Question Groups Create / Edit / Disable controls are available.
+- Question Bank page loads active MCQ questions.
+- Admin can see correct option and explanation in Question Bank.
+- Question Bank Create / Edit / Disable controls are available.
+- Mock Test Builder loads draft and published mock tests.
+- Mock Test Builder shows Edit, Assign Questions, Publish, Unpublish, Disable, and View Versions states correctly.
+- Published Versions page loads mock test version history.
+- Published Versions page shows read-only frozen snapshots, active/latest badges, settings snapshot, behavior snapshot, and section/question snapshot details.
+
+Student smoke test completed:
+
+- Student Mock Tests page loads.
+- Only active published mock tests are visible to students.
+- Disabled/inactive admin tests are hidden from students.
+- Student pre-submit payload does not expose correct options or explanations.
+- Student can start or retake a published test.
+- Student attempt page loads grouped stimulus content.
+- Student can select and save an answer.
+- Pause and Exit works.
+- Resume restores the saved answer.
+- Submit redirects to result.
+- Result page shows score, percentage, accuracy, attempt summary, section analysis, topic analysis, and difficulty analysis.
+- Review page shows correct answer and explanation only after submission.
+- My Attempts page shows submitted attempt with View Result and View Review actions.
+- Backend expiry sync is active on attempt history.
+
+Current locked MVP result:
+
+The current single-correct MCQ Mock Test MVP is functionally complete for admin creation/publishing/version visibility and student attempt/result/review flow.
 
 ---
 
@@ -507,4 +540,4 @@ Do not redesign the foundation unless a security, scalability, or exam-rule issu
 
 Next step after this document:
 
-T-32 — Student Mock Test Listing Frontend.
+T-42Q final smoke test is complete. The next roadmap task should be selected from the post-Mock-Test MVP modules, without redesigning the locked mock test foundation.
