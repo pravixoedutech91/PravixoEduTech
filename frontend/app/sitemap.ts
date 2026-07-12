@@ -3,11 +3,19 @@ import type { MetadataRoute } from "next";
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
-/**
- * Only include routes that currently exist and are safe to index.
- * More public routes will be added here after their pages are implemented.
- */
-const livePublicRoutes = [""];
+const livePublicRoutes = [
+  "",
+  "/exams",
+  "/articles",
+  "/study-notes",
+  "/current-affairs",
+  "/notifications",
+  "/vacancies",
+  "/admit-cards",
+  "/results",
+  "/syllabus",
+  "/mock-tests",
+];
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
@@ -15,7 +23,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   return livePublicRoutes.map((route) => ({
     url: `${siteUrl}${route}`,
     lastModified: now,
-    changeFrequency: "daily",
-    priority: 1,
+    changeFrequency: route === "" ? "daily" : "weekly",
+    priority: route === "" ? 1 : 0.8,
   }));
 }
