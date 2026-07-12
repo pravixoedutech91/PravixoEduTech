@@ -2389,7 +2389,12 @@ export default function AdminMockTestsPage() {
 
                                             <p>
                                                 <span className="font-semibold text-slate-800">
-                                                    Active Version:
+                                                    {mockTest.isPublished &&
+                                                    mockTest.isActive !== false
+                                                        ? "Active Version:"
+                                                        : activeVersion?.versionNumber
+                                                          ? "Last Published Version:"
+                                                          : "Active Version:"}
                                                 </span>{" "}
                                                 {activeVersion?.versionNumber
                                                     ? "v" +
