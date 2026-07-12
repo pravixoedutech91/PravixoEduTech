@@ -3,10 +3,45 @@ const {
   getTenantFilter,
 } = require("../middleware/tenantMiddleware");
 
-// Create Category
+const PUBLIC_TENANT_ID =
+  process.env.PUBLIC_TENANT_ID || "pravixoedutech";
+
+const normalizeCategoryWriteData = (req) => {
+  const data = {
+    ...req.body,
+  };
+
+  delete data._id;
+  delete data.createdAt;
+  delete data.updatedAt;
+
+  if (req.user?.role !== "super_admin") {
+    data.tenantId = req.user.tenantId;
+  } else {
+    data.tenantId = data.tenantId || PUBLIC_TENANT_ID;
+  }
+
+  return data;
+};
+
+const normalizeCategoryUpdateData = (req) => {
+  const data = {
+    ...req.body,
+  };
+
+  delete data._id;
+  delete data.createdAt;
+  delete data.updatedAt;
+  delete data.tenantId;
+
+  return data;
+};
+
 const createCategory = async (req, res) => {
   try {
-    const category = await Category.create(req.body);
+    const category = await Category.create(
+      normalizeCategoryWriteData(req)
+    );
 
     res.status(201).json({
       success: true,
@@ -22,7 +57,30 @@ const createCategory = async (req, res) => {
   }
 };
 
-// Get All Categories
+const getPublicCategories = async (req, res) => {
+  try {
+    const categories = await Category.find({
+      tenantId: PUBLIC_TENANT_ID,
+      isActive: true,
+    }).sort({
+      name: 1,
+    });
+
+    res.status(200).json({
+      success: true,
+      count: categories.length,
+      data: categories,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 const getAllCategories = async (req, res) => {
   try {
     const tenantFilter = getTenantFilter(req);
@@ -46,7 +104,6 @@ const getAllCategories = async (req, res) => {
   }
 };
 
-// Update Category
 const updateCategory = async (req, res) => {
   try {
     const tenantFilter = getTenantFilter(req);
@@ -56,7 +113,7 @@ const updateCategory = async (req, res) => {
         _id: req.params.id,
         ...tenantFilter,
       },
-      req.body,
+      normalizeCategoryUpdateData(req),
       {
         new: true,
         runValidators: true,
@@ -84,8 +141,6 @@ const updateCategory = async (req, res) => {
   }
 };
 
-
-// Delete Category
 const deleteCategory = async (req, res) => {
   try {
     const tenantFilter = getTenantFilter(req);
@@ -115,8 +170,10 @@ const deleteCategory = async (req, res) => {
     });
   }
 };
+
 module.exports = {
   createCategory,
+  getPublicCategories,
   getAllCategories,
   updateCategory,
   deleteCategory,

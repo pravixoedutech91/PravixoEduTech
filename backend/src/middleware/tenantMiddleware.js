@@ -113,9 +113,14 @@ const checkContentFeatureAccess = async (req, res, next) => {
 
     const featureMap = {
       article: "articles",
-      study_note: "studyNotes",
-      notification: "notifications",
-      current_affairs: "currentAffairs",
+      study_note: "articles",
+      notification: "articles",
+      current_affairs: "articles",
+      vacancy: "articles",
+      admit_card: "articles",
+      result: "articles",
+      syllabus: "articles",
+      exam_page: "articles",
     };
 
     const featureName = featureMap[contentType];

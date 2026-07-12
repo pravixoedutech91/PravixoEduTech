@@ -3,6 +3,7 @@ const router = express.Router();
 
 const {
   createCategory,
+  getPublicCategories,
   getAllCategories,
   updateCategory,
   deleteCategory,
@@ -17,7 +18,8 @@ const {
   ensureTenantAccess,
 } = require("../middleware/tenantMiddleware");
 
-// Create Category
+router.get("/public", getPublicCategories);
+
 router.post(
   "/",
   protect,
@@ -26,7 +28,6 @@ router.post(
   createCategory
 );
 
-// Get All Categories
 router.get(
   "/",
   protect,
@@ -34,7 +35,6 @@ router.get(
   getAllCategories
 );
 
-// Update Category
 router.put(
   "/:id",
   protect,
@@ -43,7 +43,6 @@ router.put(
   updateCategory
 );
 
-// Delete Category
 router.delete(
   "/:id",
   protect,

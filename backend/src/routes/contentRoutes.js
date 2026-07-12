@@ -5,6 +5,8 @@ const {
   createContent,
   getAllContent,
   getContentBySlug,
+  getPublicContentList,
+  getPublicContentBySlug,
   updateContent,
   deleteContent,
   getAdminContentList,
@@ -20,7 +22,9 @@ const {
   checkContentFeatureAccess,
 } = require("../middleware/tenantMiddleware");
 
-// Create Content
+router.get("/public", getPublicContentList);
+router.get("/public/:slug", getPublicContentBySlug);
+
 router.post(
   "/",
   protect,
@@ -30,8 +34,6 @@ router.post(
   createContent
 );
 
-
-// Get All Content
 router.get("/", getAllContent);
 
 router.get(
@@ -41,10 +43,8 @@ router.get(
   getAdminContentList
 );
 
-// Get Single Content By Slug
 router.get("/:slug", getContentBySlug);
 
-//update content
 router.put(
   "/:id",
   protect,
@@ -53,7 +53,6 @@ router.put(
   updateContent
 );
 
-//delete content
 router.delete(
   "/:id",
   protect,
