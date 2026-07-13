@@ -15,13 +15,17 @@ const livePublicRoutes = [
   "/results",
   "/syllabus",
   "/mock-tests",
+  "/about",
+  "/contact",
+  "/editorial-policy",
+  "/correction-policy",
 ];
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
 
   return livePublicRoutes.map((route) => ({
-    url: `${siteUrl}${route}`,
+    url: siteUrl + route,
     lastModified: now,
     changeFrequency: route === "" ? "daily" : "weekly",
     priority: route === "" ? 1 : 0.8,
