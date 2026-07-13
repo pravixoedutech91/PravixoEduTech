@@ -390,6 +390,13 @@ export default function AdminContentPage() {
                         </div>
 
                         <div className="flex flex-wrap gap-3">
+                            <Link
+                                href="/admin/content/create"
+                                className="rounded-2xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"
+                            >
+                                New Content
+                            </Link>
+
                             <button
                                 type="button"
                                 onClick={() => {
