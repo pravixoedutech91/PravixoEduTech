@@ -616,16 +616,23 @@ export default function AdminContentPage() {
                                                     Published: {formatDate(content.publishedAt)}
                                                 </p>
 
+                                                <Link
+                                                    href={"/admin/content/" + content._id}
+                                                    className="mt-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                                >
+                                                    Edit
+                                                </Link>
+
                                                 {isPublished && previewHref ? (
                                                     <Link
                                                         href={previewHref}
                                                         target="_blank"
-                                                        className="mt-2 rounded-2xl bg-blue-700 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-blue-800"
+                                                        className="rounded-2xl bg-blue-700 px-4 py-2.5 text-center text-sm font-semibold text-white hover:bg-blue-800"
                                                     >
                                                         Public Preview
                                                     </Link>
                                                 ) : (
-                                                    <span className="mt-2 rounded-2xl bg-slate-200 px-4 py-2.5 text-center text-sm font-semibold text-slate-600">
+                                                    <span className="rounded-2xl bg-slate-200 px-4 py-2.5 text-center text-sm font-semibold text-slate-600">
                                                         Preview after publish
                                                     </span>
                                                 )}
