@@ -3,9 +3,9 @@ const mongoose = require("mongoose");
 const paymentProductSchema = new mongoose.Schema(
   {
     tenantId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Tenant",
+      type: String,
       required: true,
+      trim: true,
       index: true,
     },
 

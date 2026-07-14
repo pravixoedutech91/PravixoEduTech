@@ -148,9 +148,9 @@ const validateMockTestIdsForTenant = async (tenantId, mockTestIds) => {
 };
 
 const buildCreateData = async (req) => {
-  const tenantId = getWriteTenantId(req);
+  const tenantId = String(getWriteTenantId(req) || "").trim();
 
-  if (!tenantId || !isValidObjectId(tenantId)) {
+  if (!hasText(tenantId)) {
     return {
       error: "Valid tenantId is required",
     };

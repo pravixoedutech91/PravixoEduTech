@@ -38,9 +38,9 @@ const purchaseProductSnapshotSchema = new mongoose.Schema(
 const purchaseSchema = new mongoose.Schema(
   {
     tenantId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Tenant",
+      type: String,
       required: true,
+      trim: true,
       index: true,
     },
 
