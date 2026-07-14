@@ -260,6 +260,43 @@ export default function AdminDashboardPage() {
                                 ))}
                             </div>
                         </div>
+                        <div>
+                            <p className="px-3 text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+                                Public Content
+                            </p>
+
+                            <div className="mt-3 space-y-2">
+                                <Link
+                                    href="/admin/content"
+                                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
+                                >
+                                    <span>Content Manager</span>
+                                    <span className="rounded-full bg-blue-950 px-2 py-0.5 text-[11px] text-blue-200">
+                                        Open
+                                    </span>
+                                </Link>
+
+                                <Link
+                                    href="/admin/content/create"
+                                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
+                                >
+                                    <span>Create Content</span>
+                                    <span className="rounded-full bg-blue-950 px-2 py-0.5 text-[11px] text-blue-200">
+                                        Open
+                                    </span>
+                                </Link>
+
+                                <Link
+                                    href="/admin/content/categories"
+                                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
+                                >
+                                    <span>Categories</span>
+                                    <span className="rounded-full bg-blue-950 px-2 py-0.5 text-[11px] text-blue-200">
+                                        Open
+                                    </span>
+                                </Link>
+                            </div>
+                        </div>
                     </nav>
                 </aside>
 
@@ -319,22 +356,52 @@ export default function AdminDashboardPage() {
                                 </p>
                             </div>
                         </section>
-
                         <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
                             <h2 className="text-xl font-bold">
-                                T-42B Admin Shell Foundation
+                                Admin Modules
                             </h2>
 
                             <p className="mt-3 text-sm leading-6 text-slate-600">
-                                Admin sidebar shell is now ready. The Mock-Test section
-                                will be connected step by step: Exam Patterns, Question
-                                Groups, Question Bank, Mock Test Builder, and Published
-                                Versions.
+                                Manage public content, categories, exam patterns, question groups,
+                                question bank, mock tests and published versions from one admin panel.
                             </p>
 
-                            <div className="mt-5 rounded-2xl bg-blue-50 p-4 text-sm text-blue-900 ring-1 ring-blue-100">
-                                Next step: create protected placeholder routes for the
-                                Mock-Test module before adding forms or APIs.
+                            <div className="mt-6 grid gap-4 md:grid-cols-3">
+                                <Link
+                                    href="/admin/content"
+                                    className="rounded-3xl border border-blue-100 bg-blue-50 p-5 hover:bg-blue-100"
+                                >
+                                    <p className="text-sm font-black text-blue-800">
+                                        Content Manager
+                                    </p>
+                                    <p className="mt-2 text-sm leading-6 text-blue-950">
+                                        List, filter, preview and edit public website content.
+                                    </p>
+                                </Link>
+
+                                <Link
+                                    href="/admin/content/create"
+                                    className="rounded-3xl border border-emerald-100 bg-emerald-50 p-5 hover:bg-emerald-100"
+                                >
+                                    <p className="text-sm font-black text-emerald-800">
+                                        Create Content
+                                    </p>
+                                    <p className="mt-2 text-sm leading-6 text-emerald-950">
+                                        Add articles, notes, notifications, vacancies and syllabus pages.
+                                    </p>
+                                </Link>
+
+                                <Link
+                                    href="/admin/content/categories"
+                                    className="rounded-3xl border border-amber-100 bg-amber-50 p-5 hover:bg-amber-100"
+                                >
+                                    <p className="text-sm font-black text-amber-800">
+                                        Categories
+                                    </p>
+                                    <p className="mt-2 text-sm leading-6 text-amber-950">
+                                        Create, edit, deactivate and reactivate public content categories.
+                                    </p>
+                                </Link>
                             </div>
                         </section>
                     </div>
