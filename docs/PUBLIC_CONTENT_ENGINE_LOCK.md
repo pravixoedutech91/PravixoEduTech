@@ -152,3 +152,133 @@ Search is currently a shell route and should be connected to public content APIs
 - Admin/student routes remain noindex.
 - Category delete is intentionally not implemented yet.
 - Category deactivate/reactivate is used instead of delete for safety.
+
+---
+
+## T-43J Public Search Connection Lock
+
+Status: Completed
+
+Latest completed commit at lock time:
+
+- 2200765 Connect public search to content
+
+### Completed search features
+
+The public search page is now connected to published public content.
+
+Implemented route:
+
+- /search
+
+Search behavior:
+
+- Reads query from /search?q=keyword
+- Preserves typed query in the search box
+- Loads published public content through public content API
+- Searches title, slug, summary, content, SEO title, SEO description, type, category and tags
+- Shows result cards with content type, category, date, title, summary and tags
+- Opens the correct public detail URL based on content type
+- Shows a clear no-results state
+
+SEO safety:
+
+- /search remains noindex and nofollow
+- /search remains blocked in robots.txt
+
+Proof completed:
+
+- /search opened with start-search message
+- /search?q=polity returned matching results
+- /search?q=notification returned matching results
+- Result links opened correct public detail pages
+- /search?q=xyznotfound123 showed no-results state
+- Frontend production build passed
+
+---
+
+## T-43K Public SEO Polish and Final Public Website Smoke Lock
+
+Status: Completed
+
+Latest completed commits at lock time:
+
+- 3b04fb5 Add dynamic public content sitemap URLs
+- b1e6e2d Fix public footer copyright text
+
+### Completed SEO polish
+
+The public sitemap now includes:
+
+- Static public routes
+- Dynamic published public content detail URLs
+
+Sitemap route:
+
+- /sitemap.xml
+
+Robots route:
+
+- /robots.txt
+
+robots.txt rules verified:
+
+- Allows public listing pages
+- Blocks /admin
+- Blocks /student
+- Blocks /search
+- Blocks /api
+- Points to sitemap.xml
+
+### Structured data verified
+
+Public detail pages include JSON-LD structured data with:
+
+- WebPage
+- BreadcrumbList
+- Article, NewsArticle or WebPage based on content type
+
+Public detail pages also include:
+
+- Quick Answer
+- Content facts
+- About this page
+- Trust note
+
+### Search SEO verified
+
+The search page includes:
+
+- noindex
+- nofollow
+
+### Footer polish
+
+The public footer copyright text was fixed to:
+
+- (c) 2026 PravixoEduTech. All rights reserved.
+
+This avoids broken encoding symbols in browser output.
+
+### Final public smoke proof
+
+Final smoke checks passed for:
+
+- Public listing routes
+- Public detail routes
+- Public search route
+- robots.txt
+- sitemap.xml
+- Dynamic sitemap detail URLs
+- Search noindex/nofollow metadata
+- Detail JSON-LD structured data
+- Footer text
+
+### Locked outcome
+
+T-43 Public Website, SEO/AEO/GEO/LLMO foundation, Admin Content Management, Public Search and Public SEO smoke are complete for the current MVP stage.
+
+Next recommended module:
+
+- T-44 Payments foundation, or
+- T-44 Public Mock Test landing polish before payments
