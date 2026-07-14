@@ -391,6 +391,13 @@ export default function AdminContentPage() {
 
                         <div className="flex flex-wrap gap-3">
                             <Link
+                                href="/admin/content/categories"
+                                className="rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                                Categories
+                            </Link>
+
+                            <Link
                                 href="/admin/content/create"
                                 className="rounded-2xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800"
                             >
