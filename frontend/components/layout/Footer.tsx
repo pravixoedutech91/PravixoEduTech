@@ -98,7 +98,7 @@ export default function Footer() {
 
       <div className="border-t border-slate-800 px-4 py-5">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 text-sm text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-          <p>� 2026 PravixoEduTech. All rights reserved.</p>
+          <p>(c) 2026 PravixoEduTech. All rights reserved.</p>
           <p>Public content is informational. Always verify official exam notices.</p>
         </div>
       </div>
