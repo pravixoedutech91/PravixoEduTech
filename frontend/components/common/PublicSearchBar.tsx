@@ -1,11 +1,13 @@
 type PublicSearchBarProps = {
   placeholder?: string;
   compact?: boolean;
+  defaultValue?: string;
 };
 
 export default function PublicSearchBar({
   placeholder = "Search notes, current affairs, syllabus, jobs...",
   compact = false,
+  defaultValue = "",
 }: PublicSearchBarProps) {
   return (
     <form
@@ -24,6 +26,7 @@ export default function PublicSearchBar({
         id="public-search"
         name="q"
         type="search"
+        defaultValue={defaultValue}
         placeholder={placeholder}
         className={
           compact

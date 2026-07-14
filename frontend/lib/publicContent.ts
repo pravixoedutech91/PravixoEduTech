@@ -89,6 +89,41 @@ export const getPublicContentList = async (
   }
 };
 
+export const getPublicContentSearchList = async (
+  limit = 120
+): Promise<{
+  items: PublicContentItem[];
+  error: string;
+}> => {
+  try {
+    const url = new URL("/api/content/public", API_BASE);
+    url.searchParams.set("limit", String(limit));
+
+    const response = await fetch(url.toString(), {
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      return {
+        items: [],
+        error: `Content API returned ${response.status}`,
+      };
+    }
+
+    const body = (await response.json()) as PublicContentListResponse;
+
+    return {
+      items: Array.isArray(body.data) ? body.data : [],
+      error: "",
+    };
+  } catch {
+    return {
+      items: [],
+      error: "Unable to load search results right now.",
+    };
+  }
+};
+
 export const getPublicContentBySlug = async (
   slug: string
 ): Promise<{
