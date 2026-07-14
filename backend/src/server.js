@@ -11,6 +11,7 @@ const questionRoutes = require("./routes/questionRoutes");
 const mockTestRoutes = require("./routes/mockTestRoutes");
 const questionGroupRoutes = require("./routes/questionGroupRoutes");
 const studentMockTestRoutes = require("./routes/studentMockTestRoutes");
+const paymentProductRoutes = require("./routes/paymentProductRoutes");
 dotenv.config();
 
 connectDB();
@@ -28,6 +29,7 @@ app.use("/api/questions", questionRoutes);
 app.use("/api/mock-tests", mockTestRoutes);
 app.use("/api/question-groups", questionGroupRoutes);
 app.use("/api/student", studentMockTestRoutes);
+app.use("/api/payment-products", paymentProductRoutes);
 
 app.get("/", (req, res) => {
   res.json({
