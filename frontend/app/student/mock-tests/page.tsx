@@ -96,6 +96,17 @@ type StudentPaymentPackage = {
     includedMockTestCount: number;
     includedMockTests: StudentPaymentPackageMockTest[];
     isActive: boolean;
+    isPurchased?: boolean;
+    hasActiveEntitlement?: boolean;
+    accessStatus?: "active" | "not_purchased" | string;
+    entitlement?: {
+        _id?: string;
+        entitlementType?: string;
+        status?: string;
+        validFrom?: string;
+        validUntil?: string;
+        mockTestIds?: string[];
+    } | null;
 };
 
 type StudentPaymentPackagesResponse = {
@@ -103,6 +114,14 @@ type StudentPaymentPackagesResponse = {
     count: number;
     data: StudentPaymentPackage[];
     message?: string;
+};
+
+const isPaymentPackageAccessActive = (paymentPackage: StudentPaymentPackage) => {
+    return Boolean(
+        paymentPackage.isPurchased ||
+            paymentPackage.hasActiveEntitlement ||
+            paymentPackage.accessStatus === "active"
+    );
 };
 
 type StudentCreatePaymentOrderResponse = {
@@ -684,6 +703,14 @@ export default function StudentMockTestsPage() {
             return;
         }
 
+        if (isPaymentPackageAccessActive(paymentPackage)) {
+            setErrorMessage("");
+            setActionMessage(
+                paymentPackage.title + " is already purchased. Your access is active."
+            );
+            return;
+        }
+
         setCheckoutPackageId(paymentPackage._id);
         setErrorMessage("");
         setActionMessage("Creating payment order for " + paymentPackage.title + "...");
@@ -1003,6 +1030,11 @@ export default function StudentMockTestsPage() {
                                         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
                                             {paymentPackage.includedMockTestCount} test(s)
                                         </span>
+                                        {isPaymentPackageAccessActive(paymentPackage) ? (
+                                            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                                                Access Active
+                                            </span>
+                                        ) : null}
                                     </div>
 
                                     <h3 className="mt-4 text-xl font-bold">
@@ -1030,13 +1062,35 @@ export default function StudentMockTestsPage() {
                                     <button
                                         type="button"
                                         onClick={() => void handleBuyPaymentPackage(paymentPackage)}
-                                        disabled={checkoutPackageId === paymentPackage._id}
-                                        className="mt-5 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                                        disabled={
+                                            checkoutPackageId === paymentPackage._id ||
+                                            isPaymentPackageAccessActive(paymentPackage)
+                                        }
+                                        className={
+                                            "mt-5 w-full rounded-2xl px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed " +
+                                            (isPaymentPackageAccessActive(paymentPackage)
+                                                ? "bg-emerald-600 disabled:bg-emerald-600"
+                                                : "bg-slate-950 hover:bg-slate-800 disabled:bg-slate-400")
+                                        }
                                     >
-                                        {checkoutPackageId === paymentPackage._id
-                                            ? "Opening Checkout..."
-                                            : "Buy Now"}
+                                        {isPaymentPackageAccessActive(paymentPackage)
+                                            ? "Purchased - Access Active"
+                                            : checkoutPackageId === paymentPackage._id
+                                              ? "Opening Checkout..."
+                                              : "Buy Now"}
                                     </button>
+                                    {paymentPackage.entitlement?.validUntil ? (
+                                        <p className="mt-2 text-center text-xs font-medium text-emerald-700">
+                                            Access valid until{" "}
+                                            {new Date(
+                                                paymentPackage.entitlement.validUntil
+                                            ).toLocaleDateString("en-IN", {
+                                                day: "2-digit",
+                                                month: "short",
+                                                year: "numeric",
+                                            })}
+                                        </p>
+                                    ) : null}
                                 </article>
                             ))}
                         </div>

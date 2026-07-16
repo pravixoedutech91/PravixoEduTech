@@ -799,6 +799,18 @@ const buildEntitlementResponse = (entitlement) => {
     };
 };
 
+
+const buildStudentPaymentPackageAccessPayload = (entitlement) => {
+    const hasActiveEntitlement = Boolean(entitlement);
+
+    return {
+        isPurchased: hasActiveEntitlement,
+        hasActiveEntitlement,
+        accessStatus: hasActiveEntitlement ? "active" : "not_purchased",
+        entitlement: buildEntitlementResponse(entitlement),
+    };
+};
+
 const hasActiveMockTestEntitlement = async ({ tenantId, studentId, mockTestId }) => {
     const now = new Date();
 
@@ -815,7 +827,7 @@ const hasActiveMockTestEntitlement = async ({ tenantId, studentId, mockTestId })
     return Boolean(entitlement);
 };
 
-const buildStudentPaymentPackagePayload = (product) => {
+const buildStudentPaymentPackagePayload = (product, activeEntitlement = null) => {
     const includedMockTests = (product.includedMockTestIds || [])
         .filter((mockTest) => {
             return (
@@ -851,12 +863,14 @@ const buildStudentPaymentPackagePayload = (product) => {
         includedMockTestCount: includedMockTests.length,
         includedMockTests,
         isActive: product.isActive,
+        ...buildStudentPaymentPackageAccessPayload(activeEntitlement),
     };
 };
 
 const getActivePaymentPackagesForStudent = async (req, res) => {
     try {
         const tenantId = getStudentTenantId(req);
+        const studentId = req.user?._id;
 
         const products = await PaymentProduct.find({
             tenantId,
@@ -873,8 +887,41 @@ const getActivePaymentPackagesForStudent = async (req, res) => {
             })
             .lean();
 
+        const productIds = products.map((product) => product._id);
+        const now = new Date();
+
+        const activeEntitlements =
+            productIds.length > 0
+                ? await Entitlement.find({
+                    tenantId,
+                    studentId,
+                    productId: { $in: productIds },
+                    entitlementType: "mock_test_pack",
+                    status: "active",
+                    validFrom: { $lte: now },
+                    validUntil: { $gte: now },
+                })
+                    .sort({ createdAt: -1 })
+                    .lean()
+                : [];
+
+        const activeEntitlementByProductId = new Map();
+
+        for (const entitlement of activeEntitlements) {
+            const productId = String(entitlement.productId);
+
+            if (!activeEntitlementByProductId.has(productId)) {
+                activeEntitlementByProductId.set(productId, entitlement);
+            }
+        }
+
         const visibleProducts = products
-            .map(buildStudentPaymentPackagePayload)
+            .map((product) =>
+                buildStudentPaymentPackagePayload(
+                    product,
+                    activeEntitlementByProductId.get(String(product._id)) || null
+                )
+            )
             .filter((product) => product.includedMockTestCount > 0);
 
         res.status(200).json({
@@ -931,6 +978,31 @@ const createPaymentPackageOrderForStudent = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: "Payment package has no mock tests",
+            });
+        }
+
+        const now = new Date();
+
+        const existingActiveEntitlement = await Entitlement.findOne({
+            tenantId,
+            studentId,
+            productId: product._id,
+            entitlementType: "mock_test_pack",
+            status: "active",
+            validFrom: { $lte: now },
+            validUntil: { $gte: now },
+        }).lean();
+
+        if (existingActiveEntitlement) {
+            return res.status(409).json({
+                success: false,
+                message: "You already have active access for this payment package",
+                data: {
+                    isPurchased: true,
+                    hasActiveEntitlement: true,
+                    accessStatus: "active",
+                    entitlement: buildEntitlementResponse(existingActiveEntitlement),
+                },
             });
         }
 
