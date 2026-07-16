@@ -5,6 +5,7 @@ const {
   getPublishedMockTestsForStudent,
   getActivePaymentPackagesForStudent,
   createPaymentPackageOrderForStudent,
+  verifyPaymentPackagePaymentForStudent,
   getMyMockTestAttempts,
   startMockTestAttempt,
   saveMockTestAnswer,
@@ -90,6 +91,16 @@ router.post(
   authorize("student"),
   checkFeatureAccess("mockTests"),
   createPaymentPackageOrderForStudent
+);
+
+
+// Verify Razorpay payment and unlock payment package
+router.post(
+  "/payment-packages/verify-payment",
+  protect,
+  authorize("student"),
+  checkFeatureAccess("mockTests"),
+  verifyPaymentPackagePaymentForStudent
 );
 
 // Get active payment packages for student

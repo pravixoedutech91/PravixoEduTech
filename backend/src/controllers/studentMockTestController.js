@@ -1,5 +1,6 @@
 ﻿const mongoose = require("mongoose");
 const Razorpay = require("razorpay");
+const crypto = require("crypto");
 
 const MockTest = require("../models/MockTest");
 const MockTestVersion = require("../models/MockTestVersion");
@@ -7,6 +8,7 @@ const TestAttempt = require("../models/TestAttempt");
 const TestAttemptDetail = require("../models/TestAttemptDetail");
 const PaymentProduct = require("../models/PaymentProduct");
 const Purchase = require("../models/Purchase");
+const Entitlement = require("../models/Entitlement");
 
 const REVIEW_RETENTION_DAYS = 7;
 
@@ -728,6 +730,91 @@ const buildStudentCreateOrderResponse = (purchase, product, razorpayOrder, keyId
     };
 };
 
+
+const addDays = (date, days) => {
+    const result = new Date(date);
+    result.setDate(result.getDate() + Number(days || 0));
+    return result;
+};
+
+const isNonEmptyString = (value) => {
+    return typeof value === "string" && value.trim().length > 0;
+};
+
+const createRazorpaySignature = ({ orderId, paymentId, secret }) => {
+    return crypto
+        .createHmac("sha256", secret)
+        .update(orderId + "|" + paymentId)
+        .digest("hex");
+};
+
+const safeCompareStrings = (left, right) => {
+    const leftBuffer = Buffer.from(String(left || ""), "utf8");
+    const rightBuffer = Buffer.from(String(right || ""), "utf8");
+
+    if (leftBuffer.length !== rightBuffer.length) {
+        return false;
+    }
+
+    return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+};
+
+const verifyRazorpayPaymentSignature = ({
+    razorpayOrderId,
+    razorpayPaymentId,
+    razorpaySignature,
+}) => {
+    const config = getRazorpayConfig();
+
+    if (!config.keySecret) {
+        return {
+            isValid: false,
+            error: "Razorpay test keys are not configured on backend",
+        };
+    }
+
+    const generatedSignature = createRazorpaySignature({
+        orderId: razorpayOrderId,
+        paymentId: razorpayPaymentId,
+        secret: config.keySecret,
+    });
+
+    return {
+        isValid: safeCompareStrings(generatedSignature, razorpaySignature),
+    };
+};
+
+const buildEntitlementResponse = (entitlement) => {
+    if (!entitlement) {
+        return null;
+    }
+
+    return {
+        _id: entitlement._id,
+        entitlementType: entitlement.entitlementType,
+        status: entitlement.status,
+        validFrom: entitlement.validFrom,
+        validUntil: entitlement.validUntil,
+        mockTestIds: entitlement.mockTestIds,
+    };
+};
+
+const hasActiveMockTestEntitlement = async ({ tenantId, studentId, mockTestId }) => {
+    const now = new Date();
+
+    const entitlement = await Entitlement.exists({
+        tenantId,
+        studentId,
+        entitlementType: "mock_test_pack",
+        status: "active",
+        validFrom: { $lte: now },
+        validUntil: { $gte: now },
+        mockTestIds: mockTestId,
+    });
+
+    return Boolean(entitlement);
+};
+
 const buildStudentPaymentPackagePayload = (product) => {
     const includedMockTests = (product.includedMockTestIds || [])
         .filter((mockTest) => {
@@ -916,6 +1003,237 @@ const createPaymentPackageOrderForStudent = async (req, res) => {
     }
 };
 
+
+const verifyPaymentPackagePaymentForStudent = async (req, res) => {
+    try {
+        const tenantId = getStudentTenantId(req);
+        const studentId = req.user?._id;
+        const {
+            purchaseId,
+            razorpay_order_id,
+            razorpay_payment_id,
+            razorpay_signature,
+        } = req.body || {};
+
+        if (
+            !isNonEmptyString(razorpay_order_id) ||
+            !isNonEmptyString(razorpay_payment_id) ||
+            !isNonEmptyString(razorpay_signature)
+        ) {
+            return res.status(400).json({
+                success: false,
+                message: "Razorpay payment ID, order ID, and signature are required",
+            });
+        }
+
+        const purchaseFilter = {
+            tenantId,
+            studentId,
+            provider: "razorpay",
+            razorpayOrderId: razorpay_order_id.trim(),
+        };
+
+        if (purchaseId) {
+            if (!mongoose.Types.ObjectId.isValid(purchaseId)) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Invalid purchase ID",
+                });
+            }
+
+            purchaseFilter._id = purchaseId;
+        }
+
+        const purchase = await Purchase.findOne(purchaseFilter);
+
+        if (!purchase) {
+            return res.status(404).json({
+                success: false,
+                message: "Purchase order not found for this student",
+            });
+        }
+
+        if (purchase.status === "paid") {
+            const existingEntitlement = await Entitlement.findOne({
+                tenantId,
+                studentId,
+                purchaseId: purchase._id,
+            });
+
+            return res.status(200).json({
+                success: true,
+                message: "Payment was already verified",
+                data: {
+                    purchase: {
+                        _id: purchase._id,
+                        status: purchase.status,
+                        amountInPaise: purchase.amountInPaise,
+                        currency: purchase.currency,
+                        razorpayOrderId: purchase.razorpayOrderId,
+                        razorpayPaymentId: purchase.razorpayPaymentId,
+                        paidAt: purchase.paidAt,
+                    },
+                    entitlement: buildEntitlementResponse(existingEntitlement),
+                },
+            });
+        }
+
+        if (purchase.status !== "created") {
+            return res.status(409).json({
+                success: false,
+                message: "Purchase is not eligible for verification",
+                data: {
+                    purchaseStatus: purchase.status,
+                },
+            });
+        }
+
+        const signatureResult = verifyRazorpayPaymentSignature({
+            razorpayOrderId: razorpay_order_id.trim(),
+            razorpayPaymentId: razorpay_payment_id.trim(),
+            razorpaySignature: razorpay_signature.trim(),
+        });
+
+        if (signatureResult.error) {
+            return res.status(503).json({
+                success: false,
+                message: signatureResult.error,
+            });
+        }
+
+        if (!signatureResult.isValid) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid Razorpay payment signature",
+            });
+        }
+
+        const razorpayClientResult = getRazorpayClient();
+
+        if (razorpayClientResult.error) {
+            return res.status(503).json({
+                success: false,
+                message: razorpayClientResult.error,
+            });
+        }
+
+        const payment = await razorpayClientResult.client.payments.fetch(
+            razorpay_payment_id.trim()
+        );
+
+        if (!payment || payment.order_id !== purchase.razorpayOrderId) {
+            return res.status(400).json({
+                success: false,
+                message: "Razorpay payment does not belong to this order",
+            });
+        }
+
+        if (Number(payment.amount) !== Number(purchase.amountInPaise)) {
+            return res.status(400).json({
+                success: false,
+                message: "Razorpay payment amount mismatch",
+            });
+        }
+
+        if ((payment.currency || "INR") !== purchase.currency) {
+            return res.status(400).json({
+                success: false,
+                message: "Razorpay payment currency mismatch",
+            });
+        }
+
+        if (payment.status !== "captured") {
+            return res.status(409).json({
+                success: false,
+                message: "Payment is not captured yet",
+                data: {
+                    paymentStatus: payment.status,
+                },
+            });
+        }
+
+        const mockTestIds = purchase.productSnapshot?.includedMockTestIds || [];
+
+        if (!Array.isArray(mockTestIds) || mockTestIds.length === 0) {
+            return res.status(409).json({
+                success: false,
+                message: "Purchase has no mock tests to unlock",
+            });
+        }
+
+        const paidAt = new Date();
+        const validUntil = addDays(
+            paidAt,
+            purchase.productSnapshot?.validityDays || 365
+        );
+
+        purchase.status = "paid";
+        purchase.razorpayPaymentId = razorpay_payment_id.trim();
+        purchase.razorpaySignature = razorpay_signature.trim();
+        purchase.paidAt = paidAt;
+        purchase.failureReason = undefined;
+
+        await purchase.save();
+
+        const entitlement = await Entitlement.findOneAndUpdate(
+            {
+                tenantId,
+                studentId,
+                purchaseId: purchase._id,
+            },
+            {
+                $setOnInsert: {
+                    tenantId,
+                    studentId,
+                    productId: purchase.productId,
+                    purchaseId: purchase._id,
+                    entitlementType: "mock_test_pack",
+                    mockTestIds,
+                    validFrom: paidAt,
+                    validUntil,
+                    status: "active",
+                },
+            },
+            {
+                new: true,
+                upsert: true,
+                setDefaultsOnInsert: true,
+            }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Payment verified and mock test access unlocked",
+            data: {
+                purchase: {
+                    _id: purchase._id,
+                    status: purchase.status,
+                    amountInPaise: purchase.amountInPaise,
+                    currency: purchase.currency,
+                    razorpayOrderId: purchase.razorpayOrderId,
+                    razorpayPaymentId: purchase.razorpayPaymentId,
+                    paidAt: purchase.paidAt,
+                },
+                entitlement: buildEntitlementResponse(entitlement),
+            },
+        });
+    } catch (error) {
+        console.error("Verify student payment package payment error:", error);
+
+        if (error.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                message: "Payment entitlement already exists",
+            });
+        }
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to verify payment",
+        });
+    }
+};
+
 const getPublishedMockTestsForStudent = async (req, res) => {
     try {
         const tenantId = getStudentTenantId(req);
@@ -1038,10 +1356,18 @@ const startMockTestAttempt = async (req, res) => {
         }
 
         if (mockTest.accessType === "paid") {
-            return res.status(403).json({
-                success: false,
-                message: "Purchase required before starting this mock test",
+            const hasPaidAccess = await hasActiveMockTestEntitlement({
+                tenantId,
+                studentId,
+                mockTestId: mockTest._id,
             });
+
+            if (!hasPaidAccess) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Purchase required before starting this mock test",
+                });
+            }
         }
 
         if (mockTest.accessType === "assigned") {
@@ -2456,4 +2782,5 @@ module.exports = {
     getMockTestReview,
   getActivePaymentPackagesForStudent,
   createPaymentPackageOrderForStudent,
+  verifyPaymentPackagePaymentForStudent,
 };
