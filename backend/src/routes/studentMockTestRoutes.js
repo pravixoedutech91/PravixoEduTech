@@ -3,6 +3,7 @@ const router = express.Router();
 
 const {
   getPublishedMockTestsForStudent,
+  getActivePaymentPackagesForStudent,
   getMyMockTestAttempts,
   startMockTestAttempt,
   saveMockTestAnswer,
@@ -77,6 +78,16 @@ router.get(
   authorize("student"),
   checkFeatureAccess("mockTests"),
   getMockTestReview
+);
+
+
+// Get active payment packages for student
+router.get(
+  "/payment-packages",
+  protect,
+  authorize("student"),
+  checkFeatureAccess("mockTests"),
+  getActivePaymentPackagesForStudent
 );
 
 module.exports = router;

@@ -4,6 +4,7 @@ const MockTest = require("../models/MockTest");
 const MockTestVersion = require("../models/MockTestVersion");
 const TestAttempt = require("../models/TestAttempt");
 const TestAttemptDetail = require("../models/TestAttemptDetail");
+const PaymentProduct = require("../models/PaymentProduct");
 
 const REVIEW_RETENTION_DAYS = 7;
 
@@ -654,6 +655,84 @@ const buildStudentAttemptSummary = (
             attemptId: getAttemptIdForSummary(latestSubmittedAttempt),
         },
     };
+};
+
+
+const buildStudentPaymentPackagePayload = (product) => {
+    const includedMockTests = (product.includedMockTestIds || [])
+        .filter((mockTest) => {
+            return (
+                mockTest &&
+                mockTest.isActive !== false &&
+                mockTest.isPublished === true &&
+                mockTest.activeVersionId
+            );
+        })
+        .map((mockTest) => {
+            return {
+                _id: mockTest._id,
+                title: mockTest.title,
+                slug: mockTest.slug,
+                description: mockTest.description,
+                testType: mockTest.testType,
+                accessType: mockTest.accessType,
+                isPublished: mockTest.isPublished,
+                isActive: mockTest.isActive,
+            };
+        });
+
+    return {
+        _id: product._id,
+        title: product.title,
+        slug: product.slug,
+        description: product.description,
+        productType: product.productType,
+        priceInPaise: product.priceInPaise,
+        priceInRupees: Number(((product.priceInPaise || 0) / 100).toFixed(2)),
+        currency: product.currency || "INR",
+        validityDays: product.validityDays,
+        includedMockTestCount: includedMockTests.length,
+        includedMockTests,
+        isActive: product.isActive,
+    };
+};
+
+const getActivePaymentPackagesForStudent = async (req, res) => {
+    try {
+        const tenantId = getStudentTenantId(req);
+
+        const products = await PaymentProduct.find({
+            tenantId,
+            productType: "mock_test_pack",
+            isActive: true,
+        })
+            .populate(
+                "includedMockTestIds",
+                "title slug description testType accessType isPublished isActive activeVersionId"
+            )
+            .sort({
+                sortOrder: 1,
+                createdAt: -1,
+            })
+            .lean();
+
+        const visibleProducts = products
+            .map(buildStudentPaymentPackagePayload)
+            .filter((product) => product.includedMockTestCount > 0);
+
+        res.status(200).json({
+            success: true,
+            count: visibleProducts.length,
+            data: visibleProducts,
+        });
+    } catch (error) {
+        console.error("Get student payment packages error:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to fetch payment packages",
+        });
+    }
 };
 
 const getPublishedMockTestsForStudent = async (req, res) => {
@@ -2194,4 +2273,5 @@ module.exports = {
     submitMockTestAttempt,
     getMockTestResult,
     getMockTestReview,
+  getActivePaymentPackagesForStudent,
 };
