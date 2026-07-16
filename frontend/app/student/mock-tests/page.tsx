@@ -72,8 +72,43 @@ type StartAttemptResponse = {
     };
 };
 
+type StudentPaymentPackageMockTest = {
+    _id: string;
+    title?: string;
+    slug?: string;
+    description?: string;
+    testType?: string;
+    accessType?: string;
+    isPublished?: boolean;
+    isActive?: boolean;
+};
+
+type StudentPaymentPackage = {
+    _id: string;
+    title: string;
+    slug: string;
+    description?: string;
+    productType: "mock_test_pack";
+    priceInPaise: number;
+    priceInRupees: number;
+    currency: "INR";
+    validityDays: number;
+    includedMockTestCount: number;
+    includedMockTests: StudentPaymentPackageMockTest[];
+    isActive: boolean;
+};
+
+type StudentPaymentPackagesResponse = {
+    success: boolean;
+    count: number;
+    data: StudentPaymentPackage[];
+    message?: string;
+};
+
 const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+    process.env.NEXT_PUBLIC_API_URL ||
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    "http://localhost:5000";
 
 const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
 const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
@@ -143,12 +178,22 @@ const isAttemptStartAction = (action: PrimaryAction) => {
     return action === "start" || action === "resume" || action === "retake";
 };
 
+const formatPrice = (priceInPaise?: number) => {
+    return new Intl.NumberFormat("en-IN", {
+        style: "currency",
+        currency: "INR",
+        maximumFractionDigits: 2,
+    }).format(Number(priceInPaise || 0) / 100);
+};
+
 export default function StudentMockTestsPage() {
     const router = useRouter();
     const [token, setToken] = useState("");
     const [isClientReady, setIsClientReady] = useState(false);
     const [mockTests, setMockTests] = useState<MockTest[]>([]);
+    const [paymentPackages, setPaymentPackages] = useState<StudentPaymentPackage[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [isLoadingPackages, setIsLoadingPackages] = useState(false);
     const [actionLoadingMockTestId, setActionLoadingMockTestId] = useState<
         string | null
     >(null);
@@ -183,6 +228,7 @@ export default function StudentMockTestsPage() {
                 clearStudentSessionStorage();
                 setToken("");
                 setMockTests([]);
+                setPaymentPackages([]);
                 setActionMessage("");
                 setErrorMessage(INVALID_STUDENT_SESSION_MESSAGE);
                 router.push("/student/login");
@@ -204,6 +250,55 @@ export default function StudentMockTestsPage() {
             setMockTests([]);
         } finally {
             setIsLoading(false);
+        }
+    }, [router, token]);
+
+    const loadPaymentPackages = useCallback(async (tokenOverride?: string) => {
+        const cleanToken = (tokenOverride || token).trim();
+
+        if (!cleanToken) {
+            setPaymentPackages([]);
+            return;
+        }
+
+        setIsLoadingPackages(true);
+
+        try {
+            const response = await fetch(API_BASE_URL + "/api/student/payment-packages", {
+                headers: {
+                    Authorization: "Bearer " + cleanToken,
+                },
+                cache: "no-store",
+            });
+
+            const result = (await response.json()) as StudentPaymentPackagesResponse;
+
+            if (isInvalidStudentSessionResponse(response, result.message)) {
+                clearStudentSessionStorage();
+                setToken("");
+                setMockTests([]);
+                setPaymentPackages([]);
+                setActionMessage("");
+                setErrorMessage(INVALID_STUDENT_SESSION_MESSAGE);
+                router.push("/student/login");
+                return;
+            }
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to load payment packages.");
+            }
+
+            setPaymentPackages(Array.isArray(result.data) ? result.data : []);
+        } catch (error) {
+            const message =
+                error instanceof Error
+                    ? error.message
+                    : "Something went wrong while loading payment packages.";
+
+            setErrorMessage(message);
+            setPaymentPackages([]);
+        } finally {
+            setIsLoadingPackages(false);
         }
     }, [router, token]);
 
@@ -232,10 +327,11 @@ export default function StudentMockTestsPage() {
 
         const timer = window.setTimeout(() => {
             void loadMockTests(token);
+            void loadPaymentPackages(token);
         }, 0);
 
         return () => window.clearTimeout(timer);
-    }, [isClientReady, loadMockTests, token]);
+    }, [isClientReady, loadMockTests, loadPaymentPackages, token]);
 
     useEffect(() => {
         if (!isClientReady || !token.trim()) {
@@ -244,11 +340,13 @@ export default function StudentMockTestsPage() {
 
         const handleMockTestPageShow = () => {
             void loadMockTests(token);
+            void loadPaymentPackages(token);
         };
 
         const handleMockTestVisibilityChange = () => {
             if (document.visibilityState === "visible") {
                 void loadMockTests(token);
+            void loadPaymentPackages(token);
             }
         };
 
@@ -265,7 +363,7 @@ export default function StudentMockTestsPage() {
                 handleMockTestVisibilityChange
             );
         };
-    }, [isClientReady, loadMockTests, token]);
+    }, [isClientReady, loadMockTests, loadPaymentPackages, token]);
 
     const handleLogout = () => {
         const shouldLogout = window.confirm(
@@ -280,6 +378,7 @@ export default function StudentMockTestsPage() {
 
         setToken("");
         setMockTests([]);
+        setPaymentPackages([]);
         setActionMessage("");
         setErrorMessage("You have been logged out. Please login again.");
 
@@ -326,6 +425,7 @@ export default function StudentMockTestsPage() {
                 clearStudentSessionStorage();
                 setToken("");
                 setMockTests([]);
+                setPaymentPackages([]);
                 setActionMessage("");
                 setErrorMessage(INVALID_STUDENT_SESSION_MESSAGE);
                 router.push("/student/login");
@@ -470,11 +570,14 @@ export default function StudentMockTestsPage() {
                             {token.trim() ? (
                                 <button
                                     type="button"
-                                    onClick={() => void loadMockTests()}
-                                    disabled={isLoading || !isClientReady}
+                                    onClick={() => {
+                                        void loadMockTests();
+                                        void loadPaymentPackages();
+                                    }}
+                                    disabled={isLoading || isLoadingPackages || !isClientReady}
                                     className="min-h-12 rounded-2xl bg-blue-700 px-6 text-sm font-semibold text-white disabled:bg-slate-400"
                                 >
-                                    {isLoading ? "Loading..." : "Refresh Mock Tests"}
+                                    {isLoading || isLoadingPackages ? "Loading..." : "Refresh"}
                                 </button>
                             ) : (
                                 <Link
@@ -515,6 +618,96 @@ export default function StudentMockTestsPage() {
                             {actionMessage}
                         </div>
                     ) : null}
+                </section>
+
+                <section className="mb-8">
+                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
+                                Payments
+                            </p>
+                            <h2 className="text-xl font-bold">
+                                Paid Mock Test Packs
+                            </h2>
+                            <p className="mt-1 text-sm text-slate-600">
+                                Buy button is a placeholder for now. Razorpay checkout will be connected in the next payment step.
+                            </p>
+                        </div>
+
+                        <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
+                            {paymentPackages.length} pack(s)
+                        </span>
+                    </div>
+
+                    {!token.trim() ? (
+                        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
+                            Login as a student to view paid packages.
+                        </div>
+                    ) : isLoadingPackages ? (
+                        <div className="rounded-3xl bg-white p-6 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200">
+                            Loading payment packages...
+                        </div>
+                    ) : paymentPackages.length === 0 ? (
+                        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
+                            No active paid mock test pack is available right now.
+                        </div>
+                    ) : (
+                        <div className="grid gap-5 md:grid-cols-2">
+                            {paymentPackages.map((paymentPackage) => (
+                                <article
+                                    key={paymentPackage._id}
+                                    className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
+                                >
+                                    <div className="flex flex-wrap gap-2">
+                                        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                                            {formatPrice(paymentPackage.priceInPaise)}
+                                        </span>
+                                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                                            {paymentPackage.validityDays} days
+                                        </span>
+                                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
+                                            {paymentPackage.includedMockTestCount} test(s)
+                                        </span>
+                                    </div>
+
+                                    <h3 className="mt-4 text-xl font-bold">
+                                        {paymentPackage.title}
+                                    </h3>
+
+                                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                                        {paymentPackage.description || "Paid mock test package for exam preparation."}
+                                    </p>
+
+                                    <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+                                        <p className="text-xs font-semibold uppercase text-slate-500">
+                                            Included tests
+                                        </p>
+
+                                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+                                            {paymentPackage.includedMockTests.map((mockTest) => (
+                                                <li key={mockTest._id}>
+                                                    {mockTest.title || mockTest.slug || "Mock Test"}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setActionMessage(
+                                                "Razorpay checkout will be connected in the next payment step for package: " +
+                                                    paymentPackage.title
+                                            )
+                                        }
+                                        className="mt-5 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                                    >
+                                        Buy Now - Checkout Next
+                                    </button>
+                                </article>
+                            ))}
+                        </div>
+                    )}
                 </section>
 
                 <section>
