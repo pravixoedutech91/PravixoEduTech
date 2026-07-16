@@ -323,6 +323,15 @@ export default function AdminDashboardPage() {
                                         Open
                                     </span>
                                 </Link>
+                                <Link
+                                    href="/admin/payment-purchases"
+                                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
+                                >
+                                    <span>Payment Ledger</span>
+                                    <span className="rounded-full bg-emerald-950 px-2 py-0.5 text-[11px] text-emerald-200">
+                                        Open
+                                    </span>
+                                </Link>
                             </div>
                         </div>
                     </nav>
@@ -439,6 +448,17 @@ export default function AdminDashboardPage() {
                                     </p>
                                     <p className="mt-2 text-sm leading-6 text-rose-950">
                                         Create and manage paid mock test packs before Razorpay checkout.
+                                    </p>
+                                </Link>
+                                <Link
+                                    href="/admin/payment-purchases"
+                                    className="rounded-3xl border border-emerald-100 bg-emerald-50 p-5 hover:bg-emerald-100"
+                                >
+                                    <p className="text-sm font-black text-emerald-800">
+                                        Payment Ledger
+                                    </p>
+                                    <p className="mt-2 text-sm leading-6 text-emerald-950">
+                                        View Razorpay purchases, paid status, student details, and entitlement validity.
                                     </p>
                                 </Link>
                             </div>
