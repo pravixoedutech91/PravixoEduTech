@@ -105,6 +105,101 @@ type StudentPaymentPackagesResponse = {
     message?: string;
 };
 
+type StudentCreatePaymentOrderResponse = {
+    success: boolean;
+    message: string;
+    data?: {
+        purchase: {
+            _id: string;
+            status: string;
+            amountInPaise: number;
+            currency: "INR";
+            receipt: string;
+        };
+        product: {
+            _id: string;
+            title: string;
+            slug: string;
+            productType: "mock_test_pack";
+            priceInPaise: number;
+            priceInRupees: number;
+            currency: "INR";
+            validityDays: number;
+        };
+        razorpay: {
+            keyId: string;
+            orderId: string;
+            amount: number;
+            currency: "INR";
+            receipt: string;
+        };
+    };
+};
+
+type StudentVerifyPaymentResponse = {
+    success: boolean;
+    message: string;
+    data?: {
+        purchase?: {
+            _id: string;
+            status: string;
+            amountInPaise: number;
+            currency: "INR";
+            razorpayOrderId: string;
+            razorpayPaymentId: string;
+            paidAt?: string;
+        };
+        entitlement?: {
+            _id: string;
+            entitlementType: string;
+            status: string;
+            validFrom: string;
+            validUntil: string;
+            mockTestIds: string[];
+        } | null;
+    };
+};
+
+type RazorpayPaymentResponse = {
+    razorpay_payment_id: string;
+    razorpay_order_id: string;
+    razorpay_signature: string;
+};
+
+type RazorpayCheckoutOptions = {
+    key: string;
+    amount: number;
+    currency: string;
+    name: string;
+    description: string;
+    order_id: string;
+    handler: (response: RazorpayPaymentResponse) => void;
+    prefill?: {
+        name?: string;
+        email?: string;
+        contact?: string;
+    };
+    notes?: Record<string, string>;
+    theme?: {
+        color?: string;
+    };
+    modal?: {
+        ondismiss?: () => void;
+    };
+};
+
+type RazorpayCheckoutInstance = {
+    open: () => void;
+};
+
+declare global {
+    interface Window {
+        Razorpay?: new (
+            options: RazorpayCheckoutOptions
+        ) => RazorpayCheckoutInstance;
+    }
+}
+
 const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_URL ||
     process.env.NEXT_PUBLIC_API_BASE_URL ||
@@ -178,6 +273,75 @@ const isAttemptStartAction = (action: PrimaryAction) => {
     return action === "start" || action === "resume" || action === "retake";
 };
 
+const RAZORPAY_CHECKOUT_SCRIPT_URL = "https://checkout.razorpay.com/v1/checkout.js";
+
+const loadRazorpayCheckoutScript = () => {
+    return new Promise<boolean>((resolve) => {
+        if (typeof window === "undefined") {
+            resolve(false);
+            return;
+        }
+
+        if (window.Razorpay) {
+            resolve(true);
+            return;
+        }
+
+        const existingScript = document.querySelector<HTMLScriptElement>(
+            'script[src="' + RAZORPAY_CHECKOUT_SCRIPT_URL + '"]'
+        );
+
+        if (existingScript) {
+            existingScript.addEventListener("load", () => resolve(true), {
+                once: true,
+            });
+            existingScript.addEventListener("error", () => resolve(false), {
+                once: true,
+            });
+            return;
+        }
+
+        const script = document.createElement("script");
+        script.src = RAZORPAY_CHECKOUT_SCRIPT_URL;
+        script.async = true;
+        script.onload = () => resolve(true);
+        script.onerror = () => resolve(false);
+
+        document.body.appendChild(script);
+    });
+};
+
+const getStudentCheckoutPrefill = () => {
+    if (typeof window === "undefined") {
+        return {};
+    }
+
+    try {
+        const rawProfile = window.localStorage.getItem("pravixoStudentProfile");
+
+        if (!rawProfile) {
+            return {};
+        }
+
+        const profile = JSON.parse(rawProfile) as {
+            name?: string;
+            fullName?: string;
+            email?: string;
+            phone?: string;
+            mobile?: string;
+            contact?: string;
+        };
+
+        return {
+            name: profile.name || profile.fullName || "",
+            email: profile.email || "",
+            contact: profile.phone || profile.mobile || profile.contact || "",
+        };
+    } catch {
+        return {};
+    }
+};
+
 const formatPrice = (priceInPaise?: number) => {
     return new Intl.NumberFormat("en-IN", {
         style: "currency",
@@ -194,6 +358,7 @@ export default function StudentMockTestsPage() {
     const [paymentPackages, setPaymentPackages] = useState<StudentPaymentPackage[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isLoadingPackages, setIsLoadingPackages] = useState(false);
+    const [checkoutPackageId, setCheckoutPackageId] = useState<string | null>(null);
     const [actionLoadingMockTestId, setActionLoadingMockTestId] = useState<
         string | null
     >(null);
@@ -510,6 +675,176 @@ export default function StudentMockTestsPage() {
 
         router.push(`/student/attempts/${attemptId}/review`);
     };
+    const handleBuyPaymentPackage = async (paymentPackage: StudentPaymentPackage) => {
+        const cleanToken = token.trim();
+
+        if (!cleanToken) {
+            setErrorMessage("Please login first to buy a mock test package.");
+            router.push("/student/login");
+            return;
+        }
+
+        setCheckoutPackageId(paymentPackage._id);
+        setErrorMessage("");
+        setActionMessage("Creating payment order for " + paymentPackage.title + "...");
+
+        try {
+            const createOrderResponse = await fetch(
+                API_BASE_URL +
+                    "/api/student/payment-packages/" +
+                    paymentPackage._id +
+                    "/create-order",
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: "Bearer " + cleanToken,
+                    },
+                }
+            );
+
+            const createOrderResult =
+                (await createOrderResponse.json()) as StudentCreatePaymentOrderResponse;
+
+            if (
+                isInvalidStudentSessionResponse(
+                    createOrderResponse,
+                    createOrderResult.message
+                )
+            ) {
+                clearStudentSessionStorage();
+                setToken("");
+                setMockTests([]);
+                setPaymentPackages([]);
+                setActionMessage("");
+                setErrorMessage(INVALID_STUDENT_SESSION_MESSAGE);
+                router.push("/student/login");
+                return;
+            }
+
+            if (!createOrderResponse.ok || !createOrderResult.success || !createOrderResult.data) {
+                throw new Error(
+                    createOrderResult.message || "Unable to create payment order."
+                );
+            }
+
+            const isScriptLoaded = await loadRazorpayCheckoutScript();
+
+            if (!isScriptLoaded || !window.Razorpay) {
+                throw new Error("Razorpay checkout could not be loaded. Please try again.");
+            }
+
+            const { purchase, product, razorpay } = createOrderResult.data;
+
+            setActionMessage("Opening Razorpay Checkout for " + product.title + "...");
+
+            const verifyPayment = async (paymentResponse: RazorpayPaymentResponse) => {
+                setActionMessage("Verifying payment and unlocking mock test access...");
+
+                try {
+                    const verifyResponse = await fetch(
+                        API_BASE_URL + "/api/student/payment-packages/verify-payment",
+                        {
+                            method: "POST",
+                            headers: {
+                                Authorization: "Bearer " + cleanToken,
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                purchaseId: purchase._id,
+                                razorpay_order_id: paymentResponse.razorpay_order_id,
+                                razorpay_payment_id: paymentResponse.razorpay_payment_id,
+                                razorpay_signature: paymentResponse.razorpay_signature,
+                            }),
+                        }
+                    );
+
+                    const verifyResult =
+                        (await verifyResponse.json()) as StudentVerifyPaymentResponse;
+
+                    if (
+                        isInvalidStudentSessionResponse(
+                            verifyResponse,
+                            verifyResult.message
+                        )
+                    ) {
+                        clearStudentSessionStorage();
+                        setToken("");
+                        setMockTests([]);
+                        setPaymentPackages([]);
+                        setActionMessage("");
+                        setErrorMessage(INVALID_STUDENT_SESSION_MESSAGE);
+                        router.push("/student/login");
+                        return;
+                    }
+
+                    if (!verifyResponse.ok || !verifyResult.success) {
+                        throw new Error(
+                            verifyResult.message ||
+                                "Payment could not be verified. Please contact support."
+                        );
+                    }
+
+                    setActionMessage(
+                        "Payment verified. Mock test access unlocked for " +
+                            product.title +
+                            ". Refreshing tests..."
+                    );
+
+                    await loadPaymentPackages(cleanToken);
+                    await loadMockTests(cleanToken);
+                } catch (error) {
+                    const message =
+                        error instanceof Error
+                            ? error.message
+                            : "Payment verification failed.";
+
+                    setErrorMessage(message);
+                } finally {
+                    setCheckoutPackageId(null);
+                }
+            };
+
+            const checkout = new window.Razorpay({
+                key: razorpay.keyId,
+                amount: razorpay.amount,
+                currency: razorpay.currency,
+                name: "PravixoEduTech",
+                description: product.title,
+                order_id: razorpay.orderId,
+                prefill: getStudentCheckoutPrefill(),
+                notes: {
+                    purchaseId: purchase._id,
+                    productId: product._id,
+                    productSlug: product.slug,
+                },
+                theme: {
+                    color: "#0f172a",
+                },
+                modal: {
+                    ondismiss: () => {
+                        setCheckoutPackageId(null);
+                        setActionMessage(
+                            "Payment checkout closed for " + product.title + "."
+                        );
+                    },
+                },
+                handler: (paymentResponse) => {
+                    void verifyPayment(paymentResponse);
+                },
+            });
+
+            checkout.open();
+        } catch (error) {
+            const message =
+                error instanceof Error
+                    ? error.message
+                    : "Something went wrong while opening checkout.";
+
+            setErrorMessage(message);
+            setCheckoutPackageId(null);
+        }
+    };
+
     const handlePrimaryAction = (mockTest: MockTest) => {
         const action = mockTest.studentAttemptSummary.primaryAction;
 
@@ -630,7 +965,7 @@ export default function StudentMockTestsPage() {
                                 Paid Mock Test Packs
                             </h2>
                             <p className="mt-1 text-sm text-slate-600">
-                                Buy button is a placeholder for now. Razorpay checkout will be connected in the next payment step.
+                                Buy a test pack using Razorpay Test Mode. Access unlocks only after backend payment verification.
                             </p>
                         </div>
 
@@ -694,15 +1029,13 @@ export default function StudentMockTestsPage() {
 
                                     <button
                                         type="button"
-                                        onClick={() =>
-                                            setActionMessage(
-                                                "Razorpay checkout will be connected in the next payment step for package: " +
-                                                    paymentPackage.title
-                                            )
-                                        }
-                                        className="mt-5 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                                        onClick={() => void handleBuyPaymentPackage(paymentPackage)}
+                                        disabled={checkoutPackageId === paymentPackage._id}
+                                        className="mt-5 w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
                                     >
-                                        Buy Now - Checkout Next
+                                        {checkoutPackageId === paymentPackage._id
+                                            ? "Opening Checkout..."
+                                            : "Buy Now"}
                                     </button>
                                 </article>
                             ))}
