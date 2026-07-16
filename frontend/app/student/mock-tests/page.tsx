@@ -336,25 +336,29 @@ const getStudentCheckoutPrefill = () => {
     }
 
     try {
-        const rawProfile = window.localStorage.getItem("pravixoStudentProfile");
+        const savedProfile = window.localStorage.getItem(STUDENT_PROFILE_STORAGE_KEY);
 
-        if (!rawProfile) {
+        if (!savedProfile) {
             return {};
         }
 
-        const profile = JSON.parse(rawProfile) as {
+        const profile = JSON.parse(savedProfile) as {
             name?: string;
             fullName?: string;
             email?: string;
-            phone?: string;
             mobile?: string;
-            contact?: string;
         };
+
+        const rawMobile = String(profile.mobile || "").replace(/\D/g, "");
+        const normalizedMobile =
+            rawMobile.length === 12 && rawMobile.startsWith("91")
+                ? rawMobile.slice(2)
+                : rawMobile;
 
         return {
             name: profile.name || profile.fullName || "",
             email: profile.email || "",
-            contact: profile.phone || profile.mobile || profile.contact || "",
+            contact: /^\d{10}$/.test(normalizedMobile) ? normalizedMobile : undefined,
         };
     } catch {
         return {};
