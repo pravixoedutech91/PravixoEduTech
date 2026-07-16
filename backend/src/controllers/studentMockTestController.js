@@ -1,10 +1,12 @@
 ﻿const mongoose = require("mongoose");
+const Razorpay = require("razorpay");
 
 const MockTest = require("../models/MockTest");
 const MockTestVersion = require("../models/MockTestVersion");
 const TestAttempt = require("../models/TestAttempt");
 const TestAttemptDetail = require("../models/TestAttemptDetail");
 const PaymentProduct = require("../models/PaymentProduct");
+const Purchase = require("../models/Purchase");
 
 const REVIEW_RETENTION_DAYS = 7;
 
@@ -658,6 +660,74 @@ const buildStudentAttemptSummary = (
 };
 
 
+
+const getRazorpayConfig = () => {
+    const keyId = process.env.RAZORPAY_KEY_ID || "";
+    const keySecret = process.env.RAZORPAY_KEY_SECRET || "";
+
+    return {
+        keyId: keyId.trim(),
+        keySecret: keySecret.trim(),
+    };
+};
+
+const getRazorpayClient = () => {
+    const config = getRazorpayConfig();
+
+    if (!config.keyId || !config.keySecret) {
+        return {
+            error: "Razorpay test keys are not configured on backend",
+        };
+    }
+
+    return {
+        client: new Razorpay({
+            key_id: config.keyId,
+            key_secret: config.keySecret,
+        }),
+        keyId: config.keyId,
+    };
+};
+
+const buildPurchaseProductSnapshot = (product) => {
+    return {
+        title: product.title,
+        slug: product.slug,
+        productType: product.productType,
+        includedMockTestIds: product.includedMockTestIds,
+        validityDays: product.validityDays,
+    };
+};
+
+const buildStudentCreateOrderResponse = (purchase, product, razorpayOrder, keyId) => {
+    return {
+        purchase: {
+            _id: purchase._id,
+            status: purchase.status,
+            amountInPaise: purchase.amountInPaise,
+            currency: purchase.currency,
+            receipt: purchase.receipt,
+        },
+        product: {
+            _id: product._id,
+            title: product.title,
+            slug: product.slug,
+            productType: product.productType,
+            priceInPaise: product.priceInPaise,
+            priceInRupees: Number(((product.priceInPaise || 0) / 100).toFixed(2)),
+            currency: product.currency || "INR",
+            validityDays: product.validityDays,
+        },
+        razorpay: {
+            keyId,
+            orderId: razorpayOrder.id,
+            amount: razorpayOrder.amount,
+            currency: razorpayOrder.currency,
+            receipt: razorpayOrder.receipt,
+        },
+    };
+};
+
 const buildStudentPaymentPackagePayload = (product) => {
     const includedMockTests = (product.includedMockTestIds || [])
         .filter((mockTest) => {
@@ -731,6 +801,117 @@ const getActivePaymentPackagesForStudent = async (req, res) => {
         res.status(500).json({
             success: false,
             message: "Failed to fetch payment packages",
+        });
+    }
+};
+
+
+const createPaymentPackageOrderForStudent = async (req, res) => {
+    try {
+        const tenantId = getStudentTenantId(req);
+        const studentId = req.user?._id;
+        const { productId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(productId)) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid payment package ID",
+            });
+        }
+
+        const product = await PaymentProduct.findOne({
+            _id: productId,
+            tenantId,
+            productType: "mock_test_pack",
+            isActive: true,
+        }).lean();
+
+        if (!product) {
+            return res.status(404).json({
+                success: false,
+                message: "Payment package not found or inactive",
+            });
+        }
+
+        if (!Number.isFinite(Number(product.priceInPaise)) || product.priceInPaise < 1) {
+            return res.status(400).json({
+                success: false,
+                message: "Paid checkout requires package price greater than 0",
+            });
+        }
+
+        if (!Array.isArray(product.includedMockTestIds) || product.includedMockTestIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: "Payment package has no mock tests",
+            });
+        }
+
+        const razorpayClientResult = getRazorpayClient();
+
+        if (razorpayClientResult.error) {
+            return res.status(503).json({
+                success: false,
+                message: razorpayClientResult.error,
+            });
+        }
+
+        const receipt =
+            "pp_" +
+            String(studentId).slice(-8) +
+            "_" +
+            String(product._id).slice(-8) +
+            "_" +
+            Date.now();
+
+        const order = await razorpayClientResult.client.orders.create({
+            amount: product.priceInPaise,
+            currency: product.currency || "INR",
+            receipt,
+            notes: {
+                tenantId,
+                studentId: String(studentId),
+                productId: String(product._id),
+                productType: product.productType,
+            },
+        });
+
+        const purchase = await Purchase.create({
+            tenantId,
+            studentId,
+            productId: product._id,
+            productSnapshot: buildPurchaseProductSnapshot(product),
+            amountInPaise: product.priceInPaise,
+            currency: product.currency || "INR",
+            status: "created",
+            provider: "razorpay",
+            receipt,
+            razorpayOrderId: order.id,
+        });
+
+        res.status(201).json({
+            success: true,
+            message: "Payment order created successfully",
+            data: buildStudentCreateOrderResponse(
+                purchase,
+                product,
+                order,
+                razorpayClientResult.keyId
+            ),
+        });
+    } catch (error) {
+        console.error("Create student payment package order error:", error);
+
+        if (error.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                message: "A payment order already exists for this request",
+            });
+        }
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to create payment order",
         });
     }
 };
@@ -2274,4 +2455,5 @@ module.exports = {
     getMockTestResult,
     getMockTestReview,
   getActivePaymentPackagesForStudent,
+  createPaymentPackageOrderForStudent,
 };

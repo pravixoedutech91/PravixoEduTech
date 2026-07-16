@@ -4,6 +4,7 @@ const router = express.Router();
 const {
   getPublishedMockTestsForStudent,
   getActivePaymentPackagesForStudent,
+  createPaymentPackageOrderForStudent,
   getMyMockTestAttempts,
   startMockTestAttempt,
   saveMockTestAnswer,
@@ -80,6 +81,16 @@ router.get(
   getMockTestReview
 );
 
+
+
+// Create Razorpay order for payment package
+router.post(
+  "/payment-packages/:productId/create-order",
+  protect,
+  authorize("student"),
+  checkFeatureAccess("mockTests"),
+  createPaymentPackageOrderForStudent
+);
 
 // Get active payment packages for student
 router.get(
