@@ -196,7 +196,7 @@ export default function AdminDashboardPage() {
                         </p>
                     </div>
 
-                    <nav className="mt-8 space-y-6">
+                                        <nav className="mt-8 space-y-6">
                         <div>
                             <p className="px-3 text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
                                 Main
@@ -218,71 +218,64 @@ export default function AdminDashboardPage() {
                             </p>
 
                             <div className="mt-3 space-y-2">
-                                {[
-                                    "Exam Patterns",
-                                    "Question Groups",
-                                    "Question Bank",
-                                    "Mock Tests",
-                                    "Published Versions",
-                                ].map((item) => (
-                                    ["Exam Patterns", "Question Groups", "Question Bank", "Mock Tests", "Published Versions"].includes(item) ? (
-                                        <Link
-                                            key={item}
-                                            href={
-                                                item === "Exam Patterns"
-                                                    ? "/admin/mock-tests/exam-patterns"
-                                                    : item === "Question Groups"
-                                                      ? "/admin/mock-tests/question-groups"
-                                                      : item === "Question Bank"
-                                                        ? "/admin/mock-tests/question-bank"
-                                                        : item === "Published Versions"
-                                                          ? "/admin/mock-tests/published-versions"
-                                                          : "/admin/mock-tests/tests"
-                                            }
-                                            className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
-                                        >
-                                            <span>{item}</span>
-                                            <span className="rounded-full bg-blue-950 px-2 py-0.5 text-[11px] text-blue-200">
-                                                Open
-                                            </span>
-                                        </Link>
-                                    ) : (
-                                        <div
-                                            key={item}
-                                            className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200"
-                                        >
-                                            <span>{item}</span>
-                                            <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[11px] text-slate-400">
-                                                Coming next
-                                            </span>
-                                        </div>
-                                    )
-                                ))}
-                            </div>
-                        </div>
-                        <div>
-                            <p className="px-3 text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
-                                Public Content
-                            </p>
-
-                            <div className="mt-3 space-y-2">
-                        <div>
-                            <p className="px-3 text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
-                                Payments
-                            </p>
-
-                            <div className="mt-3 space-y-2">
                                 <Link
-                                    href="/admin/payment-packages"
+                                    href="/admin/mock-tests/exam-patterns"
                                     className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
                                 >
-                                    <span>Payment Packages</span>
+                                    <span>Exam Patterns</span>
+                                    <span className="rounded-full bg-blue-950 px-2 py-0.5 text-[11px] text-blue-200">
+                                        Open
+                                    </span>
+                                </Link>
+
+                                <Link
+                                    href="/admin/mock-tests/question-groups"
+                                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
+                                >
+                                    <span>Question Groups</span>
+                                    <span className="rounded-full bg-blue-950 px-2 py-0.5 text-[11px] text-blue-200">
+                                        Open
+                                    </span>
+                                </Link>
+
+                                <Link
+                                    href="/admin/mock-tests/question-bank"
+                                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
+                                >
+                                    <span>Question Bank</span>
+                                    <span className="rounded-full bg-blue-950 px-2 py-0.5 text-[11px] text-blue-200">
+                                        Open
+                                    </span>
+                                </Link>
+
+                                <Link
+                                    href="/admin/mock-tests/tests"
+                                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
+                                >
+                                    <span>Mock Tests</span>
+                                    <span className="rounded-full bg-blue-950 px-2 py-0.5 text-[11px] text-blue-200">
+                                        Open
+                                    </span>
+                                </Link>
+
+                                <Link
+                                    href="/admin/mock-tests/published-versions"
+                                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
+                                >
+                                    <span>Published Versions</span>
                                     <span className="rounded-full bg-blue-950 px-2 py-0.5 text-[11px] text-blue-200">
                                         Open
                                     </span>
                                 </Link>
                             </div>
                         </div>
+
+                        <div>
+                            <p className="px-3 text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+                                Public Content
+                            </p>
+
+                            <div className="mt-3 space-y-2">
                                 <Link
                                     href="/admin/content"
                                     className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
@@ -308,6 +301,24 @@ export default function AdminDashboardPage() {
                                     className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
                                 >
                                     <span>Categories</span>
+                                    <span className="rounded-full bg-blue-950 px-2 py-0.5 text-[11px] text-blue-200">
+                                        Open
+                                    </span>
+                                </Link>
+                            </div>
+                        </div>
+
+                        <div>
+                            <p className="px-3 text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+                                Payments
+                            </p>
+
+                            <div className="mt-3 space-y-2">
+                                <Link
+                                    href="/admin/payment-packages"
+                                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
+                                >
+                                    <span>Payment Packages</span>
                                     <span className="rounded-full bg-blue-950 px-2 py-0.5 text-[11px] text-blue-200">
                                         Open
                                     </span>
