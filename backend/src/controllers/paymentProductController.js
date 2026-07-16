@@ -2,6 +2,9 @@ const mongoose = require("mongoose");
 
 const PaymentProduct = require("../models/PaymentProduct");
 const MockTest = require("../models/MockTest");
+const Purchase = require("../models/Purchase");
+const Entitlement = require("../models/Entitlement");
+const User = require("../models/User");
 
 const hasText = (value) => {
   return typeof value === "string" && value.trim().length > 0;
@@ -596,8 +599,280 @@ const reactivatePaymentProduct = async (req, res) => {
   }
 };
 
+
+const buildPaymentLedgerStudentPayload = (student) => {
+  if (!student) {
+    return null;
+  }
+
+  return {
+    _id: student._id,
+    name: student.name,
+    email: student.email,
+    mobile: student.mobile,
+    tenantId: student.tenantId,
+  };
+};
+
+const buildPaymentLedgerProductPayload = (product, snapshot) => {
+  if (product) {
+    return {
+      _id: product._id,
+      title: product.title,
+      slug: product.slug,
+      productType: product.productType,
+      priceInPaise: product.priceInPaise,
+      currency: product.currency,
+      tenantId: product.tenantId,
+    };
+  }
+
+  if (snapshot) {
+    return {
+      _id: null,
+      title: snapshot.title,
+      slug: snapshot.slug,
+      productType: snapshot.productType,
+      priceInPaise: null,
+      currency: "INR",
+      tenantId: null,
+    };
+  }
+
+  return null;
+};
+
+const buildPaymentLedgerEntitlementPayload = (entitlement) => {
+  if (!entitlement) {
+    return null;
+  }
+
+  return {
+    _id: entitlement._id,
+    status: entitlement.status,
+    entitlementType: entitlement.entitlementType,
+    mockTestIds: entitlement.mockTestIds,
+    validFrom: entitlement.validFrom,
+    validUntil: entitlement.validUntil,
+    revokedAt: entitlement.revokedAt,
+    revokedReason: entitlement.revokedReason,
+    createdAt: entitlement.createdAt,
+  };
+};
+
+const buildPurchaseSummary = (summaryRows) => {
+  const summary = {
+    total: {
+      count: 0,
+      amountInPaise: 0,
+    },
+    created: {
+      count: 0,
+      amountInPaise: 0,
+    },
+    paid: {
+      count: 0,
+      amountInPaise: 0,
+    },
+    failed: {
+      count: 0,
+      amountInPaise: 0,
+    },
+    cancelled: {
+      count: 0,
+      amountInPaise: 0,
+    },
+    refunded: {
+      count: 0,
+      amountInPaise: 0,
+    },
+  };
+
+  for (const row of summaryRows || []) {
+    const status = row._id || "created";
+    const count = row.count || 0;
+    const amountInPaise = row.amountInPaise || 0;
+
+    summary.total.count += count;
+    summary.total.amountInPaise += amountInPaise;
+
+    if (summary[status]) {
+      summary[status].count = count;
+      summary[status].amountInPaise = amountInPaise;
+    }
+  }
+
+  return summary;
+};
+
+const getPaymentPurchaseLedger = async (req, res) => {
+  try {
+    const page = Math.max(toInteger(req.query.page, 1), 1);
+    const limit = Math.min(Math.max(toInteger(req.query.limit, 50), 1), 100);
+    const skip = (page - 1) * limit;
+
+    const filter = buildTenantFilter(req);
+
+    if (req.query.status) {
+      const status = String(req.query.status).trim();
+
+      if (!["created", "paid", "failed", "cancelled", "refunded"].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid purchase status",
+        });
+      }
+
+      filter.status = status;
+    }
+
+    if (req.query.productId) {
+      if (!isValidObjectId(req.query.productId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid productId",
+        });
+      }
+
+      filter.productId = new mongoose.Types.ObjectId(req.query.productId);
+    }
+
+    if (req.query.studentId) {
+      if (!isValidObjectId(req.query.studentId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid studentId",
+        });
+      }
+
+      filter.studentId = new mongoose.Types.ObjectId(req.query.studentId);
+    }
+
+    const [total, purchases, summaryRows] = await Promise.all([
+      Purchase.countDocuments(filter),
+      Purchase.find(filter)
+        .sort({
+          createdAt: -1,
+        })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Purchase.aggregate([
+        {
+          $match: filter,
+        },
+        {
+          $group: {
+            _id: "$status",
+            count: {
+              $sum: 1,
+            },
+            amountInPaise: {
+              $sum: "$amountInPaise",
+            },
+          },
+        },
+      ]),
+    ]);
+
+    const studentIds = [...new Set(purchases.map((purchase) => String(purchase.studentId)))];
+    const productIds = [...new Set(purchases.map((purchase) => String(purchase.productId)))];
+    const purchaseIds = purchases.map((purchase) => purchase._id);
+
+    const [students, products, entitlements] = await Promise.all([
+      studentIds.length > 0
+        ? User.find({
+            _id: {
+              $in: studentIds,
+            },
+          })
+            .select("name email mobile role tenantId")
+            .lean()
+        : [],
+      productIds.length > 0
+        ? PaymentProduct.find({
+            _id: {
+              $in: productIds,
+            },
+          })
+            .select("title slug productType priceInPaise currency tenantId")
+            .lean()
+        : [],
+      purchaseIds.length > 0
+        ? Entitlement.find({
+            purchaseId: {
+              $in: purchaseIds,
+            },
+          })
+            .select(
+              "purchaseId entitlementType status mockTestIds validFrom validUntil revokedAt revokedReason createdAt"
+            )
+            .lean()
+        : [],
+    ]);
+
+    const studentById = new Map(students.map((student) => [String(student._id), student]));
+    const productById = new Map(products.map((product) => [String(product._id), product]));
+    const entitlementByPurchaseId = new Map(
+      entitlements.map((entitlement) => [String(entitlement.purchaseId), entitlement])
+    );
+
+    const data = purchases.map((purchase) => {
+      const student = studentById.get(String(purchase.studentId));
+      const product = productById.get(String(purchase.productId));
+      const entitlement = entitlementByPurchaseId.get(String(purchase._id));
+
+      return {
+        _id: purchase._id,
+        tenantId: purchase.tenantId,
+        studentId: purchase.studentId,
+        productId: purchase.productId,
+        student: buildPaymentLedgerStudentPayload(student),
+        product: buildPaymentLedgerProductPayload(product, purchase.productSnapshot),
+        productSnapshot: purchase.productSnapshot,
+        amountInPaise: purchase.amountInPaise,
+        priceInRupees: Number(((purchase.amountInPaise || 0) / 100).toFixed(2)),
+        currency: purchase.currency,
+        status: purchase.status,
+        provider: purchase.provider,
+        receipt: purchase.receipt,
+        razorpayOrderId: purchase.razorpayOrderId,
+        razorpayPaymentId: purchase.razorpayPaymentId,
+        paidAt: purchase.paidAt,
+        failedAt: purchase.failedAt,
+        cancelledAt: purchase.cancelledAt,
+        refundedAt: purchase.refundedAt,
+        failureReason: purchase.failureReason,
+        entitlement: buildPaymentLedgerEntitlementPayload(entitlement),
+        createdAt: purchase.createdAt,
+        updatedAt: purchase.updatedAt,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      count: data.length,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      summary: buildPurchaseSummary(summaryRows),
+      data,
+    });
+  } catch (error) {
+    console.error("Get payment purchase ledger error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch payment purchase ledger",
+    });
+  }
+};
+
+
 module.exports = {
   getPaymentProducts,
+  getPaymentPurchaseLedger,
   getPaymentProductById,
   createPaymentProduct,
   updatePaymentProduct,

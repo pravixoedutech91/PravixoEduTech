@@ -3,6 +3,7 @@ const router = express.Router();
 
 const {
   getPaymentProducts,
+  getPaymentPurchaseLedger,
   getPaymentProductById,
   createPaymentProduct,
   updatePaymentProduct,
@@ -37,6 +38,14 @@ router.post(
   checkFeatureAccess("mockTests"),
   ensureTenantAccess,
   createPaymentProduct
+);
+
+router.get(
+  "/purchases",
+  protect,
+  authorize(...billingAdminRoles),
+  checkFeatureAccess("mockTests"),
+  getPaymentPurchaseLedger
 );
 
 router.get(
