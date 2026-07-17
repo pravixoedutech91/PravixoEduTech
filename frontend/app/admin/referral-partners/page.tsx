@@ -704,6 +704,8 @@ function RewardLedgerSection() {
         useState<ReferralRewardFilterStatus>("all");
     const [isLoading, setIsLoading] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
+    const [successMessage, setSuccessMessage] = useState("");
+    const [actionRewardId, setActionRewardId] = useState("");
 
     const loadRewards = async () => {
         const token = window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
@@ -752,6 +754,101 @@ function RewardLedgerSection() {
         }
     };
 
+
+    const submitRewardAction = async (
+        reward: ReferralReward,
+        action: "approve" | "reject"
+    ) => {
+        if (reward.status !== "pending") {
+            setErrorMessage("Only pending rewards can be reviewed.");
+            setSuccessMessage("");
+            return;
+        }
+
+        const token = window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
+
+        if (!token) {
+            setErrorMessage("Admin session not found. Please login again.");
+            setSuccessMessage("");
+            return;
+        }
+
+        let adminNote = "";
+
+        if (action === "approve") {
+            const isConfirmed = window.confirm(
+                "Approve this referral reward and add it to partner wallet?"
+            );
+
+            if (!isConfirmed) {
+                return;
+            }
+
+            adminNote = "Approved from admin reward ledger.";
+        } else {
+            const reason = window.prompt("Enter rejection reason");
+
+            if (reason === null) {
+                return;
+            }
+
+            adminNote = reason.trim();
+
+            if (!adminNote) {
+                setErrorMessage("Rejection reason is required.");
+                setSuccessMessage("");
+                return;
+            }
+        }
+
+        const actionKey = reward._id + ":" + action;
+
+        setActionRewardId(actionKey);
+        setErrorMessage("");
+        setSuccessMessage("");
+
+        try {
+            const response = await fetch(
+                API_BASE_URL +
+                    "/api/referral-partners/rewards/" +
+                    reward._id +
+                    "/" +
+                    action,
+                {
+                    method: "PATCH",
+                    headers: {
+                        Authorization: "Bearer " + token,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({ adminNote }),
+                }
+            );
+
+            const result = (await response.json()) as {
+                success: boolean;
+                message?: string;
+            };
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to update referral reward.");
+            }
+
+            await loadRewards();
+            setSuccessMessage(
+                result.message || "Referral reward updated successfully."
+            );
+        } catch (error) {
+            setErrorMessage(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to update referral reward."
+            );
+            setSuccessMessage("");
+        } finally {
+            setActionRewardId("");
+        }
+    };
+
     useEffect(() => {
         void loadRewards();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -768,7 +865,7 @@ function RewardLedgerSection() {
                         Referral Reward Ledger
                     </h2>
                     <p className="mt-2 text-sm text-slate-600">
-                        View rewards created after paid purchases. Approval and withdrawal actions will be added later.
+                        Review pending referral rewards created after paid purchases. Withdrawal actions will be added later.
                     </p>
                 </div>
 
@@ -855,6 +952,13 @@ function RewardLedgerSection() {
                 </div>
             ) : null}
 
+
+            {successMessage ? (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-700">
+                    {successMessage}
+                </div>
+            ) : null}
+
             <div className="overflow-hidden rounded-3xl border border-slate-200">
                 <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -867,19 +971,20 @@ function RewardLedgerSection() {
                                 <th className="px-4 py-3">Reward</th>
                                 <th className="px-4 py-3">Status</th>
                                 <th className="px-4 py-3">Created</th>
+                                <th className="px-4 py-3">Actions</th>
                             </tr>
                         </thead>
 
                         <tbody className="divide-y divide-slate-100">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                                         Loading referral rewards...
                                     </td>
                                 </tr>
                             ) : rewards.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                                    <td colSpan={8} className="px-4 py-8 text-center text-slate-500">
                                         No referral rewards found.
                                     </td>
                                 </tr>
@@ -938,6 +1043,42 @@ function RewardLedgerSection() {
 
                                         <td className="px-4 py-4">
                                             {formatDateTime(reward.createdAt)}
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            {reward.status === "pending" ? (
+                                                <div className="flex min-w-44 flex-wrap gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            void submitRewardAction(reward, "approve")
+                                                        }
+                                                        disabled={Boolean(actionRewardId)}
+                                                        className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                                    >
+                                                        {actionRewardId === reward._id + ":approve"
+                                                            ? "Approving..."
+                                                            : "Approve"}
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            void submitRewardAction(reward, "reject")
+                                                        }
+                                                        disabled={Boolean(actionRewardId)}
+                                                        className="rounded-full bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                                    >
+                                                        {actionRewardId === reward._id + ":reject"
+                                                            ? "Rejecting..."
+                                                            : "Reject"}
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <span className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500">
+                                                    No action
+                                                </span>
+                                            )}
                                         </td>
                                     </tr>
                                 ))
@@ -1948,4 +2089,5 @@ export default function AdminReferralPartnersPage() {
         </main>
     );
 }
+
 
