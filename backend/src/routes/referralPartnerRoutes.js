@@ -6,6 +6,7 @@ const {
   getReferralRewards,
   approveReferralReward,
   rejectReferralReward,
+  createPartnerWithdrawalRequest,
   getReferralAttributions,
   getReferralPartners,
   getReferralPartnerById,
@@ -75,6 +76,15 @@ router.patch(
   authorize(...adminRoles),
   checkFeatureAccess("referrals"),
   rejectReferralReward
+);
+
+
+router.post(
+  "/:id/withdrawals",
+  protect,
+  authorize(...adminRoles),
+  checkFeatureAccess("referrals"),
+  createPartnerWithdrawalRequest
 );
 
 router.get(

@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 const ReferralPartner = require("../models/ReferralPartner");
 const ReferralAttribution = require("../models/ReferralAttribution");
 const ReferralReward = require("../models/ReferralReward");
+const ReferralSettings = require("../models/ReferralSettings");
+const WithdrawalRequest = require("../models/WithdrawalRequest");
 const User = require("../models/User");
 const Purchase = require("../models/Purchase");
 
@@ -1396,11 +1398,265 @@ const rejectReferralReward = async (req, res) => {
   }
 };
 
+
+const withdrawalPayoutMethods = ["upi", "bank", "cash", "other"];
+
+const normalizePayoutMethod = (value) => {
+  const method = String(value || "upi").trim().toLowerCase();
+  return withdrawalPayoutMethods.includes(method) ? method : "";
+};
+
+const buildWithdrawalPartnerFilter = (req) => {
+  const filter = {
+    _id: req.params.id,
+  };
+
+  if (req.user?.role === "super_admin") {
+    const tenantId = req.query?.tenantId || req.body?.tenantId;
+
+    if (tenantId) {
+      filter.tenantId = String(tenantId).trim();
+    }
+
+    return filter;
+  }
+
+  filter.tenantId = req.user?.tenantId;
+  return filter;
+};
+
+const buildBankDetailsSnapshot = (value) => {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const accountNumber = String(value.accountNumber || value.accountNumberLast4 || "")
+    .replace(/\D/g, "");
+  const accountNumberLast4 = accountNumber ? accountNumber.slice(-4) : "";
+
+  const snapshot = {
+    accountHolderName: hasText(value.accountHolderName)
+      ? String(value.accountHolderName).trim()
+      : undefined,
+    accountNumberLast4,
+    ifsc: hasText(value.ifsc) ? String(value.ifsc).trim().toUpperCase() : undefined,
+    bankName: hasText(value.bankName) ? String(value.bankName).trim() : undefined,
+  };
+
+  Object.keys(snapshot).forEach((key) => {
+    if (!snapshot[key]) {
+      delete snapshot[key];
+    }
+  });
+
+  return Object.keys(snapshot).length ? snapshot : undefined;
+};
+
+const buildWithdrawalResponse = (withdrawal, partner) => {
+  return {
+    withdrawalRequest: withdrawal
+      ? {
+          _id: withdrawal._id,
+          tenantId: withdrawal.tenantId,
+          referralPartnerId: withdrawal.referralPartnerId,
+          amountInPaise: withdrawal.amountInPaise,
+          amountInRupees: Number(((withdrawal.amountInPaise || 0) / 100).toFixed(2)),
+          status: withdrawal.status,
+          payoutMethod: withdrawal.payoutMethod,
+          upiId: withdrawal.upiId,
+          bankDetailsSnapshot: withdrawal.bankDetailsSnapshot,
+          requestedAt: withdrawal.requestedAt,
+          approvedAt: withdrawal.approvedAt,
+          rejectedAt: withdrawal.rejectedAt,
+          paidAt: withdrawal.paidAt,
+          cancelledAt: withdrawal.cancelledAt,
+          adminNote: withdrawal.adminNote,
+          createdAt: withdrawal.createdAt,
+          updatedAt: withdrawal.updatedAt,
+        }
+      : null,
+    referralPartner: partner
+      ? {
+          _id: partner._id,
+          tenantId: partner.tenantId,
+          name: partner.name,
+          mobile: partner.mobile,
+          email: partner.email,
+          promoterType: partner.promoterType,
+          code: partner.code,
+          status: partner.status,
+          walletBalanceInPaise: partner.walletBalanceInPaise,
+          totalEarnedInPaise: partner.totalEarnedInPaise,
+          totalWithdrawnInPaise: partner.totalWithdrawnInPaise,
+        }
+      : null,
+  };
+};
+
+const createPartnerWithdrawalRequest = async (req, res) => {
+  const session = await mongoose.startSession();
+
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid referral partner id",
+      });
+    }
+
+    const amountInPaise = Number.parseInt(req.body?.amountInPaise, 10);
+
+    if (!Number.isFinite(amountInPaise) || amountInPaise < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Withdrawal amount must be greater than zero",
+      });
+    }
+
+    const payoutMethod = normalizePayoutMethod(req.body?.payoutMethod);
+
+    if (!payoutMethod) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payout method",
+      });
+    }
+
+    const upiId = hasText(req.body?.upiId)
+      ? String(req.body.upiId).trim().toLowerCase()
+      : "";
+
+    if (payoutMethod === "upi" && !upiId) {
+      return res.status(400).json({
+        success: false,
+        message: "UPI ID is required for UPI withdrawal",
+      });
+    }
+
+    const partnerFilter = buildWithdrawalPartnerFilter(req);
+    let savedWithdrawal = null;
+    let updatedPartner = null;
+
+    await session.withTransaction(async () => {
+      const partner = await ReferralPartner.findOne(partnerFilter).session(session);
+
+      if (!partner) {
+        const error = new Error("Referral partner not found or access denied");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      if (partner.status !== "active") {
+        const error = new Error("Only active referral partners can request withdrawal");
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const settings =
+        (await ReferralSettings.findOne({ tenantId: partner.tenantId }).session(session)) ||
+        null;
+
+      const minimumWithdrawalAmountInPaise =
+        settings?.minimumWithdrawalAmountInPaise ?? 0;
+
+      if (
+        minimumWithdrawalAmountInPaise > 0 &&
+        amountInPaise < minimumWithdrawalAmountInPaise
+      ) {
+        const error = new Error(
+          "Withdrawal amount is below minimum withdrawal limit"
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      updatedPartner = await ReferralPartner.findOneAndUpdate(
+        {
+          _id: partner._id,
+          tenantId: partner.tenantId,
+          status: "active",
+          walletBalanceInPaise: {
+            $gte: amountInPaise,
+          },
+        },
+        {
+          $inc: {
+            walletBalanceInPaise: -amountInPaise,
+          },
+          $set: {
+            updatedBy: req.user?._id,
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+          session,
+        }
+      );
+
+      if (!updatedPartner) {
+        const error = new Error(
+          "Withdrawal amount exceeds available wallet balance"
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+
+      const bankDetailsSnapshot = buildBankDetailsSnapshot(
+        req.body?.bankDetailsSnapshot || req.body?.bankDetails
+      );
+
+      const created = await WithdrawalRequest.create(
+        [
+          {
+            tenantId: partner.tenantId,
+            referralPartnerId: partner._id,
+            amountInPaise,
+            status: "requested",
+            payoutMethod,
+            upiId: upiId || undefined,
+            bankDetailsSnapshot,
+            requestedAt: new Date(),
+            adminNote: hasText(req.body?.adminNote)
+              ? String(req.body.adminNote).trim()
+              : "Manual admin withdrawal request",
+            createdBy: req.user?._id,
+            updatedBy: req.user?._id,
+          },
+        ],
+        {
+          session,
+        }
+      );
+
+      savedWithdrawal = created[0];
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Withdrawal request created successfully",
+      data: buildWithdrawalResponse(savedWithdrawal, updatedPartner),
+    });
+  } catch (error) {
+    console.error("Create partner withdrawal request error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode
+        ? error.message
+        : "Failed to create withdrawal request",
+    });
+  } finally {
+    await session.endSession();
+  }
+};
+
 module.exports = {
   adminRoles,
   getReferralRewards,
   approveReferralReward,
   rejectReferralReward,
+  createPartnerWithdrawalRequest,
   getReferralAttributions,
   getReferralPartners,
   getReferralPartnerById,
