@@ -151,6 +151,94 @@ type ReferralAttributionsResponse = {
     message?: string;
 };
 
+
+type ReferralRewardStatus =
+    | "pending"
+    | "approved"
+    | "rejected"
+    | "withdrawal_requested"
+    | "paid"
+    | "reversed";
+type ReferralRewardFilterStatus = "all" | ReferralRewardStatus;
+
+type ReferralRewardSummaryBucket = {
+    count: number;
+    purchaseAmountInPaise: number;
+    rewardAmountInPaise: number;
+};
+
+type ReferralRewardSummary = {
+    total: ReferralRewardSummaryBucket;
+    pending: ReferralRewardSummaryBucket;
+    approved: ReferralRewardSummaryBucket;
+    rejected: ReferralRewardSummaryBucket;
+    withdrawal_requested: ReferralRewardSummaryBucket;
+    paid: ReferralRewardSummaryBucket;
+    reversed: ReferralRewardSummaryBucket;
+};
+
+type ReferralRewardPurchase = {
+    _id?: string;
+    tenantId?: string;
+    studentId?: string;
+    productId?: string;
+    productSnapshot?: {
+        title?: string;
+        slug?: string;
+        productType?: string;
+        priceInPaise?: number;
+        currency?: string;
+    } | null;
+    amountInPaise?: number;
+    currency?: string;
+    status?: string;
+    provider?: string;
+    receipt?: string;
+    razorpayOrderId?: string;
+    razorpayPaymentId?: string;
+    paidAt?: string;
+    createdAt?: string;
+    updatedAt?: string;
+};
+
+type ReferralReward = {
+    _id: string;
+    tenantId?: string;
+    referralPartnerId?: string;
+    studentId?: string;
+    purchaseId?: string;
+    productId?: string;
+    referralPartner?: ReferralAttributionPartner | null;
+    student?: ReferralAttributionStudent | null;
+    purchase?: ReferralRewardPurchase | null;
+    purchaseAmountInPaise?: number;
+    purchaseAmountInRupees?: number;
+    rewardAmountInPaise?: number;
+    rewardAmountInRupees?: number;
+    status?: ReferralRewardStatus;
+    approvedAt?: string;
+    rejectedAt?: string;
+    withdrawalRequestedAt?: string;
+    paidAt?: string;
+    reversedAt?: string;
+    rejectionReason?: string;
+    reversalReason?: string;
+    createdAt?: string;
+    updatedAt?: string;
+};
+
+type ReferralRewardsResponse = {
+    success: boolean;
+    count?: number;
+    total?: number;
+    page?: number;
+    limit?: number;
+    totalPages?: number;
+    summary?: ReferralRewardSummary;
+    data?: ReferralReward[];
+    message?: string;
+};
+
 type ToastState = {
     type: "success" | "error";
     message: string;
@@ -264,6 +352,13 @@ const getStatusBadgeClass = (status?: string) => {
             return "bg-emerald-50 text-emerald-700 ring-emerald-100";
         case "pending":
             return "bg-amber-50 text-amber-700 ring-amber-100";
+        case "approved":
+        case "paid":
+            return "bg-emerald-50 text-emerald-700 ring-emerald-100";
+        case "withdrawal_requested":
+            return "bg-blue-50 text-blue-700 ring-blue-100";
+        case "reversed":
+            return "bg-red-50 text-red-700 ring-red-100";
         case "suspended":
             return "bg-red-50 text-red-700 ring-red-100";
         case "rejected":
@@ -307,6 +402,40 @@ const attributionStatusFilterOptions: {
     { value: "active", label: "Active" },
     { value: "cancelled", label: "Cancelled" },
 ];
+
+
+const defaultRewardSummaryBucket: ReferralRewardSummaryBucket = {
+    count: 0,
+    purchaseAmountInPaise: 0,
+    rewardAmountInPaise: 0,
+};
+
+const defaultRewardSummary: ReferralRewardSummary = {
+    total: defaultRewardSummaryBucket,
+    pending: defaultRewardSummaryBucket,
+    approved: defaultRewardSummaryBucket,
+    rejected: defaultRewardSummaryBucket,
+    withdrawal_requested: defaultRewardSummaryBucket,
+    paid: defaultRewardSummaryBucket,
+    reversed: defaultRewardSummaryBucket,
+};
+
+const rewardStatusFilterOptions: {
+    value: ReferralRewardFilterStatus;
+    label: string;
+}[] = [
+    { value: "all", label: "All rewards" },
+    { value: "pending", label: "Pending" },
+    { value: "approved", label: "Approved" },
+    { value: "rejected", label: "Rejected" },
+    { value: "withdrawal_requested", label: "Withdrawal Requested" },
+    { value: "paid", label: "Paid" },
+    { value: "reversed", label: "Reversed" },
+];
+
+const formatRewardStatusLabel = (status?: string) => {
+    return status ? status.replace(/_/g, " ") : "unknown";
+};
 
 function AttributionLedgerSection() {
     const [attributions, setAttributions] = useState<ReferralAttribution[]>([]);
@@ -553,6 +682,262 @@ function AttributionLedgerSection() {
 
                                         <td className="px-4 py-4">
                                             {formatDateTime(attribution.attributedAt)}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    );
+}
+
+
+function RewardLedgerSection() {
+    const [rewards, setRewards] = useState<ReferralReward[]>([]);
+    const [summary, setSummary] = useState<ReferralRewardSummary>(
+        defaultRewardSummary
+    );
+    const [statusFilter, setStatusFilter] =
+        useState<ReferralRewardFilterStatus>("all");
+    const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState("");
+
+    const loadRewards = async () => {
+        const token = window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
+
+        if (!token) {
+            setErrorMessage("Admin session not found. Please login again.");
+            setRewards([]);
+            setSummary(defaultRewardSummary);
+            return;
+        }
+
+        setIsLoading(true);
+        setErrorMessage("");
+
+        try {
+            const url = new URL(API_BASE_URL + "/api/referral-partners/rewards");
+
+            url.searchParams.set("limit", "100");
+
+            if (statusFilter !== "all") {
+                url.searchParams.set("status", statusFilter);
+            }
+
+            const response = await fetch(url.toString(), {
+                headers: {
+                    Authorization: "Bearer " + token,
+                },
+            });
+
+            const result = (await response.json()) as ReferralRewardsResponse;
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to load reward ledger.");
+            }
+
+            setRewards(result.data || []);
+            setSummary(result.summary || defaultRewardSummary);
+        } catch (error) {
+            setErrorMessage(
+                error instanceof Error ? error.message : "Unable to load reward ledger."
+            );
+            setRewards([]);
+            setSummary(defaultRewardSummary);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        void loadRewards();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [statusFilter]);
+
+    return (
+        <section className="space-y-4 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
+                        Reward Ledger
+                    </p>
+                    <h2 className="mt-2 text-xl font-black">
+                        Referral Reward Ledger
+                    </h2>
+                    <p className="mt-2 text-sm text-slate-600">
+                        View rewards created after paid purchases. Approval and withdrawal actions will be added later.
+                    </p>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row">
+                    <select
+                        value={statusFilter}
+                        onChange={(event) =>
+                            setStatusFilter(event.target.value as ReferralRewardFilterStatus)
+                        }
+                        className="rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                    >
+                        {rewardStatusFilterOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+
+                    <button
+                        type="button"
+                        onClick={() => void loadRewards()}
+                        disabled={isLoading}
+                        className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:bg-slate-400"
+                    >
+                        {isLoading ? "Refreshing..." : "Refresh"}
+                    </button>
+                </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-4">
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+                        Total Rewards
+                    </p>
+                    <p className="mt-3 text-3xl font-black">{summary.total.count}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                        {formatRupees(summary.total.rewardAmountInPaise)}
+                    </p>
+                </div>
+
+                <div className="rounded-3xl border border-amber-100 bg-amber-50 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-amber-700">
+                        Pending
+                    </p>
+                    <p className="mt-3 text-3xl font-black text-amber-700">
+                        {summary.pending.count}
+                    </p>
+                    <p className="mt-1 text-xs text-amber-700">
+                        {formatRupees(summary.pending.rewardAmountInPaise)}
+                    </p>
+                </div>
+
+                <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
+                        Approved/Paid
+                    </p>
+                    <p className="mt-3 text-3xl font-black text-emerald-700">
+                        {summary.approved.count + summary.paid.count}
+                    </p>
+                    <p className="mt-1 text-xs text-emerald-700">
+                        {formatRupees(
+                            summary.approved.rewardAmountInPaise +
+                                summary.paid.rewardAmountInPaise
+                        )}
+                    </p>
+                </div>
+
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+                        Purchase Value
+                    </p>
+                    <p className="mt-3 text-3xl font-black">
+                        {formatRupees(summary.total.purchaseAmountInPaise)}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                        Source paid amount
+                    </p>
+                </div>
+            </div>
+
+            {errorMessage ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+                    {errorMessage}
+                </div>
+            ) : null}
+
+            <div className="overflow-hidden rounded-3xl border border-slate-200">
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+                            <tr>
+                                <th className="px-4 py-3">Partner</th>
+                                <th className="px-4 py-3">Student</th>
+                                <th className="px-4 py-3">Purchase</th>
+                                <th className="px-4 py-3">Purchase Amount</th>
+                                <th className="px-4 py-3">Reward</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3">Created</th>
+                            </tr>
+                        </thead>
+
+                        <tbody className="divide-y divide-slate-100">
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                                        Loading referral rewards...
+                                    </td>
+                                </tr>
+                            ) : rewards.length === 0 ? (
+                                <tr>
+                                    <td colSpan={7} className="px-4 py-8 text-center text-slate-500">
+                                        No referral rewards found.
+                                    </td>
+                                </tr>
+                            ) : (
+                                rewards.map((reward) => (
+                                    <tr key={reward._id} className="align-top">
+                                        <td className="px-4 py-4">
+                                            <div className="font-semibold text-slate-900">
+                                                {reward.referralPartner?.name || "-"}
+                                            </div>
+                                            <div className="mt-1 text-xs text-slate-500">
+                                                {reward.referralPartner?.code || "-"} ·{" "}
+                                                {reward.referralPartner?.mobile || "-"}
+                                            </div>
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            <div className="font-semibold text-slate-900">
+                                                {reward.student?.name || "-"}
+                                            </div>
+                                            <div className="mt-1 text-xs text-slate-500">
+                                                {reward.student?.mobile || "-"} ·{" "}
+                                                {reward.student?.email || "No email"}
+                                            </div>
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            <div className="font-semibold text-slate-900">
+                                                {reward.purchase?.productSnapshot?.title || "Payment package"}
+                                            </div>
+                                            <div className="mt-1 text-xs text-slate-500">
+                                                Paid {formatDateTime(reward.purchase?.paidAt)}
+                                            </div>
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            {formatRupees(reward.purchaseAmountInPaise)}
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            <div className="font-black text-emerald-700">
+                                                {formatRupees(reward.rewardAmountInPaise)}
+                                            </div>
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            <span
+                                                className={
+                                                    "inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ring-1 " +
+                                                    getStatusBadgeClass(reward.status)
+                                                }
+                                            >
+                                                {formatRewardStatusLabel(reward.status)}
+                                            </span>
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            {formatDateTime(reward.createdAt)}
                                         </td>
                                     </tr>
                                 ))
@@ -1378,6 +1763,8 @@ export default function AdminReferralPartnersPage() {
                     </section>
 
                     <AttributionLedgerSection />
+
+                    <RewardLedgerSection />
                 </section>
 
                 {editingPartnerId ? (
