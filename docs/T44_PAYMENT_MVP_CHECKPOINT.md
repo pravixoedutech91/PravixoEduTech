@@ -94,3 +94,19 @@ Future duplicate active package purchases are blocked by backend guard.
 ## Next step
 T-44K Final Payment MVP smoke test.
 After T-44K passes, move to Referral MVP.
+
+## T-44K Final Payment MVP Smoke Test
+
+Status: PASSED
+
+Verified:
+- Active packages DB proof shows only BSR Package and MPPSC/UPPSC combo pack.
+- T44B Proof Mock Test Pack is hidden from student package list.
+- Student Golu has active BSR Package entitlement.
+- Student package list returns BSR Package as active and MPPSC/UPPSC as not_purchased.
+- Duplicate BSR create-order is blocked with 409.
+- Admin payment ledger returns 200.
+- Paid ledger filter returns only paid purchases.
+- Working tree clean after final smoke.
+
+Payment MVP is locked. Next module: Referral MVP.
