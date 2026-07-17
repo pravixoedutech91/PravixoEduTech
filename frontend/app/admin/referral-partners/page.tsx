@@ -404,6 +404,81 @@ const attributionStatusFilterOptions: {
 ];
 
 
+
+type ReferralWithdrawalStatus =
+    | "requested"
+    | "approved"
+    | "rejected"
+    | "paid"
+    | "cancelled";
+type ReferralWithdrawalFilterStatus = "all" | ReferralWithdrawalStatus;
+
+type ReferralWithdrawalSummaryBucket = {
+    count: number;
+    amountInPaise: number;
+};
+
+type ReferralWithdrawalSummary = {
+    total: ReferralWithdrawalSummaryBucket;
+    requested: ReferralWithdrawalSummaryBucket;
+    approved: ReferralWithdrawalSummaryBucket;
+    rejected: ReferralWithdrawalSummaryBucket;
+    paid: ReferralWithdrawalSummaryBucket;
+    cancelled: ReferralWithdrawalSummaryBucket;
+};
+
+type ReferralWithdrawalPartner = {
+    _id?: string;
+    tenantId?: string;
+    name?: string;
+    mobile?: string;
+    email?: string;
+    promoterType?: string;
+    code?: string;
+    status?: string;
+    walletBalanceInPaise?: number;
+    totalEarnedInPaise?: number;
+    totalWithdrawnInPaise?: number;
+};
+
+type ReferralWithdrawal = {
+    _id: string;
+    tenantId?: string;
+    referralPartnerId?: string;
+    referralPartner?: ReferralWithdrawalPartner | null;
+    amountInPaise?: number;
+    amountInRupees?: number;
+    status?: ReferralWithdrawalStatus;
+    payoutMethod?: "upi" | "bank" | "cash" | "other";
+    upiId?: string;
+    bankDetailsSnapshot?: {
+        accountHolderName?: string;
+        accountNumberLast4?: string;
+        ifsc?: string;
+        bankName?: string;
+    };
+    requestedAt?: string;
+    approvedAt?: string;
+    rejectedAt?: string;
+    paidAt?: string;
+    cancelledAt?: string;
+    adminNote?: string;
+    createdAt?: string;
+    updatedAt?: string;
+};
+
+type ReferralWithdrawalsResponse = {
+    success: boolean;
+    count?: number;
+    total?: number;
+    page?: number;
+    limit?: number;
+    totalPages?: number;
+    summary?: ReferralWithdrawalSummary;
+    data?: ReferralWithdrawal[];
+    message?: string;
+};
+
 const defaultRewardSummaryBucket: ReferralRewardSummaryBucket = {
     count: 0,
     purchaseAmountInPaise: 0,
@@ -435,6 +510,45 @@ const rewardStatusFilterOptions: {
 
 const formatRewardStatusLabel = (status?: string) => {
     return status ? status.replace(/_/g, " ") : "unknown";
+};
+
+
+const defaultWithdrawalSummaryBucket: ReferralWithdrawalSummaryBucket = {
+    count: 0,
+    amountInPaise: 0,
+};
+
+const defaultWithdrawalSummary: ReferralWithdrawalSummary = {
+    total: defaultWithdrawalSummaryBucket,
+    requested: defaultWithdrawalSummaryBucket,
+    approved: defaultWithdrawalSummaryBucket,
+    rejected: defaultWithdrawalSummaryBucket,
+    paid: defaultWithdrawalSummaryBucket,
+    cancelled: defaultWithdrawalSummaryBucket,
+};
+
+const withdrawalStatusFilterOptions: {
+    value: ReferralWithdrawalFilterStatus;
+    label: string;
+}[] = [
+    { value: "all", label: "All withdrawals" },
+    { value: "requested", label: "Requested" },
+    { value: "approved", label: "Approved" },
+    { value: "rejected", label: "Rejected" },
+    { value: "paid", label: "Paid" },
+    { value: "cancelled", label: "Cancelled" },
+];
+
+const formatWithdrawalStatusLabel = (status?: string) => {
+    return status ? status.replace(/_/g, " ") : "unknown";
+};
+
+const formatPayoutMethodLabel = (method?: string) => {
+    if (!method) {
+        return "-";
+    }
+
+    return method.replace(/_/g, " ");
 };
 
 function AttributionLedgerSection() {
@@ -1090,6 +1204,265 @@ function RewardLedgerSection() {
         </section>
     );
 }
+
+
+function WithdrawalLedgerSection() {
+    const [withdrawals, setWithdrawals] = useState<ReferralWithdrawal[]>([]);
+    const [summary, setSummary] = useState<ReferralWithdrawalSummary>(
+        defaultWithdrawalSummary
+    );
+    const [statusFilter, setStatusFilter] =
+        useState<ReferralWithdrawalFilterStatus>("all");
+    const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState("");
+
+    const loadWithdrawals = async () => {
+        const token = window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
+
+        if (!token) {
+            setErrorMessage("Admin session not found. Please login again.");
+            setWithdrawals([]);
+            setSummary(defaultWithdrawalSummary);
+            return;
+        }
+
+        setIsLoading(true);
+        setErrorMessage("");
+
+        try {
+            const url = new URL(API_BASE_URL + "/api/referral-partners/withdrawals");
+
+            url.searchParams.set("limit", "100");
+
+            if (statusFilter !== "all") {
+                url.searchParams.set("status", statusFilter);
+            }
+
+            const response = await fetch(url.toString(), {
+                headers: {
+                    Authorization: "Bearer " + token,
+                },
+            });
+
+            const result = (await response.json()) as ReferralWithdrawalsResponse;
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to load withdrawal ledger.");
+            }
+
+            setWithdrawals(result.data || []);
+            setSummary(result.summary || defaultWithdrawalSummary);
+        } catch (error) {
+            setErrorMessage(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to load withdrawal ledger."
+            );
+            setWithdrawals([]);
+            setSummary(defaultWithdrawalSummary);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        void loadWithdrawals();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [statusFilter]);
+
+    return (
+        <section className="space-y-4 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-blue-700">
+                        Withdrawal Ledger
+                    </p>
+                    <h2 className="mt-2 text-xl font-black">
+                        Referral Withdrawal Ledger
+                    </h2>
+                    <p className="mt-2 text-sm text-slate-600">
+                        View manual withdrawal requests. Approval, rejection, and paid actions will be added later.
+                    </p>
+                </div>
+
+                <div className="flex flex-col gap-3 sm:flex-row">
+                    <select
+                        value={statusFilter}
+                        onChange={(event) =>
+                            setStatusFilter(event.target.value as ReferralWithdrawalFilterStatus)
+                        }
+                        className="rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                    >
+                        {withdrawalStatusFilterOptions.map((option) => (
+                            <option key={option.value} value={option.value}>
+                                {option.label}
+                            </option>
+                        ))}
+                    </select>
+
+                    <button
+                        type="button"
+                        onClick={() => void loadWithdrawals()}
+                        disabled={isLoading}
+                        className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:bg-slate-400"
+                    >
+                        {isLoading ? "Refreshing..." : "Refresh"}
+                    </button>
+                </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-4">
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+                        Total Requests
+                    </p>
+                    <p className="mt-3 text-3xl font-black">{summary.total.count}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                        {formatRupees(summary.total.amountInPaise)}
+                    </p>
+                </div>
+
+                <div className="rounded-3xl border border-amber-100 bg-amber-50 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-amber-700">
+                        Requested
+                    </p>
+                    <p className="mt-3 text-3xl font-black text-amber-700">
+                        {summary.requested.count}
+                    </p>
+                    <p className="mt-1 text-xs text-amber-700">
+                        {formatRupees(summary.requested.amountInPaise)}
+                    </p>
+                </div>
+
+                <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
+                        Approved/Paid
+                    </p>
+                    <p className="mt-3 text-3xl font-black text-emerald-700">
+                        {summary.approved.count + summary.paid.count}
+                    </p>
+                    <p className="mt-1 text-xs text-emerald-700">
+                        {formatRupees(
+                            summary.approved.amountInPaise + summary.paid.amountInPaise
+                        )}
+                    </p>
+                </div>
+
+                <div className="rounded-3xl border border-red-100 bg-red-50 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-red-700">
+                        Rejected/Cancelled
+                    </p>
+                    <p className="mt-3 text-3xl font-black text-red-700">
+                        {summary.rejected.count + summary.cancelled.count}
+                    </p>
+                    <p className="mt-1 text-xs text-red-700">
+                        {formatRupees(
+                            summary.rejected.amountInPaise + summary.cancelled.amountInPaise
+                        )}
+                    </p>
+                </div>
+            </div>
+
+            {errorMessage ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+                    {errorMessage}
+                </div>
+            ) : null}
+
+            <div className="overflow-hidden rounded-3xl border border-slate-200">
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+                            <tr>
+                                <th className="px-4 py-3">Partner</th>
+                                <th className="px-4 py-3">Amount</th>
+                                <th className="px-4 py-3">Payout</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3">Requested</th>
+                                <th className="px-4 py-3">Note</th>
+                            </tr>
+                        </thead>
+
+                        <tbody className="divide-y divide-slate-100">
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                                        Loading withdrawal requests...
+                                    </td>
+                                </tr>
+                            ) : withdrawals.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                                        No withdrawal requests found.
+                                    </td>
+                                </tr>
+                            ) : (
+                                withdrawals.map((withdrawal) => (
+                                    <tr key={withdrawal._id} className="align-top">
+                                        <td className="px-4 py-4">
+                                            <div className="font-semibold text-slate-900">
+                                                {withdrawal.referralPartner?.name || "-"}
+                                            </div>
+                                            <div className="mt-1 text-xs text-slate-500">
+                                                {withdrawal.referralPartner?.code || "-"} ·{" "}
+                                                {withdrawal.referralPartner?.mobile || "-"}
+                                            </div>
+                                            <div className="mt-1 text-xs text-slate-500">
+                                                Wallet{" "}
+                                                {formatRupees(
+                                                    withdrawal.referralPartner?.walletBalanceInPaise
+                                                )}
+                                            </div>
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            <div className="font-black text-blue-700">
+                                                {formatRupees(withdrawal.amountInPaise)}
+                                            </div>
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            <div className="font-semibold capitalize text-slate-900">
+                                                {formatPayoutMethodLabel(withdrawal.payoutMethod)}
+                                            </div>
+                                            <div className="mt-1 text-xs text-slate-500">
+                                                {withdrawal.payoutMethod === "upi"
+                                                    ? withdrawal.upiId || "UPI not available"
+                                                    : withdrawal.bankDetailsSnapshot?.bankName ||
+                                                      withdrawal.bankDetailsSnapshot?.ifsc ||
+                                                      "-"}
+                                            </div>
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            <span
+                                                className={
+                                                    "inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ring-1 " +
+                                                    getStatusBadgeClass(withdrawal.status)
+                                                }
+                                            >
+                                                {formatWithdrawalStatusLabel(withdrawal.status)}
+                                            </span>
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            {formatDateTime(withdrawal.requestedAt)}
+                                        </td>
+
+                                        <td className="px-4 py-4 text-slate-600">
+                                            {withdrawal.adminNote || "-"}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    );
+}
+
 
 export default function AdminReferralPartnersPage() {
     const [isReady, setIsReady] = useState(false);
@@ -1906,6 +2279,8 @@ export default function AdminReferralPartnersPage() {
                     <AttributionLedgerSection />
 
                     <RewardLedgerSection />
+
+                    <WithdrawalLedgerSection />
                 </section>
 
                 {editingPartnerId ? (
