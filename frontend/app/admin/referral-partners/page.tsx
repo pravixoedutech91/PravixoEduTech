@@ -513,6 +513,29 @@ const formatRewardStatusLabel = (status?: string) => {
 };
 
 
+
+type PartnerWithdrawalForm = {
+    amountInRupees: string;
+    payoutMethod: "upi" | "bank" | "cash" | "other";
+    upiId: string;
+    accountHolderName: string;
+    accountNumber: string;
+    ifsc: string;
+    bankName: string;
+    adminNote: string;
+};
+
+const initialWithdrawalForm: PartnerWithdrawalForm = {
+    amountInRupees: "",
+    payoutMethod: "upi",
+    upiId: "",
+    accountHolderName: "",
+    accountNumber: "",
+    ifsc: "",
+    bankName: "",
+    adminNote: "",
+};
+
 const defaultWithdrawalSummaryBucket: ReferralWithdrawalSummaryBucket = {
     count: 0,
     amountInPaise: 0,
@@ -1482,6 +1505,9 @@ export default function AdminReferralPartnersPage() {
     const [form, setForm] = useState<PartnerForm>(initialForm);
     const [editingPartnerId, setEditingPartnerId] = useState("");
     const [editForm, setEditForm] = useState<PartnerForm>(initialForm);
+    const [withdrawalPartner, setWithdrawalPartner] = useState<ReferralPartner | null>(null);
+    const [withdrawalForm, setWithdrawalForm] =
+        useState<PartnerWithdrawalForm>(initialWithdrawalForm);
 
     const activePartnerCount = useMemo(() => {
         return partners.filter((partner) => partner.status === "active").length;
@@ -1701,6 +1727,128 @@ export default function AdminReferralPartnersPage() {
     const cancelEditing = () => {
         setEditingPartnerId("");
         setEditForm(initialForm);
+    };
+
+
+    const startWithdrawalRequest = (partner: ReferralPartner) => {
+        setWithdrawalPartner(partner);
+        setWithdrawalForm({
+            ...initialWithdrawalForm,
+            adminNote: "Manual withdrawal request from admin panel.",
+        });
+        setToast(null);
+    };
+
+    const cancelWithdrawalRequest = () => {
+        setWithdrawalPartner(null);
+        setWithdrawalForm(initialWithdrawalForm);
+    };
+
+    const handleWithdrawalSubmit = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        if (!adminToken || !profile || !withdrawalPartner) {
+            setToast({ type: "error", message: "Admin session or partner not found." });
+            return;
+        }
+
+        if (withdrawalPartner.status !== "active") {
+            setToast({
+                type: "error",
+                message: "Only active referral partners can request withdrawal.",
+            });
+            return;
+        }
+
+        const amountInRupees = Number.parseFloat(withdrawalForm.amountInRupees);
+        const amountInPaise = Math.round(amountInRupees * 100);
+
+        if (!Number.isFinite(amountInRupees) || amountInPaise < 1) {
+            setToast({
+                type: "error",
+                message: "Withdrawal amount must be greater than zero.",
+            });
+            return;
+        }
+
+        if (amountInPaise > (withdrawalPartner.walletBalanceInPaise || 0)) {
+            setToast({
+                type: "error",
+                message: "Withdrawal amount exceeds available wallet balance.",
+            });
+            return;
+        }
+
+        if (withdrawalForm.payoutMethod === "upi" && !withdrawalForm.upiId.trim()) {
+            setToast({
+                type: "error",
+                message: "UPI ID is required for UPI withdrawal.",
+            });
+            return;
+        }
+
+        setIsSubmitting(true);
+        setToast(null);
+
+        try {
+            const response = await fetch(
+                API_BASE_URL +
+                    "/api/referral-partners/" +
+                    withdrawalPartner._id +
+                    "/withdrawals",
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: "Bearer " + adminToken,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        amountInPaise,
+                        payoutMethod: withdrawalForm.payoutMethod,
+                        upiId: withdrawalForm.upiId.trim(),
+                        bankDetailsSnapshot: {
+                            accountHolderName: withdrawalForm.accountHolderName.trim(),
+                            accountNumber: withdrawalForm.accountNumber.trim(),
+                            ifsc: withdrawalForm.ifsc.trim(),
+                            bankName: withdrawalForm.bankName.trim(),
+                        },
+                        adminNote:
+                            withdrawalForm.adminNote.trim() ||
+                            "Manual withdrawal request from admin panel.",
+                    }),
+                }
+            );
+
+            const result = (await response.json()) as {
+                success: boolean;
+                message?: string;
+            };
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to create withdrawal request.");
+            }
+
+            cancelWithdrawalRequest();
+
+            setToast({
+                type: "success",
+                message:
+                    result.message ||
+                    "Withdrawal request created successfully. Refresh Withdrawal Ledger to view it.",
+            });
+
+            await loadPartners(adminToken, { clearToast: false });
+        } catch (error) {
+            setToast({
+                type: "error",
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : "Unable to create withdrawal request.",
+            });
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleUpdateSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -2243,6 +2391,19 @@ export default function AdminReferralPartnersPage() {
                                                             </button>
                                                             <button
                                                                 type="button"
+                                                                onClick={() => startWithdrawalRequest(partner)}
+                                                                disabled={
+                                                                    isSubmitting ||
+                                                                    partner.status !== "active" ||
+                                                                    (partner.walletBalanceInPaise || 0) <= 0
+                                                                }
+                                                                className="rounded-full bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                                            >
+                                                                Request Withdrawal
+                                                            </button>
+
+                                                            <button
+                                                                type="button"
                                                                 onClick={() => void updatePartnerStatus(partner, "activate")}
                                                                 disabled={isSubmitting || partner.status === "active"}
                                                                 className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
@@ -2282,6 +2443,205 @@ export default function AdminReferralPartnersPage() {
 
                     <WithdrawalLedgerSection />
                 </section>
+
+
+                {withdrawalPartner ? (
+                    <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/50 px-4 py-8">
+                        <form
+                            onSubmit={handleWithdrawalSubmit}
+                            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl"
+                        >
+                            <div className="flex items-start justify-between gap-4">
+                                <div>
+                                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-blue-700">
+                                        Withdrawal Request
+                                    </p>
+                                    <h2 className="mt-2 text-2xl font-black">
+                                        Request Partner Withdrawal
+                                    </h2>
+                                    <p className="mt-2 text-sm text-slate-600">
+                                        {withdrawalPartner.name || withdrawalPartner.code} · Available wallet{" "}
+                                        {formatRupees(withdrawalPartner.walletBalanceInPaise)}
+                                    </p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={cancelWithdrawalRequest}
+                                    className="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                >
+                                    Close
+                                </button>
+                            </div>
+
+                            <div className="mt-5 grid gap-4 md:grid-cols-2">
+                                <label className="block">
+                                    <span className="text-sm font-semibold text-slate-700">
+                                        Amount in rupees
+                                    </span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={withdrawalForm.amountInRupees}
+                                        onChange={(event) =>
+                                            setWithdrawalForm((current) => ({
+                                                ...current,
+                                                amountInRupees: event.target.value,
+                                            }))
+                                        }
+                                        className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                                        placeholder="Example: 500"
+                                    />
+                                </label>
+
+                                <label className="block">
+                                    <span className="text-sm font-semibold text-slate-700">
+                                        Payout method
+                                    </span>
+                                    <select
+                                        value={withdrawalForm.payoutMethod}
+                                        onChange={(event) =>
+                                            setWithdrawalForm((current) => ({
+                                                ...current,
+                                                payoutMethod: event.target.value as PartnerWithdrawalForm["payoutMethod"],
+                                            }))
+                                        }
+                                        className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                                    >
+                                        <option value="upi">UPI</option>
+                                        <option value="bank">Bank</option>
+                                        <option value="cash">Cash</option>
+                                        <option value="other">Other</option>
+                                    </select>
+                                </label>
+
+                                {withdrawalForm.payoutMethod === "upi" ? (
+                                    <label className="block md:col-span-2">
+                                        <span className="text-sm font-semibold text-slate-700">
+                                            UPI ID
+                                        </span>
+                                        <input
+                                            value={withdrawalForm.upiId}
+                                            onChange={(event) =>
+                                                setWithdrawalForm((current) => ({
+                                                    ...current,
+                                                    upiId: event.target.value,
+                                                }))
+                                            }
+                                            className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                                            placeholder="example@upi"
+                                        />
+                                    </label>
+                                ) : null}
+
+                                {withdrawalForm.payoutMethod === "bank" ? (
+                                    <>
+                                        <label className="block">
+                                            <span className="text-sm font-semibold text-slate-700">
+                                                Account holder name
+                                            </span>
+                                            <input
+                                                value={withdrawalForm.accountHolderName}
+                                                onChange={(event) =>
+                                                    setWithdrawalForm((current) => ({
+                                                        ...current,
+                                                        accountHolderName: event.target.value,
+                                                    }))
+                                                }
+                                                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                                            />
+                                        </label>
+
+                                        <label className="block">
+                                            <span className="text-sm font-semibold text-slate-700">
+                                                Account number
+                                            </span>
+                                            <input
+                                                value={withdrawalForm.accountNumber}
+                                                onChange={(event) =>
+                                                    setWithdrawalForm((current) => ({
+                                                        ...current,
+                                                        accountNumber: event.target.value,
+                                                    }))
+                                                }
+                                                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                                            />
+                                        </label>
+
+                                        <label className="block">
+                                            <span className="text-sm font-semibold text-slate-700">
+                                                IFSC
+                                            </span>
+                                            <input
+                                                value={withdrawalForm.ifsc}
+                                                onChange={(event) =>
+                                                    setWithdrawalForm((current) => ({
+                                                        ...current,
+                                                        ifsc: event.target.value,
+                                                    }))
+                                                }
+                                                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm uppercase outline-none focus:border-blue-500"
+                                            />
+                                        </label>
+
+                                        <label className="block">
+                                            <span className="text-sm font-semibold text-slate-700">
+                                                Bank name
+                                            </span>
+                                            <input
+                                                value={withdrawalForm.bankName}
+                                                onChange={(event) =>
+                                                    setWithdrawalForm((current) => ({
+                                                        ...current,
+                                                        bankName: event.target.value,
+                                                    }))
+                                                }
+                                                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                                            />
+                                        </label>
+                                    </>
+                                ) : null}
+
+                                <label className="block md:col-span-2">
+                                    <span className="text-sm font-semibold text-slate-700">
+                                        Admin note
+                                    </span>
+                                    <textarea
+                                        value={withdrawalForm.adminNote}
+                                        onChange={(event) =>
+                                            setWithdrawalForm((current) => ({
+                                                ...current,
+                                                adminNote: event.target.value,
+                                            }))
+                                        }
+                                        rows={3}
+                                        className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                                        placeholder="Optional payout note"
+                                    />
+                                </label>
+                            </div>
+
+                            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                                <button
+                                    type="button"
+                                    onClick={cancelWithdrawalRequest}
+                                    className="rounded-2xl border border-slate-300 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                >
+                                    Cancel
+                                </button>
+
+                                <button
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="rounded-2xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                                >
+                                    {isSubmitting ? "Creating..." : "Create Withdrawal Request"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                ) : null}
 
                 {editingPartnerId ? (
                     <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/50 px-4 py-8">
