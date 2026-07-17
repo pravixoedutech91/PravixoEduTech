@@ -332,6 +332,15 @@ export default function AdminDashboardPage() {
                                         Open
                                     </span>
                                 </Link>
+                                <Link
+                                    href="/admin/referral-partners"
+                                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
+                                >
+                                    <span>Referral Partners</span>
+                                    <span className="rounded-full bg-purple-950 px-2 py-0.5 text-[11px] text-purple-200">
+                                        Open
+                                    </span>
+                                </Link>
                             </div>
                         </div>
                     </nav>
@@ -459,6 +468,17 @@ export default function AdminDashboardPage() {
                                     </p>
                                     <p className="mt-2 text-sm leading-6 text-emerald-950">
                                         View Razorpay purchases, paid status, student details, and entitlement validity.
+                                    </p>
+                                </Link>
+                                <Link
+                                    href="/admin/referral-partners"
+                                    className="rounded-3xl border border-purple-100 bg-purple-50 p-5 hover:bg-purple-100"
+                                >
+                                    <p className="text-sm font-black text-purple-800">
+                                        Referral Partners
+                                    </p>
+                                    <p className="mt-2 text-sm leading-6 text-purple-950">
+                                        Manage promoters, referral codes, partner status, and commission rules.
                                     </p>
                                 </Link>
                             </div>
