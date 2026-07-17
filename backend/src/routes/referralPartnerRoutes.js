@@ -3,6 +3,7 @@ const router = express.Router();
 
 const {
   adminRoles,
+  getReferralRewards,
   getReferralAttributions,
   getReferralPartners,
   getReferralPartnerById,
@@ -46,6 +47,15 @@ router.get(
   authorize(...adminRoles),
   checkFeatureAccess("referrals"),
   getReferralAttributions
+);
+
+
+router.get(
+  "/rewards",
+  protect,
+  authorize(...adminRoles),
+  checkFeatureAccess("referrals"),
+  getReferralRewards
 );
 
 router.get(

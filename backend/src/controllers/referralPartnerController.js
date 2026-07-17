@@ -2,7 +2,9 @@ const mongoose = require("mongoose");
 
 const ReferralPartner = require("../models/ReferralPartner");
 const ReferralAttribution = require("../models/ReferralAttribution");
+const ReferralReward = require("../models/ReferralReward");
 const User = require("../models/User");
+const Purchase = require("../models/Purchase");
 
 const adminRoles = ["super_admin", "tenant_admin"];
 
@@ -862,8 +864,361 @@ const rejectReferralPartner = (req, res) => {
   return setReferralPartnerStatus(req, res, "rejected");
 };
 
+
+const rewardLedgerStatuses = [
+  "pending",
+  "approved",
+  "rejected",
+  "withdrawal_requested",
+  "paid",
+  "reversed",
+];
+
+const t45hToInteger = (value, fallback) => {
+  const parsed = Number.parseInt(value, 10);
+
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+
+  return parsed;
+};
+
+const t45hIsValidObjectId = (value) => {
+  return mongoose.Types.ObjectId.isValid(String(value || ""));
+};
+
+const buildReferralRewardTenantFilter = (req) => {
+  const filter = {};
+
+  if (req.user?.role === "super_admin") {
+    const tenantId = req.query?.tenantId || req.body?.tenantId;
+
+    if (tenantId) {
+      filter.tenantId = String(tenantId).trim();
+    }
+
+    return filter;
+  }
+
+  filter.tenantId = req.user?.tenantId;
+  return filter;
+};
+
+const buildReferralRewardSummary = (summaryRows) => {
+  const summary = {
+    total: {
+      count: 0,
+      purchaseAmountInPaise: 0,
+      rewardAmountInPaise: 0,
+    },
+    pending: {
+      count: 0,
+      purchaseAmountInPaise: 0,
+      rewardAmountInPaise: 0,
+    },
+    approved: {
+      count: 0,
+      purchaseAmountInPaise: 0,
+      rewardAmountInPaise: 0,
+    },
+    rejected: {
+      count: 0,
+      purchaseAmountInPaise: 0,
+      rewardAmountInPaise: 0,
+    },
+    withdrawal_requested: {
+      count: 0,
+      purchaseAmountInPaise: 0,
+      rewardAmountInPaise: 0,
+    },
+    paid: {
+      count: 0,
+      purchaseAmountInPaise: 0,
+      rewardAmountInPaise: 0,
+    },
+    reversed: {
+      count: 0,
+      purchaseAmountInPaise: 0,
+      rewardAmountInPaise: 0,
+    },
+  };
+
+  for (const row of summaryRows || []) {
+    const status = row._id || "pending";
+    const count = row.count || 0;
+    const purchaseAmountInPaise = row.purchaseAmountInPaise || 0;
+    const rewardAmountInPaise = row.rewardAmountInPaise || 0;
+
+    summary.total.count += count;
+    summary.total.purchaseAmountInPaise += purchaseAmountInPaise;
+    summary.total.rewardAmountInPaise += rewardAmountInPaise;
+
+    if (summary[status]) {
+      summary[status].count = count;
+      summary[status].purchaseAmountInPaise = purchaseAmountInPaise;
+      summary[status].rewardAmountInPaise = rewardAmountInPaise;
+    }
+  }
+
+  return summary;
+};
+
+const buildReferralRewardStudentPayload = (student) => {
+  if (!student) {
+    return null;
+  }
+
+  return {
+    _id: student._id,
+    name: student.name,
+    email: student.email,
+    mobile: student.mobile,
+    role: student.role,
+    tenantId: student.tenantId,
+  };
+};
+
+const buildReferralRewardPartnerPayload = (partner) => {
+  if (!partner) {
+    return null;
+  }
+
+  return {
+    _id: partner._id,
+    tenantId: partner.tenantId,
+    name: partner.name,
+    mobile: partner.mobile,
+    email: partner.email,
+    promoterType: partner.promoterType,
+    code: partner.code,
+    status: partner.status,
+    commissionType: partner.commissionType,
+    commissionValue: partner.commissionValue,
+  };
+};
+
+const buildReferralRewardPurchasePayload = (purchase) => {
+  if (!purchase) {
+    return null;
+  }
+
+  return {
+    _id: purchase._id,
+    tenantId: purchase.tenantId,
+    studentId: purchase.studentId,
+    productId: purchase.productId,
+    productSnapshot: purchase.productSnapshot,
+    amountInPaise: purchase.amountInPaise,
+    currency: purchase.currency,
+    status: purchase.status,
+    provider: purchase.provider,
+    receipt: purchase.receipt,
+    razorpayOrderId: purchase.razorpayOrderId,
+    razorpayPaymentId: purchase.razorpayPaymentId,
+    paidAt: purchase.paidAt,
+    createdAt: purchase.createdAt,
+    updatedAt: purchase.updatedAt,
+  };
+};
+
+const getReferralRewards = async (req, res) => {
+  try {
+    const page = Math.max(t45hToInteger(req.query.page, 1), 1);
+    const limit = Math.min(Math.max(t45hToInteger(req.query.limit, 50), 1), 100);
+    const skip = (page - 1) * limit;
+
+    const filter = buildReferralRewardTenantFilter(req);
+
+    if (req.query.status) {
+      const status = String(req.query.status).trim();
+
+      if (!rewardLedgerStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid reward status",
+        });
+      }
+
+      filter.status = status;
+    }
+
+    if (req.query.referralPartnerId) {
+      if (!t45hIsValidObjectId(req.query.referralPartnerId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid referralPartnerId",
+        });
+      }
+
+      filter.referralPartnerId = new mongoose.Types.ObjectId(
+        req.query.referralPartnerId
+      );
+    }
+
+    if (req.query.studentId) {
+      if (!t45hIsValidObjectId(req.query.studentId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid studentId",
+        });
+      }
+
+      filter.studentId = new mongoose.Types.ObjectId(req.query.studentId);
+    }
+
+    if (req.query.purchaseId) {
+      if (!t45hIsValidObjectId(req.query.purchaseId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid purchaseId",
+        });
+      }
+
+      filter.purchaseId = new mongoose.Types.ObjectId(req.query.purchaseId);
+    }
+
+    const [total, rewards, summaryRows] = await Promise.all([
+      ReferralReward.countDocuments(filter),
+      ReferralReward.find(filter)
+        .sort({
+          createdAt: -1,
+        })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      ReferralReward.aggregate([
+        {
+          $match: filter,
+        },
+        {
+          $group: {
+            _id: "$status",
+            count: {
+              $sum: 1,
+            },
+            purchaseAmountInPaise: {
+              $sum: "$purchaseAmountInPaise",
+            },
+            rewardAmountInPaise: {
+              $sum: "$rewardAmountInPaise",
+            },
+          },
+        },
+      ]),
+    ]);
+
+    const partnerIds = [
+      ...new Set(rewards.map((reward) => String(reward.referralPartnerId))),
+    ];
+    const studentIds = [
+      ...new Set(rewards.map((reward) => String(reward.studentId))),
+    ];
+    const purchaseIds = rewards.map((reward) => reward.purchaseId);
+
+    const [partners, students, purchases] = await Promise.all([
+      partnerIds.length > 0
+        ? ReferralPartner.find({
+            _id: {
+              $in: partnerIds,
+            },
+          })
+            .select(
+              "tenantId name mobile email promoterType code status commissionType commissionValue"
+            )
+            .lean()
+        : [],
+      studentIds.length > 0
+        ? User.find({
+            _id: {
+              $in: studentIds,
+            },
+          })
+            .select("name email mobile role tenantId")
+            .lean()
+        : [],
+      purchaseIds.length > 0
+        ? Purchase.find({
+            _id: {
+              $in: purchaseIds,
+            },
+          })
+            .select(
+              "tenantId studentId productId productSnapshot amountInPaise currency status provider receipt razorpayOrderId razorpayPaymentId paidAt createdAt updatedAt"
+            )
+            .lean()
+        : [],
+    ]);
+
+    const partnerById = new Map(
+      partners.map((partner) => [String(partner._id), partner])
+    );
+    const studentById = new Map(
+      students.map((student) => [String(student._id), student])
+    );
+    const purchaseById = new Map(
+      purchases.map((purchase) => [String(purchase._id), purchase])
+    );
+
+    const data = rewards.map((reward) => {
+      const partner = partnerById.get(String(reward.referralPartnerId));
+      const student = studentById.get(String(reward.studentId));
+      const purchase = purchaseById.get(String(reward.purchaseId));
+
+      return {
+        _id: reward._id,
+        tenantId: reward.tenantId,
+        referralPartnerId: reward.referralPartnerId,
+        studentId: reward.studentId,
+        purchaseId: reward.purchaseId,
+        productId: reward.productId,
+        referralPartner: buildReferralRewardPartnerPayload(partner),
+        student: buildReferralRewardStudentPayload(student),
+        purchase: buildReferralRewardPurchasePayload(purchase),
+        purchaseAmountInPaise: reward.purchaseAmountInPaise,
+        purchaseAmountInRupees: Number(
+          ((reward.purchaseAmountInPaise || 0) / 100).toFixed(2)
+        ),
+        rewardAmountInPaise: reward.rewardAmountInPaise,
+        rewardAmountInRupees: Number(
+          ((reward.rewardAmountInPaise || 0) / 100).toFixed(2)
+        ),
+        status: reward.status,
+        approvedAt: reward.approvedAt,
+        rejectedAt: reward.rejectedAt,
+        withdrawalRequestedAt: reward.withdrawalRequestedAt,
+        paidAt: reward.paidAt,
+        reversedAt: reward.reversedAt,
+        rejectionReason: reward.rejectionReason,
+        reversalReason: reward.reversalReason,
+        createdAt: reward.createdAt,
+        updatedAt: reward.updatedAt,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      count: data.length,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      summary: buildReferralRewardSummary(summaryRows),
+      data,
+    });
+  } catch (error) {
+    console.error("Get referral rewards error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch referral rewards",
+    });
+  }
+};
+
 module.exports = {
   adminRoles,
+  getReferralRewards,
   getReferralAttributions,
   getReferralPartners,
   getReferralPartnerById,
