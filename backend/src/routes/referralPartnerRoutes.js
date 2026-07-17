@@ -4,6 +4,7 @@ const router = express.Router();
 const {
   adminRoles,
   getReferralRewards,
+  getReferralWithdrawals,
   approveReferralReward,
   rejectReferralReward,
   createPartnerWithdrawalRequest,
@@ -78,6 +79,15 @@ router.patch(
   rejectReferralReward
 );
 
+
+
+router.get(
+  "/withdrawals",
+  protect,
+  authorize(...adminRoles),
+  checkFeatureAccess("referrals"),
+  getReferralWithdrawals
+);
 
 router.post(
   "/:id/withdrawals",

@@ -1651,9 +1651,247 @@ const createPartnerWithdrawalRequest = async (req, res) => {
   }
 };
 
+
+const withdrawalLedgerStatuses = [
+  "requested",
+  "approved",
+  "rejected",
+  "paid",
+  "cancelled",
+];
+
+const buildWithdrawalTenantFilter = (req) => {
+  const filter = {};
+
+  if (req.user?.role === "super_admin") {
+    const tenantId = req.query?.tenantId || req.body?.tenantId;
+
+    if (tenantId) {
+      filter.tenantId = String(tenantId).trim();
+    }
+
+    return filter;
+  }
+
+  filter.tenantId = req.user?.tenantId;
+  return filter;
+};
+
+const buildWithdrawalSummary = (summaryRows) => {
+  const summary = {
+    total: {
+      count: 0,
+      amountInPaise: 0,
+    },
+    requested: {
+      count: 0,
+      amountInPaise: 0,
+    },
+    approved: {
+      count: 0,
+      amountInPaise: 0,
+    },
+    rejected: {
+      count: 0,
+      amountInPaise: 0,
+    },
+    paid: {
+      count: 0,
+      amountInPaise: 0,
+    },
+    cancelled: {
+      count: 0,
+      amountInPaise: 0,
+    },
+  };
+
+  summaryRows.forEach((row) => {
+    const status = row._id;
+
+    if (!summary[status]) {
+      return;
+    }
+
+    const count = row.count || 0;
+    const amountInPaise = row.amountInPaise || 0;
+
+    summary[status].count = count;
+    summary[status].amountInPaise = amountInPaise;
+    summary.total.count += count;
+    summary.total.amountInPaise += amountInPaise;
+  });
+
+  return summary;
+};
+
+const buildWithdrawalLedgerPartnerPayload = (partner) => {
+  if (!partner) {
+    return null;
+  }
+
+  return {
+    _id: partner._id,
+    tenantId: partner.tenantId,
+    name: partner.name,
+    mobile: partner.mobile,
+    email: partner.email,
+    promoterType: partner.promoterType,
+    code: partner.code,
+    status: partner.status,
+    walletBalanceInPaise: partner.walletBalanceInPaise,
+    totalEarnedInPaise: partner.totalEarnedInPaise,
+    totalWithdrawnInPaise: partner.totalWithdrawnInPaise,
+  };
+};
+
+const getReferralWithdrawals = async (req, res) => {
+  try {
+    const page = Math.max(t45hToInteger(req.query.page, 1), 1);
+    const limit = Math.min(Math.max(t45hToInteger(req.query.limit, 50), 1), 100);
+    const skip = (page - 1) * limit;
+
+    const filter = buildWithdrawalTenantFilter(req);
+
+    if (req.query.status) {
+      const status = String(req.query.status).trim();
+
+      if (!withdrawalLedgerStatuses.includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid withdrawal status",
+        });
+      }
+
+      filter.status = status;
+    }
+
+    if (req.query.referralPartnerId) {
+      if (!isValidObjectId(req.query.referralPartnerId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid referralPartnerId",
+        });
+      }
+
+      filter.referralPartnerId = new mongoose.Types.ObjectId(
+        req.query.referralPartnerId
+      );
+    }
+
+    if (req.query.payoutMethod) {
+      const payoutMethod = normalizePayoutMethod(req.query.payoutMethod);
+
+      if (!payoutMethod) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid payout method",
+        });
+      }
+
+      filter.payoutMethod = payoutMethod;
+    }
+
+    const [total, withdrawals, summaryRows] = await Promise.all([
+      WithdrawalRequest.countDocuments(filter),
+      WithdrawalRequest.find(filter)
+        .sort({
+          createdAt: -1,
+        })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      WithdrawalRequest.aggregate([
+        {
+          $match: filter,
+        },
+        {
+          $group: {
+            _id: "$status",
+            count: {
+              $sum: 1,
+            },
+            amountInPaise: {
+              $sum: "$amountInPaise",
+            },
+          },
+        },
+      ]),
+    ]);
+
+    const partnerIds = [
+      ...new Set(
+        withdrawals
+          .map((withdrawal) => String(withdrawal.referralPartnerId || ""))
+          .filter(Boolean)
+      ),
+    ];
+
+    const partners =
+      partnerIds.length > 0
+        ? await ReferralPartner.find({
+            _id: {
+              $in: partnerIds,
+            },
+          })
+            .select(
+              "tenantId name mobile email promoterType code status walletBalanceInPaise totalEarnedInPaise totalWithdrawnInPaise"
+            )
+            .lean()
+        : [];
+
+    const partnerById = new Map(
+      partners.map((partner) => [String(partner._id), partner])
+    );
+
+    const data = withdrawals.map((withdrawal) => {
+      const partner = partnerById.get(String(withdrawal.referralPartnerId));
+
+      return {
+        _id: withdrawal._id,
+        tenantId: withdrawal.tenantId,
+        referralPartnerId: withdrawal.referralPartnerId,
+        referralPartner: buildWithdrawalLedgerPartnerPayload(partner),
+        amountInPaise: withdrawal.amountInPaise,
+        amountInRupees: Number(((withdrawal.amountInPaise || 0) / 100).toFixed(2)),
+        status: withdrawal.status,
+        payoutMethod: withdrawal.payoutMethod,
+        upiId: withdrawal.upiId,
+        bankDetailsSnapshot: withdrawal.bankDetailsSnapshot,
+        requestedAt: withdrawal.requestedAt,
+        approvedAt: withdrawal.approvedAt,
+        rejectedAt: withdrawal.rejectedAt,
+        paidAt: withdrawal.paidAt,
+        cancelledAt: withdrawal.cancelledAt,
+        adminNote: withdrawal.adminNote,
+        createdAt: withdrawal.createdAt,
+        updatedAt: withdrawal.updatedAt,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      count: data.length,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      summary: buildWithdrawalSummary(summaryRows),
+      data,
+    });
+  } catch (error) {
+    console.error("Get referral withdrawals error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch referral withdrawals",
+    });
+  }
+};
+
 module.exports = {
   adminRoles,
   getReferralRewards,
+  getReferralWithdrawals,
   approveReferralReward,
   rejectReferralReward,
   createPartnerWithdrawalRequest,
