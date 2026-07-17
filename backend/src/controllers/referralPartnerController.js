@@ -1888,10 +1888,344 @@ const getReferralWithdrawals = async (req, res) => {
   }
 };
 
+
+const buildWithdrawalMutationFilter = (req) => {
+  const filter = {
+    _id: req.params.id,
+  };
+
+  if (req.user?.role === "super_admin") {
+    const tenantId = req.query?.tenantId || req.body?.tenantId;
+
+    if (tenantId) {
+      filter.tenantId = String(tenantId).trim();
+    }
+
+    return filter;
+  }
+
+  filter.tenantId = req.user?.tenantId;
+  return filter;
+};
+
+const createWithdrawalHttpError = (message, statusCode) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
+const getWithdrawalAdminNote = (req) => {
+  return hasText(req.body?.adminNote) ? req.body.adminNote.trim() : "";
+};
+
+const findWithdrawalForMutationError = async (req, session) => {
+  return WithdrawalRequest.findOne(buildWithdrawalMutationFilter(req)).session(session);
+};
+
+const approveWithdrawalRequest = async (req, res) => {
+  const session = await mongoose.startSession();
+
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid withdrawal request id",
+      });
+    }
+
+    let updatedWithdrawal = null;
+    let partner = null;
+
+    await session.withTransaction(async () => {
+      const now = new Date();
+      const adminNote = getWithdrawalAdminNote(req);
+      const setData = {
+        status: "approved",
+        approvedAt: now,
+        updatedBy: req.user?._id,
+      };
+
+      if (adminNote) {
+        setData.adminNote = adminNote;
+      }
+
+      updatedWithdrawal = await WithdrawalRequest.findOneAndUpdate(
+        {
+          ...buildWithdrawalMutationFilter(req),
+          status: "requested",
+        },
+        {
+          $set: setData,
+        },
+        {
+          new: true,
+          runValidators: true,
+          session,
+        }
+      );
+
+      if (!updatedWithdrawal) {
+        const existingWithdrawal = await findWithdrawalForMutationError(req, session);
+
+        if (!existingWithdrawal) {
+          throw createWithdrawalHttpError(
+            "Withdrawal request not found or access denied",
+            404
+          );
+        }
+
+        throw createWithdrawalHttpError(
+          "Only requested withdrawals can be approved",
+          409
+        );
+      }
+
+      partner = await ReferralPartner.findOne({
+        _id: updatedWithdrawal.referralPartnerId,
+        tenantId: updatedWithdrawal.tenantId,
+      }).session(session);
+
+      if (!partner) {
+        throw createWithdrawalHttpError("Referral partner not found", 404);
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Withdrawal request approved successfully",
+      data: buildWithdrawalResponse(updatedWithdrawal, partner),
+    });
+  } catch (error) {
+    console.error("Approve withdrawal request error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode
+        ? error.message
+        : "Failed to approve withdrawal request",
+    });
+  } finally {
+    await session.endSession();
+  }
+};
+
+const rejectWithdrawalRequest = async (req, res) => {
+  const session = await mongoose.startSession();
+
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid withdrawal request id",
+      });
+    }
+
+    const adminNote = getWithdrawalAdminNote(req);
+
+    if (!adminNote) {
+      return res.status(400).json({
+        success: false,
+        message: "Rejection reason is required",
+      });
+    }
+
+    let updatedWithdrawal = null;
+    let partner = null;
+
+    await session.withTransaction(async () => {
+      const now = new Date();
+
+      updatedWithdrawal = await WithdrawalRequest.findOneAndUpdate(
+        {
+          ...buildWithdrawalMutationFilter(req),
+          status: {
+            $in: ["requested", "approved"],
+          },
+        },
+        {
+          $set: {
+            status: "rejected",
+            rejectedAt: now,
+            adminNote,
+            updatedBy: req.user?._id,
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+          session,
+        }
+      );
+
+      if (!updatedWithdrawal) {
+        const existingWithdrawal = await findWithdrawalForMutationError(req, session);
+
+        if (!existingWithdrawal) {
+          throw createWithdrawalHttpError(
+            "Withdrawal request not found or access denied",
+            404
+          );
+        }
+
+        throw createWithdrawalHttpError(
+          "Only requested or approved withdrawals can be rejected",
+          409
+        );
+      }
+
+      partner = await ReferralPartner.findOneAndUpdate(
+        {
+          _id: updatedWithdrawal.referralPartnerId,
+          tenantId: updatedWithdrawal.tenantId,
+        },
+        {
+          $inc: {
+            walletBalanceInPaise: updatedWithdrawal.amountInPaise,
+          },
+          $set: {
+            updatedBy: req.user?._id,
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+          session,
+        }
+      );
+
+      if (!partner) {
+        throw createWithdrawalHttpError("Referral partner not found", 404);
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Withdrawal request rejected and wallet refunded successfully",
+      data: buildWithdrawalResponse(updatedWithdrawal, partner),
+    });
+  } catch (error) {
+    console.error("Reject withdrawal request error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode
+        ? error.message
+        : "Failed to reject withdrawal request",
+    });
+  } finally {
+    await session.endSession();
+  }
+};
+
+const markWithdrawalPaid = async (req, res) => {
+  const session = await mongoose.startSession();
+
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid withdrawal request id",
+      });
+    }
+
+    let updatedWithdrawal = null;
+    let partner = null;
+
+    await session.withTransaction(async () => {
+      const now = new Date();
+      const adminNote = getWithdrawalAdminNote(req);
+      const setData = {
+        status: "paid",
+        paidAt: now,
+        updatedBy: req.user?._id,
+      };
+
+      if (adminNote) {
+        setData.adminNote = adminNote;
+      }
+
+      updatedWithdrawal = await WithdrawalRequest.findOneAndUpdate(
+        {
+          ...buildWithdrawalMutationFilter(req),
+          status: "approved",
+        },
+        {
+          $set: setData,
+        },
+        {
+          new: true,
+          runValidators: true,
+          session,
+        }
+      );
+
+      if (!updatedWithdrawal) {
+        const existingWithdrawal = await findWithdrawalForMutationError(req, session);
+
+        if (!existingWithdrawal) {
+          throw createWithdrawalHttpError(
+            "Withdrawal request not found or access denied",
+            404
+          );
+        }
+
+        throw createWithdrawalHttpError(
+          "Only approved withdrawals can be marked as paid",
+          409
+        );
+      }
+
+      partner = await ReferralPartner.findOneAndUpdate(
+        {
+          _id: updatedWithdrawal.referralPartnerId,
+          tenantId: updatedWithdrawal.tenantId,
+        },
+        {
+          $inc: {
+            totalWithdrawnInPaise: updatedWithdrawal.amountInPaise,
+          },
+          $set: {
+            updatedBy: req.user?._id,
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+          session,
+        }
+      );
+
+      if (!partner) {
+        throw createWithdrawalHttpError("Referral partner not found", 404);
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Withdrawal request marked as paid successfully",
+      data: buildWithdrawalResponse(updatedWithdrawal, partner),
+    });
+  } catch (error) {
+    console.error("Mark withdrawal paid error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode
+        ? error.message
+        : "Failed to mark withdrawal as paid",
+    });
+  } finally {
+    await session.endSession();
+  }
+};
+
 module.exports = {
   adminRoles,
   getReferralRewards,
   getReferralWithdrawals,
+  approveWithdrawalRequest,
+  rejectWithdrawalRequest,
+  markWithdrawalPaid,
   approveReferralReward,
   rejectReferralReward,
   createPartnerWithdrawalRequest,

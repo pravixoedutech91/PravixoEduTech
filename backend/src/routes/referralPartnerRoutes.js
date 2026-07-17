@@ -5,6 +5,9 @@ const {
   adminRoles,
   getReferralRewards,
   getReferralWithdrawals,
+  approveWithdrawalRequest,
+  rejectWithdrawalRequest,
+  markWithdrawalPaid,
   approveReferralReward,
   rejectReferralReward,
   createPartnerWithdrawalRequest,
@@ -87,6 +90,31 @@ router.get(
   authorize(...adminRoles),
   checkFeatureAccess("referrals"),
   getReferralWithdrawals
+);
+
+
+router.patch(
+  "/withdrawals/:id/approve",
+  protect,
+  authorize(...adminRoles),
+  checkFeatureAccess("referrals"),
+  approveWithdrawalRequest
+);
+
+router.patch(
+  "/withdrawals/:id/reject",
+  protect,
+  authorize(...adminRoles),
+  checkFeatureAccess("referrals"),
+  rejectWithdrawalRequest
+);
+
+router.patch(
+  "/withdrawals/:id/paid",
+  protect,
+  authorize(...adminRoles),
+  checkFeatureAccess("referrals"),
+  markWithdrawalPaid
 );
 
 router.post(
