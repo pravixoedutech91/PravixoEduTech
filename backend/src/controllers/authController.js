@@ -1,6 +1,12 @@
-const jwt = require("jsonwebtoken");
+﻿const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
+
 const User = require("../models/User");
+const Tenant = require("../models/Tenant");
+const ReferralPartner = require("../models/ReferralPartner");
+const ReferralAttribution = require("../models/ReferralAttribution");
+
+const DEFAULT_TENANT_ID = "pravixoedutech";
 
 const generateToken = (user, sessionId) => {
   return jwt.sign(
@@ -17,13 +23,160 @@ const generateToken = (user, sessionId) => {
   );
 };
 
+const hasText = (value) => {
+  return typeof value === "string" && value.trim().length > 0;
+};
+
+const normalizeMobile = (value) => {
+  return String(value || "").replace(/\D/g, "");
+};
+
+const normalizeEmail = (value) => {
+  return String(value || "").trim().toLowerCase();
+};
+
+const normalizeReferralCode = (value) => {
+  if (!hasText(value)) {
+    return "";
+  }
+
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "")
+    .slice(0, 40);
+};
+
+const validateReferralCodeForRegistration = async ({
+  tenantId,
+  referralCode,
+  mobile,
+  email,
+}) => {
+  const code = normalizeReferralCode(referralCode);
+
+  if (!code) {
+    return {
+      code: "",
+      partner: null,
+    };
+  }
+
+  if (code.length < 4) {
+    return {
+      error: "Referral code must be at least 4 characters",
+    };
+  }
+
+  const tenant = await Tenant.findOne({
+    slug: tenantId,
+  }).lean();
+
+  if (!tenant) {
+    return {
+      error: "Tenant not found for referral code",
+    };
+  }
+
+  if (!tenant.isActive) {
+    return {
+      error: "Tenant is inactive for referral code",
+    };
+  }
+
+  if (!tenant.features?.referrals) {
+    return {
+      error: "Referral program is not enabled for this tenant",
+    };
+  }
+
+  const partner = await ReferralPartner.findOne({
+    tenantId,
+    code,
+    status: "active",
+  }).lean();
+
+  if (!partner) {
+    return {
+      error: "Invalid or inactive referral code",
+    };
+  }
+
+  const cleanMobile = normalizeMobile(mobile);
+  const cleanEmail = normalizeEmail(email);
+  const partnerEmail = normalizeEmail(partner.email);
+
+  if (partner.mobile && partner.mobile === cleanMobile) {
+    return {
+      error: "Self-referral is not allowed",
+    };
+  }
+
+  if (partnerEmail && cleanEmail && partnerEmail === cleanEmail) {
+    return {
+      error: "Self-referral is not allowed",
+    };
+  }
+
+  return {
+    code,
+    partner,
+  };
+};
+
+const createReferralAttributionForStudent = async ({
+  tenantId,
+  studentId,
+  partner,
+  referralCode,
+}) => {
+  if (!partner || !referralCode) {
+    return null;
+  }
+
+  try {
+    return await ReferralAttribution.create({
+      tenantId,
+      studentId,
+      referralPartnerId: partner._id,
+      referralCode,
+      source: "register",
+      attributedAt: new Date(),
+      lockedAt: new Date(),
+      status: "active",
+    });
+  } catch (error) {
+    console.error("Referral attribution creation failed:", error);
+
+    return null;
+  }
+};
+
 // Register User
 const registerUser = async (req, res) => {
   try {
-    const { name, mobile, email, password, tenantId } = req.body;
+    const { name, mobile, email, password, tenantId, referralCode } = req.body;
+
+    const resolvedTenantId = String(tenantId || DEFAULT_TENANT_ID).trim();
+    const cleanMobile = normalizeMobile(mobile);
+    const cleanEmail = normalizeEmail(email);
+
+    const referralValidation = await validateReferralCodeForRegistration({
+      tenantId: resolvedTenantId,
+      referralCode,
+      mobile: cleanMobile,
+      email: cleanEmail,
+    });
+
+    if (referralValidation.error) {
+      return res.status(400).json({
+        success: false,
+        message: referralValidation.error,
+      });
+    }
 
     const existingUser = await User.findOne({
-      $or: [{ mobile }, { email }],
+      $or: [{ mobile: cleanMobile }, { email: cleanEmail }],
     });
 
     if (existingUser) {
@@ -35,11 +188,18 @@ const registerUser = async (req, res) => {
 
     const user = await User.create({
       name,
-      mobile,
-      email,
+      mobile: cleanMobile,
+      email: cleanEmail,
       password,
-      tenantId: tenantId || "pravixoedutech",
+      tenantId: resolvedTenantId,
       role: "student",
+    });
+
+    const referralAttribution = await createReferralAttributionForStudent({
+      tenantId: resolvedTenantId,
+      studentId: user._id,
+      partner: referralValidation.partner,
+      referralCode: referralValidation.code,
     });
 
     res.status(201).json({
@@ -52,6 +212,13 @@ const registerUser = async (req, res) => {
         email: user.email,
         tenantId: user.tenantId,
         role: user.role,
+        referral: referralAttribution
+          ? {
+              referralCode: referralAttribution.referralCode,
+              referralPartnerId: referralAttribution.referralPartnerId,
+              attributionId: referralAttribution._id,
+            }
+          : null,
       },
     });
   } catch (error) {
@@ -142,6 +309,7 @@ const getMe = async (req, res) => {
     },
   });
 };
+
 // Create Initial Super Admin (Development Only)
 const createSuperAdmin = async (req, res) => {
   try {
@@ -162,7 +330,7 @@ const createSuperAdmin = async (req, res) => {
       email: "admin@pravixo.com",
       password: "Admin@123",
       role: "super_admin",
-      tenantId: "pravixoedutech",
+      tenantId: DEFAULT_TENANT_ID,
       isEmailVerified: true,
     });
 
@@ -246,5 +414,5 @@ module.exports = {
   loginUser,
   getMe,
   createSuperAdmin,
-  createTenantAdmin
+  createTenantAdmin,
 };
