@@ -4,6 +4,8 @@ const router = express.Router();
 const {
   adminRoles,
   getReferralRewards,
+  approveReferralReward,
+  rejectReferralReward,
   getReferralAttributions,
   getReferralPartners,
   getReferralPartnerById,
@@ -56,6 +58,23 @@ router.get(
   authorize(...adminRoles),
   checkFeatureAccess("referrals"),
   getReferralRewards
+);
+
+
+router.patch(
+  "/rewards/:id/approve",
+  protect,
+  authorize(...adminRoles),
+  checkFeatureAccess("referrals"),
+  approveReferralReward
+);
+
+router.patch(
+  "/rewards/:id/reject",
+  protect,
+  authorize(...adminRoles),
+  checkFeatureAccess("referrals"),
+  rejectReferralReward
 );
 
 router.get(

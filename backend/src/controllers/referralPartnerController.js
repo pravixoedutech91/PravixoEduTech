@@ -1216,9 +1216,191 @@ const getReferralRewards = async (req, res) => {
   }
 };
 
+
+const buildRewardMutationResponse = (reward, partner) => {
+  return {
+    reward,
+    referralPartner: partner
+      ? {
+          _id: partner._id,
+          tenantId: partner.tenantId,
+          name: partner.name,
+          mobile: partner.mobile,
+          email: partner.email,
+          promoterType: partner.promoterType,
+          code: partner.code,
+          status: partner.status,
+          walletBalanceInPaise: partner.walletBalanceInPaise,
+          totalEarnedInPaise: partner.totalEarnedInPaise,
+          totalWithdrawnInPaise: partner.totalWithdrawnInPaise,
+        }
+      : null,
+  };
+};
+
+const buildRewardMutationFilter = (req) => {
+  const filter = {
+    _id: req.params.id,
+  };
+
+  if (req.user?.role === "super_admin") {
+    const tenantId = req.query?.tenantId || req.body?.tenantId;
+
+    if (tenantId) {
+      filter.tenantId = String(tenantId).trim();
+    }
+
+    return filter;
+  }
+
+  filter.tenantId = req.user?.tenantId;
+  return filter;
+};
+
+const approveReferralReward = async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid reward id",
+      });
+    }
+
+    const reward = await ReferralReward.findOne(buildRewardMutationFilter(req));
+
+    if (!reward) {
+      return res.status(404).json({
+        success: false,
+        message: "Referral reward not found or access denied",
+      });
+    }
+
+    if (reward.status !== "pending") {
+      return res.status(409).json({
+        success: false,
+        message: "Only pending rewards can be approved",
+      });
+    }
+
+    const partner = await ReferralPartner.findOneAndUpdate(
+      {
+        _id: reward.referralPartnerId,
+        tenantId: reward.tenantId,
+      },
+      {
+        $inc: {
+          walletBalanceInPaise: reward.rewardAmountInPaise,
+          totalEarnedInPaise: reward.rewardAmountInPaise,
+        },
+        $set: {
+          updatedBy: req.user?._id,
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!partner) {
+      return res.status(404).json({
+        success: false,
+        message: "Referral partner not found for this reward",
+      });
+    }
+
+    reward.status = "approved";
+    reward.approvedAt = new Date();
+    reward.adminNote = hasText(req.body?.adminNote)
+      ? String(req.body.adminNote).trim()
+      : reward.adminNote;
+    reward.updatedBy = req.user?._id;
+
+    await reward.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Referral reward approved successfully",
+      data: buildRewardMutationResponse(reward, partner),
+    });
+  } catch (error) {
+    console.error("Approve referral reward error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to approve referral reward",
+    });
+  }
+};
+
+const rejectReferralReward = async (req, res) => {
+  try {
+    if (!isValidObjectId(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid reward id",
+      });
+    }
+
+    const reward = await ReferralReward.findOne(buildRewardMutationFilter(req));
+
+    if (!reward) {
+      return res.status(404).json({
+        success: false,
+        message: "Referral reward not found or access denied",
+      });
+    }
+
+    if (reward.status !== "pending") {
+      return res.status(409).json({
+        success: false,
+        message: "Only pending rewards can be rejected",
+      });
+    }
+
+    const adminNote = hasText(req.body?.adminNote)
+      ? String(req.body.adminNote).trim()
+      : "";
+
+    if (!adminNote) {
+      return res.status(400).json({
+        success: false,
+        message: "Rejection reason is required",
+      });
+    }
+
+    reward.status = "rejected";
+    reward.rejectedAt = new Date();
+    reward.adminNote = adminNote;
+    reward.updatedBy = req.user?._id;
+
+    await reward.save();
+
+    const partner = await ReferralPartner.findOne({
+      _id: reward.referralPartnerId,
+      tenantId: reward.tenantId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Referral reward rejected successfully",
+      data: buildRewardMutationResponse(reward, partner),
+    });
+  } catch (error) {
+    console.error("Reject referral reward error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to reject referral reward",
+    });
+  }
+};
+
 module.exports = {
   adminRoles,
   getReferralRewards,
+  approveReferralReward,
+  rejectReferralReward,
   getReferralAttributions,
   getReferralPartners,
   getReferralPartnerById,
