@@ -87,6 +87,70 @@ type ReferralPartnerMutationResponse = {
     message?: string;
 };
 
+
+type ReferralAttributionStatus = "active" | "cancelled";
+type ReferralAttributionFilterStatus = "all" | ReferralAttributionStatus;
+
+type ReferralAttributionStudent = {
+    _id?: string;
+    name?: string;
+    mobile?: string;
+    email?: string;
+    tenantId?: string;
+    role?: string;
+    isActive?: boolean;
+    createdAt?: string;
+};
+
+type ReferralAttributionPartner = {
+    _id?: string;
+    tenantId?: string;
+    name?: string;
+    mobile?: string;
+    email?: string;
+    promoterType?: PromoterType;
+    code?: string;
+    status?: ReferralPartnerStatus;
+    commissionType?: CommissionType;
+    commissionValue?: number;
+};
+
+type ReferralAttribution = {
+    _id: string;
+    tenantId?: string;
+    studentId?: string;
+    referralPartnerId?: string;
+    referralCode?: string;
+    source?: "register" | "checkout" | "admin";
+    attributedAt?: string;
+    lockedAt?: string;
+    status?: ReferralAttributionStatus;
+    cancelledAt?: string;
+    cancellationReason?: string;
+    student?: ReferralAttributionStudent | null;
+    partner?: ReferralAttributionPartner | null;
+    createdAt?: string;
+    updatedAt?: string;
+};
+
+type ReferralAttributionSummary = {
+    total: number;
+    active: number;
+    cancelled: number;
+};
+
+type ReferralAttributionsResponse = {
+    success: boolean;
+    count?: number;
+    total?: number;
+    page?: number;
+    limit?: number;
+    totalPages?: number;
+    summary?: ReferralAttributionSummary;
+    data?: ReferralAttribution[];
+    message?: string;
+};
+
 type ToastState = {
     type: "success" | "error";
     message: string;
@@ -227,6 +291,279 @@ const buildCreatePayload = (form: PartnerForm, tenantId?: string) => {
         notes: form.notes.trim(),
     };
 };
+
+
+const defaultAttributionSummary: ReferralAttributionSummary = {
+    total: 0,
+    active: 0,
+    cancelled: 0,
+};
+
+const attributionStatusFilterOptions: {
+    value: ReferralAttributionFilterStatus;
+    label: string;
+}[] = [
+    { value: "all", label: "All attributions" },
+    { value: "active", label: "Active" },
+    { value: "cancelled", label: "Cancelled" },
+];
+
+function AttributionLedgerSection() {
+    const [attributions, setAttributions] = useState<ReferralAttribution[]>([]);
+    const [summary, setSummary] = useState<ReferralAttributionSummary>(
+        defaultAttributionSummary
+    );
+    const [codeSearch, setCodeSearch] = useState("");
+    const [statusFilter, setStatusFilter] =
+        useState<ReferralAttributionFilterStatus>("all");
+    const [isLoading, setIsLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState("");
+
+    const loadAttributions = async (nextCodeSearch = codeSearch) => {
+        const token = window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
+
+        if (!token) {
+            setErrorMessage("Admin session not found. Please login again.");
+            setAttributions([]);
+            setSummary(defaultAttributionSummary);
+            return;
+        }
+
+        setIsLoading(true);
+        setErrorMessage("");
+
+        try {
+            const url = new URL(
+                API_BASE_URL + "/api/referral-partners/attributions"
+            );
+
+            url.searchParams.set("limit", "100");
+
+            if (statusFilter !== "all") {
+                url.searchParams.set("status", statusFilter);
+            }
+
+            const cleanCode = normalizeCode(nextCodeSearch);
+
+            if (cleanCode) {
+                url.searchParams.set("referralCode", cleanCode);
+            }
+
+            const response = await fetch(url.toString(), {
+                headers: {
+                    Authorization: "Bearer " + token,
+                },
+            });
+
+            const result = (await response.json()) as ReferralAttributionsResponse;
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to load attribution ledger.");
+            }
+
+            setAttributions(result.data || []);
+            setSummary(result.summary || defaultAttributionSummary);
+        } catch (error) {
+            setErrorMessage(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to load attribution ledger."
+            );
+            setAttributions([]);
+            setSummary(defaultAttributionSummary);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        void loadAttributions();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [statusFilter]);
+
+    const handleAttributionSearch = (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        void loadAttributions(codeSearch);
+    };
+
+    return (
+        <section className="space-y-4 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+                <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-purple-700">
+                        Attribution Ledger
+                    </p>
+                    <h2 className="mt-2 text-xl font-black">
+                        Referral Attribution Ledger
+                    </h2>
+                    <p className="mt-2 text-sm text-slate-600">
+                        Track which student was connected to which referral partner and code.
+                    </p>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={() => void loadAttributions()}
+                    disabled={isLoading}
+                    className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:bg-slate-400"
+                >
+                    {isLoading ? "Refreshing..." : "Refresh"}
+                </button>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+                        Total
+                    </p>
+                    <p className="mt-3 text-3xl font-black">{summary.total}</p>
+                </div>
+
+                <div className="rounded-3xl border border-emerald-100 bg-emerald-50 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">
+                        Active
+                    </p>
+                    <p className="mt-3 text-3xl font-black text-emerald-700">
+                        {summary.active}
+                    </p>
+                </div>
+
+                <div className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">
+                        Cancelled
+                    </p>
+                    <p className="mt-3 text-3xl font-black text-slate-700">
+                        {summary.cancelled}
+                    </p>
+                </div>
+            </div>
+
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                <form onSubmit={handleAttributionSearch} className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                        value={codeSearch}
+                        onChange={(event) => setCodeSearch(event.target.value)}
+                        className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm uppercase tracking-[0.12em] outline-none focus:border-blue-500 sm:w-72"
+                        placeholder="Search referral code"
+                    />
+                    <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:bg-slate-400"
+                    >
+                        Search
+                    </button>
+                </form>
+
+                <select
+                    value={statusFilter}
+                    onChange={(event) =>
+                        setStatusFilter(
+                            event.target.value as ReferralAttributionFilterStatus
+                        )
+                    }
+                    className="rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                >
+                    {attributionStatusFilterOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                            {option.label}
+                        </option>
+                    ))}
+                </select>
+            </div>
+
+            {errorMessage ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+                    {errorMessage}
+                </div>
+            ) : null}
+
+            <div className="overflow-hidden rounded-3xl border border-slate-200">
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                        <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.18em] text-slate-500">
+                            <tr>
+                                <th className="px-4 py-3">Student</th>
+                                <th className="px-4 py-3">Partner</th>
+                                <th className="px-4 py-3">Code</th>
+                                <th className="px-4 py-3">Source</th>
+                                <th className="px-4 py-3">Status</th>
+                                <th className="px-4 py-3">Attributed</th>
+                            </tr>
+                        </thead>
+
+                        <tbody className="divide-y divide-slate-100">
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                                        Loading referral attributions...
+                                    </td>
+                                </tr>
+                            ) : attributions.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                                        No referral attributions found.
+                                    </td>
+                                </tr>
+                            ) : (
+                                attributions.map((attribution) => (
+                                    <tr key={attribution._id} className="align-top">
+                                        <td className="px-4 py-4">
+                                            <div className="font-semibold text-slate-900">
+                                                {attribution.student?.name || "-"}
+                                            </div>
+                                            <div className="mt-1 text-xs text-slate-500">
+                                                {attribution.student?.mobile || "-"} ·{" "}
+                                                {attribution.student?.email || "No email"}
+                                            </div>
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            <div className="font-semibold text-slate-900">
+                                                {attribution.partner?.name || "-"}
+                                            </div>
+                                            <div className="mt-1 text-xs text-slate-500">
+                                                {getPromoterTypeLabel(
+                                                    attribution.partner?.promoterType
+                                                )}{" "}
+                                                · {attribution.partner?.status || "unknown"}
+                                            </div>
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-black tracking-[0.18em] text-purple-700">
+                                                {attribution.referralCode || "-"}
+                                            </span>
+                                        </td>
+
+                                        <td className="px-4 py-4 capitalize">
+                                            {attribution.source || "-"}
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            <span
+                                                className={
+                                                    "inline-flex rounded-full px-3 py-1 text-xs font-semibold capitalize ring-1 " +
+                                                    getStatusBadgeClass(attribution.status)
+                                                }
+                                            >
+                                                {attribution.status || "unknown"}
+                                            </span>
+                                        </td>
+
+                                        <td className="px-4 py-4">
+                                            {formatDateTime(attribution.attributedAt)}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+    );
+}
 
 export default function AdminReferralPartnersPage() {
     const [isReady, setIsReady] = useState(false);
@@ -1039,6 +1376,8 @@ export default function AdminReferralPartnersPage() {
                             </div>
                         </div>
                     </section>
+
+                    <AttributionLedgerSection />
                 </section>
 
                 {editingPartnerId ? (
