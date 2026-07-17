@@ -1,6 +1,8 @@
 const mongoose = require("mongoose");
 
 const ReferralPartner = require("../models/ReferralPartner");
+const ReferralAttribution = require("../models/ReferralAttribution");
+const User = require("../models/User");
 
 const adminRoles = ["super_admin", "tenant_admin"];
 
@@ -81,6 +83,96 @@ const buildPartnerFilter = (req) => {
 
   filter.tenantId = req.user?.tenantId;
   return filter;
+};
+
+
+const normalizeReferralCode = (value) => {
+  if (!hasText(value)) {
+    return "";
+  }
+
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "")
+    .slice(0, 40);
+};
+
+const buildAttributionSummary = (summaryRows) => {
+  const summary = {
+    total: 0,
+    active: 0,
+    cancelled: 0,
+  };
+
+  for (const row of summaryRows || []) {
+    const status = row._id || "active";
+    const count = row.count || 0;
+
+    summary.total += count;
+
+    if (Object.prototype.hasOwnProperty.call(summary, status)) {
+      summary[status] = count;
+    }
+  }
+
+  return summary;
+};
+
+const buildAttributionStudentPayload = (student) => {
+  if (!student) {
+    return null;
+  }
+
+  return {
+    _id: student._id,
+    name: student.name,
+    mobile: student.mobile,
+    email: student.email,
+    tenantId: student.tenantId,
+    role: student.role,
+    isActive: student.isActive,
+    createdAt: student.createdAt,
+  };
+};
+
+const buildAttributionPartnerPayload = (partner) => {
+  if (!partner) {
+    return null;
+  }
+
+  return {
+    _id: partner._id,
+    tenantId: partner.tenantId,
+    name: partner.name,
+    mobile: partner.mobile,
+    email: partner.email,
+    promoterType: partner.promoterType,
+    code: partner.code,
+    status: partner.status,
+    commissionType: partner.commissionType,
+    commissionValue: partner.commissionValue,
+  };
+};
+
+const buildAttributionPayload = ({ attribution, student, partner }) => {
+  return {
+    _id: attribution._id,
+    tenantId: attribution.tenantId,
+    studentId: attribution.studentId,
+    referralPartnerId: attribution.referralPartnerId,
+    referralCode: attribution.referralCode,
+    source: attribution.source,
+    attributedAt: attribution.attributedAt,
+    lockedAt: attribution.lockedAt,
+    status: attribution.status,
+    cancelledAt: attribution.cancelledAt,
+    cancellationReason: attribution.cancellationReason,
+    student: buildAttributionStudentPayload(student),
+    partner: buildAttributionPartnerPayload(partner),
+    createdAt: attribution.createdAt,
+    updatedAt: attribution.updatedAt,
+  };
 };
 
 const buildPartnerPayload = (partner) => {
@@ -367,6 +459,153 @@ const buildUpdateData = (req) => {
   };
 };
 
+
+const getReferralAttributions = async (req, res) => {
+  try {
+    const page = Math.max(1, Math.trunc(Number(req.query?.page) || 1));
+    const limit = Math.min(
+      100,
+      Math.max(1, Math.trunc(Number(req.query?.limit) || 50))
+    );
+    const skip = (page - 1) * limit;
+
+    const filter = buildTenantFilter(req);
+
+    if (hasText(req.query?.status)) {
+      const status = req.query.status.trim();
+
+      if (!["active", "cancelled"].includes(status)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid attribution status",
+        });
+      }
+
+      filter.status = status;
+    }
+
+    if (hasText(req.query?.referralCode)) {
+      const referralCode = normalizeReferralCode(req.query.referralCode);
+
+      if (!referralCode) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid referral code",
+        });
+      }
+
+      filter.referralCode = referralCode;
+    }
+
+    if (hasText(req.query?.referralPartnerId)) {
+      if (!isValidObjectId(req.query.referralPartnerId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid referral partner id",
+        });
+      }
+
+      filter.referralPartnerId = new mongoose.Types.ObjectId(req.query.referralPartnerId);
+    }
+
+    if (hasText(req.query?.studentId)) {
+      if (!isValidObjectId(req.query.studentId)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid student id",
+        });
+      }
+
+      filter.studentId = new mongoose.Types.ObjectId(req.query.studentId);
+    }
+
+    const summaryFilter = { ...filter };
+
+    const [total, attributions, summaryRows] = await Promise.all([
+      ReferralAttribution.countDocuments(filter),
+      ReferralAttribution.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      ReferralAttribution.aggregate([
+        {
+          $match: summaryFilter,
+        },
+        {
+          $group: {
+            _id: "$status",
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+    ]);
+
+    const studentIds = [
+      ...new Set(attributions.map((item) => String(item.studentId))),
+    ];
+    const partnerIds = [
+      ...new Set(attributions.map((item) => String(item.referralPartnerId))),
+    ];
+
+    const [students, partners] = await Promise.all([
+      studentIds.length > 0
+        ? User.find({
+            _id: {
+              $in: studentIds,
+            },
+          })
+            .select("name mobile email tenantId role isActive createdAt")
+            .lean()
+        : [],
+      partnerIds.length > 0
+        ? ReferralPartner.find({
+            _id: {
+              $in: partnerIds,
+            },
+          })
+            .select(
+              "tenantId name mobile email promoterType code status commissionType commissionValue"
+            )
+            .lean()
+        : [],
+    ]);
+
+    const studentById = new Map(
+      students.map((student) => [String(student._id), student])
+    );
+    const partnerById = new Map(
+      partners.map((partner) => [String(partner._id), partner])
+    );
+
+    const data = attributions.map((attribution) =>
+      buildAttributionPayload({
+        attribution,
+        student: studentById.get(String(attribution.studentId)),
+        partner: partnerById.get(String(attribution.referralPartnerId)),
+      })
+    );
+
+    return res.status(200).json({
+      success: true,
+      count: data.length,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      summary: buildAttributionSummary(summaryRows),
+      data,
+    });
+  } catch (error) {
+    console.error("Get referral attributions error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch referral attributions",
+    });
+  }
+};
+
 const getReferralPartners = async (req, res) => {
   try {
     const filter = buildTenantFilter(req);
@@ -625,6 +864,7 @@ const rejectReferralPartner = (req, res) => {
 
 module.exports = {
   adminRoles,
+  getReferralAttributions,
   getReferralPartners,
   getReferralPartnerById,
   createReferralPartner,
