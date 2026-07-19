@@ -12,7 +12,9 @@ import {
 } from "react";
 
 const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://localhost:5000";
 
 const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
 const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";

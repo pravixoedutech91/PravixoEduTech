@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 const API_BASE_URL =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
+    process.env.NEXT_PUBLIC_API_BASE_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://localhost:5000";
 
 const ADMIN_TOKEN_STORAGE_KEY = "pravixoAdminToken";
 const ADMIN_PROFILE_STORAGE_KEY = "pravixoAdminProfile";
