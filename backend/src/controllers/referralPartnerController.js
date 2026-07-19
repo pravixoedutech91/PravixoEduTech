@@ -1652,6 +1652,234 @@ const createPartnerWithdrawalRequest = async (req, res) => {
 };
 
 
+
+const referralSettingsIntegerFields = {
+  minimumWithdrawalAmountInPaise: {
+    label: "Minimum withdrawal amount",
+    min: 0,
+  },
+  rewardLockDays: {
+    label: "Reward lock days",
+    min: 0,
+    max: 365,
+  },
+  refundSafetyDays: {
+    label: "Refund safety days",
+    min: 0,
+    max: 365,
+  },
+  maxWithdrawalAmountPerMonthInPaise: {
+    label: "Maximum monthly withdrawal amount",
+    min: 0,
+  },
+};
+
+const referralSettingsBooleanFields = [
+  "kycRequired",
+  "upiRequired",
+  "bankRequired",
+  "allowStudentPromoterWithdrawal",
+  "manualApprovalRequired",
+  "isReferralEnabled",
+];
+
+const getReferralSettingsTenantId = (req) => {
+  const candidate =
+    req.user?.role === "super_admin"
+      ? req.query?.tenantId || req.body?.tenantId || req.user?.tenantId
+      : req.user?.tenantId;
+
+  return hasText(candidate) ? String(candidate).trim() : "";
+};
+
+const parseReferralSettingsInteger = (value, rule) => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null || value === "") {
+    const error = new Error(rule.label + " is required when provided");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const numberValue = Number(value);
+
+  if (!Number.isFinite(numberValue) || !Number.isInteger(numberValue)) {
+    const error = new Error(rule.label + " must be a whole number");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (numberValue < rule.min) {
+    const error = new Error(rule.label + " cannot be less than " + rule.min);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (rule.max !== undefined && numberValue > rule.max) {
+    const error = new Error(rule.label + " cannot be greater than " + rule.max);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return numberValue;
+};
+
+const parseReferralSettingsBoolean = (value, fieldName) => {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+
+    if (normalized === "true") {
+      return true;
+    }
+
+    if (normalized === "false") {
+      return false;
+    }
+  }
+
+  const error = new Error(fieldName + " must be true or false");
+  error.statusCode = 400;
+  throw error;
+};
+
+const buildReferralSettingsResponse = (settings) => {
+  const plain =
+    settings && typeof settings.toObject === "function"
+      ? settings.toObject()
+      : settings || {};
+
+  return {
+    _id: plain._id || null,
+    tenantId: plain.tenantId,
+    minimumWithdrawalAmountInPaise: plain.minimumWithdrawalAmountInPaise ?? 50000,
+    minimumWithdrawalAmountInRupees: Number(
+      ((plain.minimumWithdrawalAmountInPaise ?? 50000) / 100).toFixed(2)
+    ),
+    rewardLockDays: plain.rewardLockDays ?? 7,
+    refundSafetyDays: plain.refundSafetyDays ?? 7,
+    kycRequired: plain.kycRequired ?? false,
+    upiRequired: plain.upiRequired ?? true,
+    bankRequired: plain.bankRequired ?? false,
+    maxWithdrawalAmountPerMonthInPaise:
+      plain.maxWithdrawalAmountPerMonthInPaise ?? 0,
+    maxWithdrawalAmountPerMonthInRupees: Number(
+      ((plain.maxWithdrawalAmountPerMonthInPaise ?? 0) / 100).toFixed(2)
+    ),
+    allowStudentPromoterWithdrawal:
+      plain.allowStudentPromoterWithdrawal ?? false,
+    manualApprovalRequired: plain.manualApprovalRequired ?? true,
+    isReferralEnabled: plain.isReferralEnabled ?? false,
+    updatedBy: plain.updatedBy,
+    createdAt: plain.createdAt,
+    updatedAt: plain.updatedAt,
+  };
+};
+
+const getReferralSettings = async (req, res) => {
+  try {
+    const tenantId = getReferralSettingsTenantId(req);
+
+    if (!tenantId) {
+      return res.status(400).json({
+        success: false,
+        message: "tenantId is required for referral settings",
+      });
+    }
+
+    const settings =
+      (await ReferralSettings.findOne({ tenantId }).lean()) ||
+      new ReferralSettings({ tenantId });
+
+    return res.status(200).json({
+      success: true,
+      data: buildReferralSettingsResponse(settings),
+    });
+  } catch (error) {
+    console.error("Get referral settings error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch referral settings",
+    });
+  }
+};
+
+const updateReferralSettings = async (req, res) => {
+  try {
+    const tenantId = getReferralSettingsTenantId(req);
+
+    if (!tenantId) {
+      return res.status(400).json({
+        success: false,
+        message: "tenantId is required for referral settings",
+      });
+    }
+
+    const setData = {};
+
+    Object.entries(referralSettingsIntegerFields).forEach(([fieldName, rule]) => {
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, fieldName)) {
+        setData[fieldName] = parseReferralSettingsInteger(req.body[fieldName], rule);
+      }
+    });
+
+    referralSettingsBooleanFields.forEach((fieldName) => {
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, fieldName)) {
+        setData[fieldName] = parseReferralSettingsBoolean(
+          req.body[fieldName],
+          fieldName
+        );
+      }
+    });
+
+    setData.updatedBy = req.user?._id;
+
+    const settings = await ReferralSettings.findOneAndUpdate(
+      {
+        tenantId,
+      },
+      {
+        $set: setData,
+        $setOnInsert: {
+          tenantId,
+        },
+      },
+      {
+        returnDocument: "after",
+        upsert: true,
+        runValidators: true,
+        setDefaultsOnInsert: true,
+      }
+    ).lean();
+
+    return res.status(200).json({
+      success: true,
+      message: "Referral settings updated successfully",
+      data: buildReferralSettingsResponse(settings),
+    });
+  } catch (error) {
+    console.error("Update referral settings error:", error);
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode
+        ? error.message
+        : "Failed to update referral settings",
+    });
+  }
+};
+
+
 const withdrawalLedgerStatuses = [
   "requested",
   "approved",
@@ -2221,6 +2449,8 @@ const markWithdrawalPaid = async (req, res) => {
 
 module.exports = {
   adminRoles,
+  getReferralSettings,
+  updateReferralSettings,
   getReferralRewards,
   getReferralWithdrawals,
   approveWithdrawalRequest,
