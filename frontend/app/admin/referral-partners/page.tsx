@@ -244,6 +244,88 @@ type ToastState = {
     message: string;
 };
 
+function ReferralFloatingToast({
+    type,
+    message,
+}: {
+    type: "success" | "error";
+    message: string;
+}) {
+    return (
+        <div className="fixed right-4 top-4 z-[9999] w-[calc(100vw-2rem)] max-w-md animate-[fadeIn_0.2s_ease-out] rounded-3xl bg-white p-4 shadow-2xl ring-1 ring-slate-200 sm:right-6 sm:top-6">
+            <div
+                className={
+                    "flex items-start gap-3 rounded-2xl px-4 py-3 " +
+                    (type === "success"
+                        ? "bg-emerald-50 text-emerald-900 ring-1 ring-emerald-100"
+                        : "bg-red-50 text-red-900 ring-1 ring-red-100")
+                }
+            >
+                <span
+                    className={
+                        "mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-black text-white " +
+                        (type === "success" ? "bg-emerald-600" : "bg-red-600")
+                    }
+                >
+                    {type === "success" ? "✓" : "!"}
+                </span>
+                <div>
+                    <p className="text-sm font-black">
+                        {type === "success" ? "Success" : "Action needed"}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold leading-5">{message}</p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+type ReferralWorkspaceSection =
+    | "create"
+    | "partners"
+    | "settings"
+    | "attributions"
+    | "rewards"
+    | "withdrawals";
+
+const referralWorkspaceOptions: {
+    key: ReferralWorkspaceSection;
+    label: string;
+    description: string;
+}[] = [
+    {
+        key: "create",
+        label: "Create Partner",
+        description: "Add libraries, teachers, students, cafes, or other promoters.",
+    },
+    {
+        key: "partners",
+        label: "Partner Ledger",
+        description: "Search, edit, activate, suspend, or reject partners.",
+    },
+    {
+        key: "settings",
+        label: "Rules & Controls",
+        description: "Manage withdrawal rules, KYC flags, and referral availability.",
+    },
+    {
+        key: "attributions",
+        label: "Attribution Ledger",
+        description: "Track student-to-partner referral connections.",
+    },
+    {
+        key: "rewards",
+        label: "Reward Ledger",
+        description: "Review and approve referral rewards.",
+    },
+    {
+        key: "withdrawals",
+        label: "Withdrawal Ledger",
+        description: "Review withdrawal requests and payout status.",
+    },
+];
+
 type PartnerForm = {
     name: string;
     mobile: string;
@@ -737,11 +819,8 @@ function AttributionLedgerSection() {
                     ))}
                 </select>
             </div>
-
             {errorMessage ? (
-                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
-                    {errorMessage}
-                </div>
+                <ReferralFloatingToast type="error" message={errorMessage} />
             ) : null}
 
             <div className="overflow-hidden rounded-3xl border border-slate-200">
@@ -952,6 +1031,19 @@ function ReferralSettingsSection({
         message: string;
     } | null>(null);
 
+    // T45U_AUTO_DISMISS_SETTINGS_SUCCESS
+    useEffect(() => {
+        if (settingsMessage?.type !== "success") {
+            return;
+        }
+
+        const timeoutId = window.setTimeout(() => {
+            setSettingsMessage(null);
+        }, 3000);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [settingsMessage]);
+
     const buildSettingsUrl = () => {
         const params = new URLSearchParams();
 
@@ -1110,18 +1202,11 @@ function ReferralSettingsSection({
                     {isLoadingSettings ? "Refreshing..." : "Refresh Settings"}
                 </button>
             </div>
-
             {settingsMessage ? (
-                <div
-                    className={
-                        "mt-5 rounded-2xl px-4 py-3 text-sm font-semibold ring-1 " +
-                        (settingsMessage.type === "success"
-                            ? "bg-emerald-50 text-emerald-800 ring-emerald-100"
-                            : "bg-red-50 text-red-800 ring-red-100")
-                    }
-                >
-                    {settingsMessage.message}
-                </div>
+                <ReferralFloatingToast
+                    type={settingsMessage.type}
+                    message={settingsMessage.message}
+                />
             ) : null}
 
             <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -1337,6 +1422,19 @@ function RewardLedgerSection() {
     const [successMessage, setSuccessMessage] = useState("");
     const [actionRewardId, setActionRewardId] = useState("");
 
+    // T45U_AUTO_DISMISS_REWARD_SUCCESS
+    useEffect(() => {
+        if (!successMessage) {
+            return;
+        }
+
+        const timeoutId = window.setTimeout(() => {
+            setSuccessMessage("");
+        }, 3000);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [successMessage]);
+
     const loadRewards = async () => {
         const token = window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
 
@@ -1495,7 +1593,7 @@ function RewardLedgerSection() {
                         Referral Reward Ledger
                     </h2>
                     <p className="mt-2 text-sm text-slate-600">
-                        Review pending referral rewards created after paid purchases. Withdrawal actions will be added later.
+                        Review pending referral rewards created after paid purchases. Approve or reject rewards manually.
                     </p>
                 </div>
 
@@ -1575,18 +1673,19 @@ function RewardLedgerSection() {
                     </p>
                 </div>
             </div>
-
             {errorMessage ? (
-                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
-                    {errorMessage}
-                </div>
+                <ReferralFloatingToast type="error" message={errorMessage} />
             ) : null}
 
 
             {successMessage ? (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-700">
-                    {successMessage}
-                </div>
+
+
+
+                <ReferralFloatingToast type="success" message={successMessage} />
+
+
+
             ) : null}
 
             <div className="overflow-hidden rounded-3xl border border-slate-200">
@@ -1733,6 +1832,19 @@ function WithdrawalLedgerSection() {
     const [errorMessage, setErrorMessage] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
     const [actionWithdrawalId, setActionWithdrawalId] = useState("");
+
+    // T45U_AUTO_DISMISS_WITHDRAWAL_SUCCESS
+    useEffect(() => {
+        if (!successMessage) {
+            return;
+        }
+
+        const timeoutId = window.setTimeout(() => {
+            setSuccessMessage("");
+        }, 3000);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [successMessage]);
 
     const loadWithdrawals = async () => {
         const token = window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY);
@@ -2001,17 +2113,16 @@ function WithdrawalLedgerSection() {
                     </p>
                 </div>
             </div>
-
             {errorMessage ? (
-                <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
-                    {errorMessage}
-                </div>
+                <ReferralFloatingToast type="error" message={errorMessage} />
             ) : null}
 
             {successMessage ? (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-700">
-                    {successMessage}
-                </div>
+
+
+                <ReferralFloatingToast type="success" message={successMessage} />
+
+
             ) : null}
 
             <div className="overflow-hidden rounded-3xl border border-slate-200">
@@ -2202,6 +2313,15 @@ export default function AdminReferralPartnersPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [toast, setToast] = useState<ToastState | null>(null);
+    const [activeSection, setActiveSection] =
+        useState<ReferralWorkspaceSection>("partners");
+
+    const activeWorkspaceOption = useMemo(() => {
+        return (
+            referralWorkspaceOptions.find((option) => option.key === activeSection) ||
+            referralWorkspaceOptions[0]
+        );
+    }, [activeSection]);
 
     const [statusFilter, setStatusFilter] = useState<ReferralPartnerFilterStatus>("all");
     const [searchQuery, setSearchQuery] = useState("");
@@ -2212,21 +2332,26 @@ export default function AdminReferralPartnersPage() {
     const [withdrawalForm, setWithdrawalForm] =
         useState<PartnerWithdrawalForm>(initialWithdrawalForm);
 
+    // T45U_AUTO_DISMISS_MAIN_TOAST
+    useEffect(() => {
+        if (toast?.type !== "success") {
+            return;
+        }
+
+        const timeoutId = window.setTimeout(() => {
+            setToast(null);
+        }, 3000);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [toast]);
+
     const activePartnerCount = useMemo(() => {
         return partners.filter((partner) => partner.status === "active").length;
     }, [partners]);
 
-    useEffect(() => {
-        if (!toast) {
-            return;
-        }
-
-        const timerId = window.setTimeout(() => {
-            setToast(null);
-        }, 5000);
-
-        return () => window.clearTimeout(timerId);
-    }, [toast]);
+    // T45U_TOAST_CLEANUP_DONE
+    // T45U_FLOATING_TOAST_REPAIR_DONE
+    // T45U_ALL_FLOATING_TOAST_REPAIR_DONE
 
     const loadPartners = async (
         token: string,
@@ -2748,25 +2873,8 @@ export default function AdminReferralPartnersPage() {
                         </button>
                     </div>
                 </div>
-
                 {toast ? (
-                    <div
-                        className={
-                            "flex items-start justify-between gap-4 rounded-3xl p-4 text-sm font-semibold ring-1 " +
-                            (toast.type === "success"
-                                ? "bg-emerald-50 text-emerald-800 ring-emerald-100"
-                                : "bg-red-50 text-red-800 ring-red-100")
-                        }
-                    >
-                        <span>{toast.message}</span>
-                        <button
-                            type="button"
-                            onClick={() => setToast(null)}
-                            className="text-xs uppercase tracking-[0.2em] opacity-70 hover:opacity-100"
-                        >
-                            Close
-                        </button>
-                    </div>
+                    <ReferralFloatingToast type={toast.type} message={toast.message} />
                 ) : null}
 
                 <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -2804,10 +2912,101 @@ export default function AdminReferralPartnersPage() {
                     </div>
                 </section>
 
-                <section className="grid gap-6 xl:grid-cols-[420px_1fr]">
+
+                <section className="overflow-hidden rounded-[2rem] bg-slate-950 shadow-sm ring-1 ring-slate-900">
+                    <div className="grid gap-0 xl:grid-cols-[320px_1fr]">
+                        <div className="bg-slate-900 p-6 text-white">
+                            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-blue-300">
+                                Referrals
+                            </p>
+                            <h2 className="mt-3 text-2xl font-black">
+                                Referral Control Center
+                            </h2>
+                            <p className="mt-3 text-sm leading-6 text-slate-300">
+                                Manage partners, rules, attribution, rewards, and withdrawal
+                                reviews from one organized professional workspace.
+                            </p>
+
+                            <div className="mt-6 rounded-3xl bg-white/10 p-4 ring-1 ring-white/10">
+                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                                    Active Section
+                                </p>
+                                <p className="mt-2 text-xl font-black">
+                                    {activeWorkspaceOption?.label}
+                                </p>
+                                <p className="mt-2 text-sm text-slate-300">
+                                    {activeWorkspaceOption?.description}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-5">
+                            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <h3 className="text-lg font-black text-slate-950">
+                                        Workspace Menu
+                                    </h3>
+                                    <p className="mt-1 text-sm text-slate-600">
+                                        Select only the section you want to manage.
+                                    </p>
+                                </div>
+
+                                <span className="inline-flex w-fit rounded-full bg-blue-50 px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-blue-700">
+                                    Admin Controlled
+                                </span>
+                            </div>
+
+                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                {referralWorkspaceOptions.map((option, index) => (
+                                    <button
+                                        key={option.key}
+                                        type="button"
+                                        onClick={() => setActiveSection(option.key)}
+                                        className={
+                                            "group rounded-3xl border p-4 text-left transition " +
+                                            (activeSection === option.key
+                                                ? "border-blue-700 bg-blue-700 text-white shadow-lg shadow-blue-100"
+                                                : "border-slate-200 bg-slate-50 text-slate-800 hover:border-blue-300 hover:bg-white hover:shadow-sm")
+                                        }
+                                    >
+                                        <span
+                                            className={
+                                                "inline-flex h-8 w-8 items-center justify-center rounded-full text-xs font-black " +
+                                                (activeSection === option.key
+                                                    ? "bg-white text-blue-700"
+                                                    : "bg-white text-slate-500 ring-1 ring-slate-200 group-hover:text-blue-700")
+                                            }
+                                        >
+                                            {index + 1}
+                                        </span>
+
+                                        <span className="mt-4 block text-base font-black">
+                                            {option.label}
+                                        </span>
+                                        <span
+                                            className={
+                                                "mt-2 block text-xs leading-5 " +
+                                                (activeSection === option.key
+                                                    ? "text-blue-50"
+                                                    : "text-slate-500")
+                                            }
+                                        >
+                                            {option.description}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section className="grid gap-6">
                     <form
                         onSubmit={handleCreateSubmit}
-                        className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
+                        className={
+                            "rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 xl:col-span-2 " +
+                            (activeSection === "create" ? "" : "hidden")
+                        }
                     >
                         <h2 className="text-xl font-black">Create Referral Partner</h2>
                         <p className="mt-2 text-sm text-slate-600">
@@ -2971,7 +3170,12 @@ export default function AdminReferralPartnersPage() {
                         </button>
                     </form>
 
-                    <section className="space-y-4 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+                    <section
+                        className={
+                            "space-y-4 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 xl:col-span-2 " +
+                            (activeSection === "partners" ? "" : "hidden")
+                        }
+                    >
                         <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
                             <div>
                                 <h2 className="text-xl font-black">Partner Ledger</h2>
@@ -3140,13 +3344,15 @@ export default function AdminReferralPartnersPage() {
                         </div>
                     </section>
 
-                    <ReferralSettingsSection adminToken={adminToken} profile={profile} />
+                    {activeSection === "settings" ? (
+                        <ReferralSettingsSection adminToken={adminToken} profile={profile} />
+                    ) : null}
 
-                    <AttributionLedgerSection />
+                    {activeSection === "attributions" ? <AttributionLedgerSection /> : null}
 
-                    <RewardLedgerSection />
+                    {activeSection === "rewards" ? <RewardLedgerSection /> : null}
 
-                    <WithdrawalLedgerSection />
+                    {activeSection === "withdrawals" ? <WithdrawalLedgerSection /> : null}
                 </section>
 
 
