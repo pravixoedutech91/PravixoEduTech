@@ -832,6 +832,499 @@ function AttributionLedgerSection() {
 }
 
 
+
+type ReferralSettingsData = {
+    _id: string | null;
+    tenantId: string;
+    minimumWithdrawalAmountInPaise: number;
+    minimumWithdrawalAmountInRupees?: number;
+    rewardLockDays: number;
+    refundSafetyDays: number;
+    kycRequired: boolean;
+    upiRequired: boolean;
+    bankRequired: boolean;
+    maxWithdrawalAmountPerMonthInPaise: number;
+    maxWithdrawalAmountPerMonthInRupees?: number;
+    allowStudentPromoterWithdrawal: boolean;
+    manualApprovalRequired: boolean;
+    isReferralEnabled: boolean;
+    createdAt?: string;
+    updatedAt?: string;
+};
+
+type ReferralSettingsForm = {
+    minimumWithdrawalAmountInRupees: string;
+    rewardLockDays: string;
+    refundSafetyDays: string;
+    kycRequired: boolean;
+    upiRequired: boolean;
+    bankRequired: boolean;
+    maxWithdrawalAmountPerMonthInRupees: string;
+    allowStudentPromoterWithdrawal: boolean;
+    manualApprovalRequired: boolean;
+    isReferralEnabled: boolean;
+};
+
+type ReferralSettingsResponse = {
+    success: boolean;
+    message?: string;
+    data?: ReferralSettingsData;
+};
+
+const initialReferralSettingsForm: ReferralSettingsForm = {
+    minimumWithdrawalAmountInRupees: "500",
+    rewardLockDays: "7",
+    refundSafetyDays: "7",
+    kycRequired: false,
+    upiRequired: true,
+    bankRequired: false,
+    maxWithdrawalAmountPerMonthInRupees: "0",
+    allowStudentPromoterWithdrawal: false,
+    manualApprovalRequired: true,
+    isReferralEnabled: false,
+};
+
+const buildReferralSettingsForm = (
+    settings?: ReferralSettingsData
+): ReferralSettingsForm => {
+    if (!settings) {
+        return initialReferralSettingsForm;
+    }
+
+    return {
+        minimumWithdrawalAmountInRupees: String(
+            (settings.minimumWithdrawalAmountInPaise ?? 50000) / 100
+        ),
+        rewardLockDays: String(settings.rewardLockDays ?? 7),
+        refundSafetyDays: String(settings.refundSafetyDays ?? 7),
+        kycRequired: settings.kycRequired ?? false,
+        upiRequired: settings.upiRequired ?? true,
+        bankRequired: settings.bankRequired ?? false,
+        maxWithdrawalAmountPerMonthInRupees: String(
+            (settings.maxWithdrawalAmountPerMonthInPaise ?? 0) / 100
+        ),
+        allowStudentPromoterWithdrawal:
+            settings.allowStudentPromoterWithdrawal ?? false,
+        manualApprovalRequired: settings.manualApprovalRequired ?? true,
+        isReferralEnabled: settings.isReferralEnabled ?? false,
+    };
+};
+
+const parseRupeesToPaise = (value: string, label: string) => {
+    const amount = Number.parseFloat(value);
+
+    if (!Number.isFinite(amount) || amount < 0) {
+        throw new Error(label + " must be zero or greater.");
+    }
+
+    return Math.round(amount * 100);
+};
+
+const parseSettingsDays = (value: string, label: string) => {
+    const days = Number(value);
+
+    if (!Number.isFinite(days) || !Number.isInteger(days)) {
+        throw new Error(label + " must be a whole number.");
+    }
+
+    if (days < 0 || days > 365) {
+        throw new Error(label + " must be between 0 and 365.");
+    }
+
+    return days;
+};
+
+function ReferralSettingsSection({
+    adminToken,
+    profile,
+}: {
+    adminToken: string;
+    profile: { tenantId?: string } | null;
+}) {
+    const [settings, setSettings] = useState<ReferralSettingsData | null>(null);
+    const [form, setForm] = useState<ReferralSettingsForm>(
+        initialReferralSettingsForm
+    );
+    const [isLoadingSettings, setIsLoadingSettings] = useState(false);
+    const [isSavingSettings, setIsSavingSettings] = useState(false);
+    const [settingsMessage, setSettingsMessage] = useState<{
+        type: "success" | "error";
+        message: string;
+    } | null>(null);
+
+    const buildSettingsUrl = () => {
+        const params = new URLSearchParams();
+
+        if (profile?.tenantId) {
+            params.set("tenantId", profile.tenantId);
+        }
+
+        const queryString = params.toString();
+
+        return (
+            API_BASE_URL +
+            "/api/referral-partners/settings" +
+            (queryString ? "?" + queryString : "")
+        );
+    };
+
+    const loadReferralSettings = async () => {
+        if (!adminToken) {
+            return;
+        }
+
+        setIsLoadingSettings(true);
+        setSettingsMessage(null);
+
+        try {
+            const response = await fetch(buildSettingsUrl(), {
+                headers: {
+                    Authorization: "Bearer " + adminToken,
+                },
+            });
+
+            const result = (await response.json()) as ReferralSettingsResponse;
+
+            if (!response.ok || !result.success || !result.data) {
+                throw new Error(result.message || "Unable to load referral settings.");
+            }
+
+            setSettings(result.data);
+            setForm(buildReferralSettingsForm(result.data));
+        } catch (error) {
+            setSettingsMessage({
+                type: "error",
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : "Unable to load referral settings.",
+            });
+        } finally {
+            setIsLoadingSettings(false);
+        }
+    };
+
+    useEffect(() => {
+        void loadReferralSettings();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [adminToken, profile?.tenantId]);
+
+    const handleSettingsSubmit = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        if (!adminToken) {
+            setSettingsMessage({
+                type: "error",
+                message: "Admin session not found.",
+            });
+            return;
+        }
+
+        setIsSavingSettings(true);
+        setSettingsMessage(null);
+
+        try {
+            const payload = {
+                tenantId: profile?.tenantId,
+                minimumWithdrawalAmountInPaise: parseRupeesToPaise(
+                    form.minimumWithdrawalAmountInRupees,
+                    "Minimum withdrawal amount"
+                ),
+                rewardLockDays: parseSettingsDays(
+                    form.rewardLockDays,
+                    "Reward lock days"
+                ),
+                refundSafetyDays: parseSettingsDays(
+                    form.refundSafetyDays,
+                    "Refund safety days"
+                ),
+                kycRequired: form.kycRequired,
+                upiRequired: form.upiRequired,
+                bankRequired: form.bankRequired,
+                maxWithdrawalAmountPerMonthInPaise: parseRupeesToPaise(
+                    form.maxWithdrawalAmountPerMonthInRupees,
+                    "Monthly withdrawal limit"
+                ),
+                allowStudentPromoterWithdrawal:
+                    form.allowStudentPromoterWithdrawal,
+                manualApprovalRequired: form.manualApprovalRequired,
+                isReferralEnabled: form.isReferralEnabled,
+            };
+
+            const response = await fetch(buildSettingsUrl(), {
+                method: "PUT",
+                headers: {
+                    Authorization: "Bearer " + adminToken,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(payload),
+            });
+
+            const result = (await response.json()) as ReferralSettingsResponse;
+
+            if (!response.ok || !result.success || !result.data) {
+                throw new Error(result.message || "Unable to update referral settings.");
+            }
+
+            setSettings(result.data);
+            setForm(buildReferralSettingsForm(result.data));
+            setSettingsMessage({
+                type: "success",
+                message: result.message || "Referral settings updated successfully.",
+            });
+        } catch (error) {
+            setSettingsMessage({
+                type: "error",
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : "Unable to update referral settings.",
+            });
+        } finally {
+            setIsSavingSettings(false);
+        }
+    };
+
+    return (
+        <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200 xl:col-span-2">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.25em] text-blue-700">
+                        Referral Settings
+                    </p>
+                    <h2 className="mt-2 text-xl font-black">
+                        Referral Rules & Withdrawal Controls
+                    </h2>
+                    <p className="mt-2 text-sm text-slate-600">
+                        Control referral availability, reward safety window, KYC flags,
+                        and manual withdrawal limits.
+                    </p>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={() => void loadReferralSettings()}
+                    disabled={isLoadingSettings || isSavingSettings}
+                    className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                >
+                    {isLoadingSettings ? "Refreshing..." : "Refresh Settings"}
+                </button>
+            </div>
+
+            {settingsMessage ? (
+                <div
+                    className={
+                        "mt-5 rounded-2xl px-4 py-3 text-sm font-semibold ring-1 " +
+                        (settingsMessage.type === "success"
+                            ? "bg-emerald-50 text-emerald-800 ring-emerald-100"
+                            : "bg-red-50 text-red-800 ring-red-100")
+                    }
+                >
+                    {settingsMessage.message}
+                </div>
+            ) : null}
+
+            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Referral Status
+                    </p>
+                    <p className="mt-2 text-lg font-black">
+                        {form.isReferralEnabled ? "Enabled" : "Disabled"}
+                    </p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Minimum Withdrawal
+                    </p>
+                    <p className="mt-2 text-lg font-black">
+                        {formatRupees(settings?.minimumWithdrawalAmountInPaise ?? 50000)}
+                    </p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Monthly Limit
+                    </p>
+                    <p className="mt-2 text-lg font-black">
+                        {(settings?.maxWithdrawalAmountPerMonthInPaise ?? 0) > 0
+                            ? formatRupees(settings?.maxWithdrawalAmountPerMonthInPaise ?? 0)
+                            : "No limit"}
+                    </p>
+                </div>
+                <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-100">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
+                        Last Updated
+                    </p>
+                    <p className="mt-2 text-lg font-black">
+                        {settings?.updatedAt ? formatDateTime(settings.updatedAt) : "-"}
+                    </p>
+                </div>
+            </div>
+
+            <form onSubmit={handleSettingsSubmit} className="mt-6 space-y-5">
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <label className="block">
+                        <span className="text-sm font-semibold text-slate-700">
+                            Minimum withdrawal amount
+                        </span>
+                        <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={form.minimumWithdrawalAmountInRupees}
+                            onChange={(event) =>
+                                setForm((current) => ({
+                                    ...current,
+                                    minimumWithdrawalAmountInRupees: event.target.value,
+                                }))
+                            }
+                            className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                            placeholder="Example: 500"
+                        />
+                    </label>
+
+                    <label className="block">
+                        <span className="text-sm font-semibold text-slate-700">
+                            Reward lock days
+                        </span>
+                        <input
+                            type="number"
+                            min="0"
+                            max="365"
+                            value={form.rewardLockDays}
+                            onChange={(event) =>
+                                setForm((current) => ({
+                                    ...current,
+                                    rewardLockDays: event.target.value,
+                                }))
+                            }
+                            className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                            placeholder="7"
+                        />
+                    </label>
+
+                    <label className="block">
+                        <span className="text-sm font-semibold text-slate-700">
+                            Refund safety days
+                        </span>
+                        <input
+                            type="number"
+                            min="0"
+                            max="365"
+                            value={form.refundSafetyDays}
+                            onChange={(event) =>
+                                setForm((current) => ({
+                                    ...current,
+                                    refundSafetyDays: event.target.value,
+                                }))
+                            }
+                            className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                            placeholder="7"
+                        />
+                    </label>
+
+                    <label className="block">
+                        <span className="text-sm font-semibold text-slate-700">
+                            Monthly withdrawal limit
+                        </span>
+                        <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={form.maxWithdrawalAmountPerMonthInRupees}
+                            onChange={(event) =>
+                                setForm((current) => ({
+                                    ...current,
+                                    maxWithdrawalAmountPerMonthInRupees: event.target.value,
+                                }))
+                            }
+                            className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                            placeholder="0 means no limit"
+                        />
+                    </label>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {[
+                        {
+                            key: "isReferralEnabled",
+                            label: "Referral system enabled",
+                            description: "Master on/off switch for referral program.",
+                        },
+                        {
+                            key: "manualApprovalRequired",
+                            label: "Manual approval required",
+                            description: "Keep rewards and withdrawals under admin review.",
+                        },
+                        {
+                            key: "kycRequired",
+                            label: "KYC required",
+                            description: "Mark whether KYC is required before payout.",
+                        },
+                        {
+                            key: "upiRequired",
+                            label: "UPI required",
+                            description: "Require UPI details for withdrawal requests.",
+                        },
+                        {
+                            key: "bankRequired",
+                            label: "Bank required",
+                            description: "Require bank details for withdrawal requests.",
+                        },
+                        {
+                            key: "allowStudentPromoterWithdrawal",
+                            label: "Student promoter withdrawal",
+                            description: "Allow student promoters to request wallet payout.",
+                        },
+                    ].map((option) => (
+                        <label
+                            key={option.key}
+                            className="flex gap-3 rounded-2xl border border-slate-200 p-4"
+                        >
+                            <input
+                                type="checkbox"
+                                checked={Boolean(
+                                    form[option.key as keyof ReferralSettingsForm]
+                                )}
+                                onChange={(event) =>
+                                    setForm((current) => ({
+                                        ...current,
+                                        [option.key]: event.target.checked,
+                                    }))
+                                }
+                                className="mt-1 h-4 w-4"
+                            />
+                            <span>
+                                <span className="block text-sm font-bold text-slate-900">
+                                    {option.label}
+                                </span>
+                                <span className="mt-1 block text-xs text-slate-500">
+                                    {option.description}
+                                </span>
+                            </span>
+                        </label>
+                    ))}
+                </div>
+
+                <div className="flex flex-col gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs text-slate-500">
+                        Settings are saved per institute/organization. Existing withdrawal
+                        requests are not changed retroactively.
+                    </p>
+
+                    <button
+                        type="submit"
+                        disabled={isLoadingSettings || isSavingSettings}
+                        className="rounded-2xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                    >
+                        {isSavingSettings ? "Saving Settings..." : "Save Referral Settings"}
+                    </button>
+                </div>
+            </form>
+        </section>
+    );
+}
+
 function RewardLedgerSection() {
     const [rewards, setRewards] = useState<ReferralReward[]>([]);
     const [summary, setSummary] = useState<ReferralRewardSummary>(
@@ -2646,6 +3139,8 @@ export default function AdminReferralPartnersPage() {
                             </div>
                         </div>
                     </section>
+
+                    <ReferralSettingsSection adminToken={adminToken} profile={profile} />
 
                     <AttributionLedgerSection />
 
