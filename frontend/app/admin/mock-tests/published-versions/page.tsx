@@ -15,6 +15,12 @@ type AdminProfile = {
     role?: string;
 };
 
+type MeResponse = {
+    success?: boolean;
+    data?: AdminProfile;
+    message?: string;
+};
+
 type ActiveVersionSummary = {
     _id?: string;
     versionNumber?: number;
@@ -409,11 +415,7 @@ export default function AdminPublishedVersionsPage() {
             const savedToken = window.localStorage.getItem(
                 ADMIN_TOKEN_STORAGE_KEY
             );
-            const savedProfile = window.localStorage.getItem(
-                ADMIN_PROFILE_STORAGE_KEY
-            );
-
-            if (!savedToken || !savedProfile) {
+            if (!savedToken) {
                 clearAdminSessionStorage();
                 setIsAllowed(false);
                 setMessage("Please login with an admin account.");
@@ -422,7 +424,26 @@ export default function AdminPublishedVersionsPage() {
             }
 
             try {
-                const adminProfile = JSON.parse(savedProfile) as AdminProfile;
+                const response = await fetch(API_BASE_URL + "/api/auth/me", {
+                    headers: {
+                        Authorization: "Bearer " + savedToken,
+                    },
+                });
+
+                const result = (await response.json()) as MeResponse;
+
+                if (!response.ok || !result.success || !result.data) {
+                    clearAdminSessionStorage();
+                    setIsAllowed(false);
+                    setMessage(
+                        result.message ||
+                            "Your admin session has expired. Please login again."
+                    );
+                    setIsChecking(false);
+                    return;
+                }
+
+                const adminProfile = result.data;
 
                 if (
                     adminProfile.role !== "super_admin" &&
@@ -438,6 +459,11 @@ export default function AdminPublishedVersionsPage() {
                     return;
                 }
 
+                window.localStorage.setItem(
+                    ADMIN_PROFILE_STORAGE_KEY,
+                    JSON.stringify(adminProfile)
+                );
+
                 setIsAllowed(true);
                 setMessage("Admin session verified.");
                 setToken(savedToken);
@@ -449,6 +475,7 @@ export default function AdminPublishedVersionsPage() {
             } finally {
                 setIsChecking(false);
             }
+            // T45V_PUBLISHED_VERSIONS_AUTH_ME_DONE
         };
 
         void verifyAdminSession();

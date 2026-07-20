@@ -669,12 +669,22 @@ export default function AdminPaymentPackagesPage() {
                         {message || "Please login with an Admin or Super Admin account."}
                     </p>
 
-                    <Link
-                        href="/admin/dashboard"
-                        className="mt-6 inline-flex rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
-                    >
-                        Back to Dashboard
-                    </Link>
+                    <div className="mt-6 flex flex-wrap justify-center gap-3">
+                        <Link
+                            href="/admin/login"
+                            className="inline-flex rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                        >
+                            Go to Admin Login
+                        </Link>
+
+                        <Link
+                            href="/admin/dashboard"
+                            className="inline-flex rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                            Back to Dashboard
+                        </Link>
+                    </div>
+                    {/* T45V_PAYMENT_PACKAGES_LOGIN_LINK_DONE */}
                 </div>
             </main>
         );
