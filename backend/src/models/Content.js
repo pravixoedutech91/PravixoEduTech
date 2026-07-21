@@ -11,7 +11,6 @@ const contentSchema = new mongoose.Schema(
     slug: {
       type: String,
       required: true,
-      unique: true,
       lowercase: true,
       trim: true,
     },
@@ -92,7 +91,10 @@ const contentSchema = new mongoose.Schema(
 );
 
 contentSchema.index({ tenantId: 1, type: 1 });
-contentSchema.index({ tenantId: 1, slug: 1 });
+contentSchema.index(
+  { tenantId: 1, slug: 1 },
+  { unique: true }
+);
 contentSchema.index({ tenantId: 1, status: 1 });
 contentSchema.index({ tenantId: 1, type: 1, status: 1, publishedAt: -1 });
 contentSchema.index({ tenantId: 1, status: 1, publishedAt: -1 });
