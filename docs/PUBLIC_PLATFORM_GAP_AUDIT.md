@@ -1,9 +1,9 @@
 # PravixoEduTech Public Platform Gap Audit
 
-**Status:** Evidence-based current-state audit  
-**Phase:** T-45W - Public Platform Architecture and Gap Audit  
-**Architecture lock commit:** `3f9ff16`  
-**Branch:** `feature/question-group-stimulus-support`  
+**Status:** Evidence-based current-state audit
+**Phase:** T-45W - Public Platform Architecture and Gap Audit
+**Architecture lock commit:** `3f9ff16`
+**Branch:** `feature/question-group-stimulus-support`
 **Actual Next.js route root:** `frontend/app`
 
 ---
