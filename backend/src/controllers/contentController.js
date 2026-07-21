@@ -1,4 +1,6 @@
+const mongoose = require("mongoose");
 const Content = require("../models/Content");
+const Category = require("../models/Category");
 const {
   getTenantFilter,
 } = require("../middleware/tenantMiddleware");
@@ -48,6 +50,44 @@ const getPublicLimit = (req) => {
   return Math.min(requestedLimit, 100);
 };
 
+const validateCategoryAccess = async (
+  categoryId,
+  tenantId
+) => {
+  if (!categoryId) {
+    return {
+      success: false,
+      message: "Category is required",
+    };
+  }
+
+  if (
+    !mongoose.Types.ObjectId.isValid(categoryId)
+  ) {
+    return {
+      success: false,
+      message: "Invalid category ID",
+    };
+  }
+
+  const category = await Category.findOne({
+    _id: categoryId,
+    tenantId,
+  });
+
+  if (!category) {
+    return {
+      success: false,
+      message:
+        "Category not found or access denied",
+    };
+  }
+
+  return {
+    success: true,
+  };
+};
+
 const normalizeContentWriteData = (req) => {
   const data = {
     ...req.body,
@@ -89,9 +129,24 @@ const normalizeContentUpdateData = (req) => {
 
 const createContent = async (req, res) => {
   try {
-    const content = await Content.create(
-      normalizeContentWriteData(req)
-    );
+    const contentData =
+      normalizeContentWriteData(req);
+
+    const categoryValidation =
+      await validateCategoryAccess(
+        contentData.category,
+        contentData.tenantId
+      );
+
+    if (!categoryValidation.success) {
+      return res.status(400).json({
+        success: false,
+        message: categoryValidation.message,
+      });
+    }
+
+    const content =
+      await Content.create(contentData);
 
     res.status(201).json({
       success: true,
@@ -170,13 +225,52 @@ const updateContent = async (req, res) => {
   try {
     const tenantFilter = getTenantFilter(req);
 
-    const content = await Content.findOneAndUpdate(
-      {
+    const existingContent =
+      await Content.findOne({
         _id: req.params.id,
         ...tenantFilter,
-      },
-      normalizeContentUpdateData(req),
-      {
+      }).select("_id tenantId");
+
+    if (!existingContent) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Content not found or access denied",
+      });
+    }
+
+    const updateData =
+      normalizeContentUpdateData(req);
+
+    if (
+      Object.prototype.hasOwnProperty.call(
+        updateData,
+        "category"
+      )
+    ) {
+      const categoryValidation =
+        await validateCategoryAccess(
+          updateData.category,
+          existingContent.tenantId
+        );
+
+      if (!categoryValidation.success) {
+        return res.status(400).json({
+          success: false,
+          message:
+            categoryValidation.message,
+        });
+      }
+    }
+
+    const content =
+      await Content.findOneAndUpdate(
+        {
+          _id: req.params.id,
+          ...tenantFilter,
+        },
+        updateData,
+        {
         new: true,
         runValidators: true,
       }
