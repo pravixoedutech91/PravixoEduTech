@@ -180,7 +180,7 @@ const disableExamPattern = async (req, res) => {
 
 const deleteExamPattern = async (req, res) => {
   try {
-    const tenantFilter = getTenantFilter(req.user);
+    const tenantFilter = getTenantFilter(req);
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
