@@ -20,6 +20,38 @@ const ALLOWED_CONTENT_TYPES = [
   "exam_page",
 ];
 
+const SEARCHABLE_PUBLIC_FIELDS = [
+  "title",
+  "slug",
+  "summary",
+  "content",
+  "seoTitle",
+  "seoDescription",
+  "tags",
+  "type",
+];
+
+const escapeRegex = (value) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const getPublicSearchWords = (req) => {
+  const query =
+    typeof req.query?.q === "string"
+      ? req.query.q.trim()
+      : "";
+
+  if (!query) {
+    return [];
+  }
+
+  return query
+    .slice(0, 100)
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8)
+    .map(escapeRegex);
+};
+
 const getPublicContentFilter = (req) => {
   const filter = {
     tenantId: PUBLIC_TENANT_ID,
@@ -37,17 +69,41 @@ const getPublicContentFilter = (req) => {
     filter.tags = req.query.tag;
   }
 
+  const searchWords = getPublicSearchWords(req);
+
+  if (searchWords.length > 0) {
+    filter.$and = searchWords.map((word) => ({
+      $or: SEARCHABLE_PUBLIC_FIELDS.map((field) => ({
+        [field]: {
+          $regex: word,
+          $options: "i",
+        },
+      })),
+    }));
+  }
+
   return filter;
 };
 
-const getPublicLimit = (req) => {
+const getPublicPagination = (req) => {
+  const requestedPage = Number(req.query?.page || 1);
   const requestedLimit = Number(req.query?.limit || 50);
 
-  if (!Number.isFinite(requestedLimit) || requestedLimit <= 0) {
-    return 50;
-  }
+  const page =
+    Number.isInteger(requestedPage) && requestedPage > 0
+      ? requestedPage
+      : 1;
 
-  return Math.min(requestedLimit, 100);
+  const limit =
+    Number.isInteger(requestedLimit) && requestedLimit > 0
+      ? Math.min(requestedLimit, 100)
+      : 50;
+
+  return {
+    page,
+    limit,
+    skip: (page - 1) * limit,
+  };
 };
 
 const validateCategoryAccess = async (
@@ -164,18 +220,38 @@ const createContent = async (req, res) => {
 
 const getPublicContentList = async (req, res) => {
   try {
-    const contents = await Content.find(getPublicContentFilter(req))
-      .select("-content")
-      .populate("category", "name slug description icon isActive")
-      .sort({
-        publishedAt: -1,
-        createdAt: -1,
-      })
-      .limit(getPublicLimit(req));
+    const filter = getPublicContentFilter(req);
+    const { page, limit, skip } =
+      getPublicPagination(req);
+
+    const [contents, total] = await Promise.all([
+      Content.find(filter)
+        .select("-content")
+        .populate(
+          "category",
+          "name slug description icon isActive"
+        )
+        .sort({
+          publishedAt: -1,
+          createdAt: -1,
+          _id: -1,
+        })
+        .skip(skip)
+        .limit(limit),
+      Content.countDocuments(filter),
+    ]);
+
+    const totalPages =
+      total === 0 ? 0 : Math.ceil(total / limit);
 
     res.status(200).json({
       success: true,
       count: contents.length,
+      total,
+      page,
+      limit,
+      totalPages,
+      hasMore: skip + contents.length < total,
       data: contents,
     });
   } catch (error) {

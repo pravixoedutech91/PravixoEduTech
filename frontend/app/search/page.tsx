@@ -22,6 +22,7 @@ export const metadata: Metadata = {
 type SearchPageProps = {
   searchParams?: Promise<{
     q?: string;
+    page?: string;
   }>;
 };
 
@@ -49,39 +50,27 @@ const routeBases: Record<PublicContentType, string> = {
   exam_page: "/exams",
 };
 
-const normalize = (value: string) => value.trim().toLowerCase();
+const parsePage = (value?: string) => {
+  const page = Number(value);
 
-const getSearchText = (item: PublicContentItem) => {
-  const searchableValues = [
-    item.title,
-    item.slug,
-    item.summary,
-    item.content,
-    item.seoTitle,
-    item.seoDescription,
-    item.type,
-    item.category?.name,
-    item.category?.slug,
-    ...(item.tags || []),
-  ];
-
-  return searchableValues
-    .filter((value): value is string => Boolean(value))
-    .join(" ")
-    .toLowerCase();
+  return Number.isInteger(page) && page > 0
+    ? page
+    : 1;
 };
 
-const getMatchedItems = (items: PublicContentItem[], query: string) => {
-  const words = normalize(query).split(/\s+/).filter(Boolean);
+const getSearchPageHref = (
+  query: string,
+  page: number
+) => {
+  const params = new URLSearchParams({
+    q: query,
+  });
 
-  if (!words.length) {
-    return [];
+  if (page > 1) {
+    params.set("page", String(page));
   }
 
-  return items.filter((item) => {
-    const searchText = getSearchText(item);
-    return words.every((word) => searchText.includes(word));
-  });
+  return `/search?${params.toString()}`;
 };
 
 const formatDate = (value?: string) => {
@@ -108,14 +97,23 @@ export default async function SearchPage({
   const params = await searchParams;
   const query = params?.q?.trim() || "";
   const hasQuery = Boolean(query);
+  const requestedPage = parsePage(params?.page);
 
   const searchData = hasQuery
-    ? await getPublicContentSearchList(120)
-    : { items: [], error: "" };
-
-  const matchedItems = hasQuery
-    ? getMatchedItems(searchData.items, query).slice(0, 30)
-    : [];
+    ? await getPublicContentSearchList(
+        query,
+        requestedPage,
+        30
+      )
+    : {
+        items: [],
+        error: "",
+        total: 0,
+        page: 1,
+        limit: 30,
+        totalPages: 0,
+        hasMore: false,
+      };
 
   return (
     <>
@@ -163,7 +161,7 @@ export default async function SearchPage({
               </p>
 
               <h2 className="mt-2 text-2xl font-black text-slate-950">
-                {matchedItems.length} result{matchedItems.length === 1 ? "" : "s"} for "{query}"
+                {searchData.total} result{searchData.total === 1 ? "" : "s"} for "{query}"
               </h2>
 
               {searchData.error ? (
@@ -172,7 +170,7 @@ export default async function SearchPage({
                 </p>
               ) : null}
 
-              {!searchData.error && matchedItems.length === 0 ? (
+              {!searchData.error && searchData.items.length === 0 ? (
                 <div className="mt-5 rounded-2xl bg-slate-50 p-5 ring-1 ring-slate-200">
                   <h3 className="font-black text-slate-950">
                     No matching public content found
@@ -185,9 +183,9 @@ export default async function SearchPage({
                 </div>
               ) : null}
 
-              {matchedItems.length > 0 ? (
+              {searchData.items.length > 0 ? (
                 <div className="mt-6 grid gap-4">
-                  {matchedItems.map((item) => {
+                  {searchData.items.map((item) => {
                     const routeBase = routeBases[item.type] || "/articles";
                     const href = `${routeBase}/${item.slug}`;
                     const publishedDate = formatDate(
@@ -252,6 +250,50 @@ export default async function SearchPage({
                     );
                   })}
                 </div>
+              ) : null}
+
+              {searchData.totalPages > 1 ? (
+                <nav
+                  className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-5"
+                  aria-label="Search result pages"
+                >
+                  {searchData.page > 1 ? (
+                    <Link
+                      href={getSearchPageHref(
+                        query,
+                        searchData.page - 1
+                      )}
+                      className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:border-blue-300 hover:text-blue-700"
+                    >
+                      &larr; Previous
+                    </Link>
+                  ) : (
+                    <span className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-black text-slate-400">
+                      &larr; Previous
+                    </span>
+                  )}
+
+                  <span className="text-sm font-bold text-slate-600">
+                    Page {searchData.page} of{" "}
+                    {searchData.totalPages}
+                  </span>
+
+                  {searchData.hasMore ? (
+                    <Link
+                      href={getSearchPageHref(
+                        query,
+                        searchData.page + 1
+                      )}
+                      className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:border-blue-300 hover:text-blue-700"
+                    >
+                      Next &rarr;
+                    </Link>
+                  ) : (
+                    <span className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-black text-slate-400">
+                      Next &rarr;
+                    </span>
+                  )}
+                </nav>
               ) : null}
             </div>
           </section>

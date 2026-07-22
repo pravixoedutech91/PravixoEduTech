@@ -31,6 +31,9 @@ type PublicContentItem = {
 type PublicContentListResponse = {
   success?: boolean;
   data?: PublicContentItem[];
+  page?: number;
+  totalPages?: number;
+  hasMore?: boolean;
 };
 
 const livePublicRoutes = [
@@ -77,26 +80,64 @@ const getValidDate = (value?: string) => {
   return date;
 };
 
+const SITEMAP_PAGE_SIZE = 100;
+const SITEMAP_MAX_PAGES = 1000;
+
 const getPublishedPublicContent = async () => {
+  const contentItems: PublicContentItem[] = [];
+  let page = 1;
+
   try {
-    const url = new URL("/api/content/public", apiBaseUrl);
-    url.searchParams.set("limit", "500");
+    while (page <= SITEMAP_MAX_PAGES) {
+      const url = new URL(
+        "/api/content/public",
+        apiBaseUrl
+      );
 
-    const response = await fetch(url.toString(), {
-      next: {
-        revalidate: 3600,
-      },
-    });
+      url.searchParams.set("page", String(page));
+      url.searchParams.set(
+        "limit",
+        String(SITEMAP_PAGE_SIZE)
+      );
 
-    if (!response.ok) {
-      return [];
+      const response = await fetch(url.toString(), {
+        next: {
+          revalidate: 3600,
+        },
+      });
+
+      if (!response.ok) {
+        return contentItems;
+      }
+
+      const body =
+        (await response.json()) as PublicContentListResponse;
+
+      const pageItems = Array.isArray(body.data)
+        ? body.data
+        : [];
+
+      contentItems.push(...pageItems);
+
+      const totalPages =
+        Number.isInteger(body.totalPages) &&
+        Number(body.totalPages) >= 0
+          ? Number(body.totalPages)
+          : page;
+
+      const hasMore =
+        body.hasMore === true || page < totalPages;
+
+      if (!hasMore || pageItems.length === 0) {
+        break;
+      }
+
+      page += 1;
     }
 
-    const body = (await response.json()) as PublicContentListResponse;
-
-    return Array.isArray(body.data) ? body.data : [];
+    return contentItems;
   } catch {
-    return [];
+    return contentItems;
   }
 };
 
