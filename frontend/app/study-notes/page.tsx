@@ -3,14 +3,25 @@ import PublicContentListPage from "@/components/public/PublicContentListPage";
 
 export const dynamic = "force-dynamic";
 
+type PageProps = {
+  searchParams?: Promise<{
+    page?: string;
+  }>;
+};
+
 export const metadata: Metadata = {
   title: "Study Notes",
   description: "Find topic-wise study notes for revision, concept clarity and exam preparation.",
 };
 
-export default function Page() {
+export default async function Page({
+  searchParams,
+}: PageProps) {
+  const params = await searchParams;
+
   return (
     <PublicContentListPage
+      page={params?.page}
       type="study_note"
       title="Study Notes"
       eyebrow="Notes"

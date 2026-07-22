@@ -3,14 +3,25 @@ import PublicContentListPage from "@/components/public/PublicContentListPage";
 
 export const dynamic = "force-dynamic";
 
+type PageProps = {
+  searchParams?: Promise<{
+    page?: string;
+  }>;
+};
+
 export const metadata: Metadata = {
   title: "Current Affairs",
   description: "Read current affairs updates designed for competitive exam preparation.",
 };
 
-export default function Page() {
+export default async function Page({
+  searchParams,
+}: PageProps) {
+  const params = await searchParams;
+
   return (
     <PublicContentListPage
+      page={params?.page}
       type="current_affairs"
       title="Current Affairs"
       eyebrow="Current Affairs"

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import PublicSearchBar from "@/components/common/PublicSearchBar";
 import Footer from "@/components/layout/Footer";
 import Navbar from "@/components/layout/Navbar";
@@ -15,7 +16,10 @@ type PublicContentListPageProps = {
   routeBase: string;
   emptyTitle: string;
   emptyDescription: string;
+  page?: string;
 };
+
+const PAGE_SIZE = 24;
 
 const formatDate = (value?: string) => {
   if (!value) {
@@ -33,6 +37,25 @@ const formatDate = (value?: string) => {
   }
 };
 
+const parsePage = (value?: string) => {
+  const page = Number(value);
+
+  return Number.isInteger(page) && page > 0
+    ? page
+    : 1;
+};
+
+const getPageHref = (
+  routeBase: string,
+  page: number
+) => {
+  if (page <= 1) {
+    return routeBase;
+  }
+
+  return `${routeBase}?page=${page}`;
+};
+
 export default async function PublicContentListPage({
   type,
   title,
@@ -41,8 +64,46 @@ export default async function PublicContentListPage({
   routeBase,
   emptyTitle,
   emptyDescription,
+  page,
 }: PublicContentListPageProps) {
-  const { items, error } = await getPublicContentList(type);
+  const requestedPage = parsePage(page);
+
+  const contentData = await getPublicContentList(
+    type,
+    PAGE_SIZE,
+    requestedPage
+  );
+
+  if (
+    !contentData.error &&
+    requestedPage > 1 &&
+    (
+      contentData.totalPages === 0 ||
+      requestedPage > contentData.totalPages
+    )
+  ) {
+    redirect(routeBase);
+  }
+
+  const {
+    items,
+    error,
+    total,
+    page: currentPage,
+    limit,
+    totalPages,
+    hasMore,
+  } = contentData;
+
+  const firstVisibleItem =
+    total > 0
+      ? (currentPage - 1) * limit + 1
+      : 0;
+
+  const lastVisibleItem = Math.min(
+    (currentPage - 1) * limit + items.length,
+    total
+  );
 
   return (
     <>
@@ -78,8 +139,22 @@ export default async function PublicContentListPage({
             </div>
           ) : null}
 
+          {!error && total > 0 ? (
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4">
+              <p className="text-sm font-bold text-slate-700">
+                Showing {firstVisibleItem}-{lastVisibleItem} of{" "}
+                {total} published item{total === 1 ? "" : "s"}
+              </p>
+
+              <p className="text-sm font-semibold text-slate-500">
+                Page {currentPage} of {totalPages}
+              </p>
+            </div>
+          ) : null}
+
           {items.length > 0 ? (
-            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            <>
+              <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
               {items.map((item) => (
                 <article
                   key={item._id}
@@ -128,7 +203,51 @@ export default async function PublicContentListPage({
                   </div>
                 </article>
               ))}
-            </div>
+              </div>
+
+              {totalPages > 1 ? (
+                <nav
+                  className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-6"
+                  aria-label={`${title} pages`}
+                >
+                  {currentPage > 1 ? (
+                    <Link
+                      href={getPageHref(
+                        routeBase,
+                        currentPage - 1
+                      )}
+                      className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700 transition hover:border-blue-300 hover:text-blue-700"
+                    >
+                      &larr; Previous
+                    </Link>
+                  ) : (
+                    <span className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-black text-slate-400">
+                      &larr; Previous
+                    </span>
+                  )}
+
+                  <span className="text-sm font-bold text-slate-600">
+                    Page {currentPage} of {totalPages}
+                  </span>
+
+                  {hasMore ? (
+                    <Link
+                      href={getPageHref(
+                        routeBase,
+                        currentPage + 1
+                      )}
+                      className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-black text-slate-700 transition hover:border-blue-300 hover:text-blue-700"
+                    >
+                      Next &rarr;
+                    </Link>
+                  ) : (
+                    <span className="rounded-xl border border-slate-200 bg-slate-100 px-4 py-2 text-sm font-black text-slate-400">
+                      Next &rarr;
+                    </span>
+                  )}
+                </nav>
+              ) : null}
+            </>
           ) : (
             <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
               <p className="text-sm font-black uppercase tracking-[0.2em] text-blue-700">
