@@ -40,7 +40,6 @@ const isInvalidStudentSessionResponse = (
 
     return (
         response.status === 401 ||
-        response.status === 403 ||
         normalizedMessage.includes("jwt expired") ||
         normalizedMessage.includes("invalid token") ||
         normalizedMessage.includes("not authorized") ||
@@ -123,6 +122,30 @@ type ResultApiResponse = {
     success: boolean;
     message?: string;
     data?: ResultPayload;
+};
+
+const getDetailedReviewUnavailableMessage = (
+    review:
+        | {
+              detailedReviewExpiresAt?: string | null;
+              solutionVisibility?: string | null;
+          }
+        | null
+        | undefined
+) => {
+    if (review?.solutionVisibility === "never") {
+        return "Detailed review is not available for this test.";
+    }
+
+    const expiryTime = review?.detailedReviewExpiresAt
+        ? new Date(review.detailedReviewExpiresAt).getTime()
+        : Number.NaN;
+
+    if (Number.isFinite(expiryTime) && expiryTime <= Date.now()) {
+        return "Detailed review has expired.";
+    }
+
+    return "Detailed review is not available yet.";
 };
 
 const numberOrZero = (value: number | null | undefined) => Number(value || 0);
@@ -342,7 +365,7 @@ export default function StudentAttemptResultPage() {
                                 Back to Mock Tests
                             </Link>
 
-                            {attemptId ? (
+                            {attemptId && result?.attempt.review?.isDetailedReviewAvailable ? (
                                 <Link
                                     href={`/student/attempts/${attemptId}/review`}
                                     className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white"
@@ -597,7 +620,7 @@ export default function StudentAttemptResultPage() {
                                     ? `Detailed review is available until ${formatDateTime(
                                           result.attempt.review.detailedReviewExpiresAt
                                       )}.`
-                                    : "Detailed review is not available yet."}
+                                    : getDetailedReviewUnavailableMessage(result.attempt.review)}
                             </p>
                             {attemptId && result.attempt.review?.isDetailedReviewAvailable ? (
                                 <Link

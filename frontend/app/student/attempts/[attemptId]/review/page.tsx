@@ -41,7 +41,6 @@ const isInvalidStudentSessionResponse = (
 
     return (
         response.status === 401 ||
-        response.status === 403 ||
         normalizedMessage.includes("jwt expired") ||
         normalizedMessage.includes("invalid token") ||
         normalizedMessage.includes("not authorized") ||
