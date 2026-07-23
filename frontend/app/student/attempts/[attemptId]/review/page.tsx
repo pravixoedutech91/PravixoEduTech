@@ -375,6 +375,35 @@ export default function StudentAttemptReviewPage() {
     const effectiveStudentToken = storedStudentToken.trim();
     const autoLoadKeyRef = useRef("");
 
+    const normalizedReviewMessage = message.trim().toLowerCase();
+
+    const isExpiredReview =
+        normalizedReviewMessage.includes("detailed review has expired") ||
+        normalizedReviewMessage.includes("already expired");
+
+    const isReviewUnavailable =
+        isExpiredReview ||
+        normalizedReviewMessage.includes(
+            "detailed review is not available"
+        ) ||
+        normalizedReviewMessage.includes(
+            "detailed review will be available"
+        );
+
+    const emptyReviewTitle = isExpiredReview
+        ? "Detailed review expired"
+        : isReviewUnavailable
+          ? "Detailed review unavailable"
+          : "Review not loaded yet";
+
+    const emptyReviewDescription = isExpiredReview
+        ? "Question-level review data is retained for a limited period after submission. Your score and result analytics remain available."
+        : isReviewUnavailable
+          ? "This detailed review cannot be opened right now. Your score and result analytics remain available."
+          : effectiveStudentToken
+            ? "Use Refresh Review to try loading the detailed review."
+            : "Login as a student to fetch detailed review.";
+
     const fetchReview = useCallback(async () => {
         if (!attemptId) {
             setMessage("Attempt ID is missing from the URL.");
@@ -528,7 +557,7 @@ export default function StudentAttemptReviewPage() {
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                            {effectiveStudentToken ? (
+                            {effectiveStudentToken && !isReviewUnavailable ? (
                                 <button
                                     type="button"
                                     onClick={() => void fetchReview()}
@@ -537,14 +566,14 @@ export default function StudentAttemptReviewPage() {
                                 >
                                     {isLoading ? "Loading..." : "Refresh Review"}
                                 </button>
-                            ) : (
+                            ) : !effectiveStudentToken ? (
                                 <Link
                                     href="/student/login"
                                     className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700"
                                 >
                                     Login
                                 </Link>
-                            )}
+                            ) : null}
 
                             {effectiveStudentToken ? (
                                 <button
@@ -830,9 +859,9 @@ export default function StudentAttemptReviewPage() {
                     </>
                 ) : (
                     <section className="rounded-3xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
-                        <h2 className="text-xl font-bold">Review not loaded yet</h2>
+                        <h2 className="text-xl font-bold">{emptyReviewTitle}</h2>
                         <p className="mt-2 text-sm text-slate-600">
-                            Login as a student to fetch detailed review.
+                            {emptyReviewDescription}
                         </p>
                     </section>
                 )}
