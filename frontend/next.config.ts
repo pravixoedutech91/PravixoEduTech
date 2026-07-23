@@ -1,8 +1,9 @@
 import type { NextConfig } from "next";
 
-const isHostedVercelBuild =
+const isHostedFrontendBuild =
   process.env.VERCEL === "1" ||
-  Boolean(process.env.VERCEL_ENV);
+  Boolean(process.env.VERCEL_ENV) ||
+  process.env.WORKERS_CI === "1";
 
 const normalizeHostedOrigin = (
   variableName: string,
@@ -67,7 +68,7 @@ const normalizeHostedOrigin = (
   return parsedUrl.origin;
 };
 
-if (isHostedVercelBuild) {
+if (isHostedFrontendBuild) {
   const apiBaseUrl =
     process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 
