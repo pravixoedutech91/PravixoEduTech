@@ -210,6 +210,29 @@ const toApiDate = (
   return date.toISOString();
 };
 
+const toDateTimeLocalInput = (
+  value?: string | null
+) => {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const localDate = new Date(
+    date.getTime() -
+      date.getTimezoneOffset() * 60000
+  );
+
+  return localDate
+    .toISOString()
+    .slice(0, 16);
+};
+
 const statusClasses = (
   status: PromotionStatus
 ) => {
@@ -255,6 +278,19 @@ export default function AdminPromotionsPage() {
   const [form, setForm] =
     useState<PromotionForm>(initialForm);
 
+  const [
+    editingPromotionId,
+    setEditingPromotionId,
+  ] = useState("");
+
+  const [isUpdating, setIsUpdating] =
+    useState(false);
+
+  const [
+    statusUpdatingId,
+    setStatusUpdatingId,
+  ] = useState("");
+
   const activeCount = useMemo(
     () =>
       promotions.filter(
@@ -281,6 +317,60 @@ export default function AdminPromotionsPage() {
       ...current,
       [field]: value,
     }));
+  };
+
+  const startEditingPromotion = (
+    promotion: SitePromotion
+  ) => {
+    setEditingPromotionId(
+      promotion._id
+    );
+
+    setForm({
+      placement: promotion.placement,
+      title: promotion.title || "",
+      subtitle:
+        promotion.subtitle || "",
+      badgeText:
+        promotion.badgeText || "",
+      imageUrl:
+        promotion.imageUrl || "",
+      ctaLabel:
+        promotion.ctaLabel || "",
+      ctaUrl:
+        promotion.ctaUrl || "/",
+      status: promotion.status,
+      priority: String(
+        promotion.priority ?? 0
+      ),
+      startAt:
+        toDateTimeLocalInput(
+          promotion.startAt
+        ),
+      endAt:
+        toDateTimeLocalInput(
+          promotion.endAt
+        ),
+    });
+
+    setToast(null);
+
+    window.requestAnimationFrame(() => {
+      document
+        .getElementById(
+          "promotion-editor"
+        )
+        ?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+    });
+  };
+
+  const cancelEditingPromotion = () => {
+    setEditingPromotionId("");
+    setForm(initialForm);
+    setToast(null);
   };
 
   const loadPromotions = async (
@@ -568,6 +658,198 @@ export default function AdminPromotionsPage() {
     }
   };
 
+  const handleUpdatePromotion = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
+    event.preventDefault();
+
+    if (
+      !adminToken ||
+      !editingPromotionId
+    ) {
+      return;
+    }
+
+    setToast(null);
+
+    const validationError =
+      validateForm();
+
+    if (validationError) {
+      setToast({
+        type: "error",
+        message: validationError,
+      });
+      return;
+    }
+
+    setIsUpdating(true);
+
+    try {
+      const response = await fetch(
+        API_BASE_URL +
+          "/api/promotions/" +
+          editingPromotionId,
+        {
+          method: "PUT",
+          headers: {
+            Authorization:
+              "Bearer " + adminToken,
+            "Content-Type":
+              "application/json",
+          },
+          body: JSON.stringify({
+            placement: form.placement,
+            title: form.title.trim(),
+            subtitle:
+              form.subtitle.trim(),
+            badgeText:
+              form.badgeText.trim(),
+            imageUrl:
+              form.imageUrl.trim(),
+            ctaLabel:
+              form.ctaLabel.trim(),
+            ctaUrl:
+              form.ctaUrl.trim(),
+            status: form.status,
+            priority:
+              Number(form.priority),
+            startAt:
+              toApiDate(form.startAt),
+            endAt:
+              toApiDate(form.endAt),
+          }),
+        }
+      );
+
+      const result =
+        (await response.json()) as
+          PromotionMutationResponse;
+
+      if (
+        !response.ok ||
+        !result.success
+      ) {
+        throw new Error(
+          result.message ||
+            "Unable to update promotion."
+        );
+      }
+
+      setEditingPromotionId("");
+      setForm(initialForm);
+
+      setToast({
+        type: "success",
+        message:
+          "Promotion updated successfully.",
+      });
+
+      await loadPromotions(
+        adminToken
+      );
+    } catch (error) {
+      setToast({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Unable to update promotion.",
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handlePromotionStatusChange =
+    async (
+      promotion: SitePromotion,
+      nextStatus: PromotionStatus
+    ) => {
+      if (
+        !adminToken ||
+        statusUpdatingId
+      ) {
+        return;
+      }
+
+      setToast(null);
+      setStatusUpdatingId(
+        promotion._id
+      );
+
+      try {
+        const response = await fetch(
+          API_BASE_URL +
+            "/api/promotions/" +
+            promotion._id,
+          {
+            method: "PUT",
+            headers: {
+              Authorization:
+                "Bearer " + adminToken,
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              status: nextStatus,
+            }),
+          }
+        );
+
+        const result =
+          (await response.json()) as
+            PromotionMutationResponse;
+
+        if (
+          !response.ok ||
+          !result.success
+        ) {
+          throw new Error(
+            result.message ||
+              "Unable to update promotion status."
+          );
+        }
+
+        if (
+          editingPromotionId ===
+          promotion._id
+        ) {
+          setForm((current) => ({
+            ...current,
+            status: nextStatus,
+          }));
+        }
+
+        const actionMessage =
+          nextStatus === "active"
+            ? promotion.status ===
+              "inactive"
+              ? "Promotion reactivated successfully."
+              : "Promotion activated successfully."
+            : "Promotion deactivated successfully.";
+
+        setToast({
+          type: "success",
+          message: actionMessage,
+        });
+
+        await loadPromotions(
+          adminToken
+        );
+      } catch (error) {
+        setToast({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Unable to update promotion status.",
+        });
+      } finally {
+        setStatusUpdatingId("");
+      }
+    };
+
   if (!isReady) {
     return (
       <main className="min-h-screen bg-slate-100 px-4 py-8 text-slate-950">
@@ -723,15 +1005,24 @@ export default function AdminPromotionsPage() {
 
         <section className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
           <form
-            onSubmit={handleCreate}
+            id="promotion-editor"
+            onSubmit={
+              editingPromotionId
+                ? handleUpdatePromotion
+                : handleCreate
+            }
             className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
           >
             <p className="text-sm font-bold uppercase tracking-[0.18em] text-blue-700">
-              Create Promotion
+              {editingPromotionId
+                ? "Edit Promotion"
+                : "Create Promotion"}
             </p>
 
             <h2 className="mt-2 text-2xl font-bold">
-              Campaign details
+              {editingPromotionId
+                ? "Update campaign details"
+                : "Campaign details"}
             </h2>
 
             <div className="mt-6 space-y-4">
@@ -968,15 +1259,43 @@ export default function AdminPromotionsPage() {
                 </label>
               </div>
 
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full rounded-2xl bg-blue-700 px-5 py-3 text-sm font-bold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+              <div
+                className={
+                  editingPromotionId
+                    ? "grid gap-3 sm:grid-cols-2"
+                    : ""
+                }
               >
-                {isSubmitting
-                  ? "Creating..."
-                  : "Create Promotion"}
-              </button>
+                <button
+                  type="submit"
+                  disabled={
+                    isSubmitting ||
+                    isUpdating
+                  }
+                  className="w-full rounded-2xl bg-blue-700 px-5 py-3 text-sm font-bold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {editingPromotionId
+                    ? isUpdating
+                      ? "Saving..."
+                      : "Save Changes"
+                    : isSubmitting
+                      ? "Creating..."
+                      : "Create Promotion"}
+                </button>
+
+                {editingPromotionId ? (
+                  <button
+                    type="button"
+                    onClick={
+                      cancelEditingPromotion
+                    }
+                    disabled={isUpdating}
+                    className="w-full rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    Cancel Edit
+                  </button>
+                ) : null}
+              </div>
             </div>
           </form>
 
@@ -1166,8 +1485,76 @@ export default function AdminPromotionsPage() {
                       </p>
                     </div>
 
-                    <div className="mt-4 border-t border-slate-100 pt-4 text-xs text-slate-500">
-                      Edit and status actions will be enabled in the next checkpoint.
+                    <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          startEditingPromotion(
+                            promotion
+                          )
+                        }
+                        disabled={
+                          isUpdating ||
+                          statusUpdatingId ===
+                            promotion._id
+                        }
+                        className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-bold text-blue-800 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {editingPromotionId ===
+                        promotion._id
+                          ? "Editing"
+                          : "Edit"}
+                      </button>
+
+                      {promotion.status ===
+                      "active" ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handlePromotionStatusChange(
+                              promotion,
+                              "inactive"
+                            )
+                          }
+                          disabled={
+                            Boolean(
+                              statusUpdatingId
+                            ) ||
+                            isUpdating
+                          }
+                          className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-bold text-rose-800 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {statusUpdatingId ===
+                          promotion._id
+                            ? "Updating..."
+                            : "Deactivate"}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void handlePromotionStatusChange(
+                              promotion,
+                              "active"
+                            )
+                          }
+                          disabled={
+                            Boolean(
+                              statusUpdatingId
+                            ) ||
+                            isUpdating
+                          }
+                          className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-800 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {statusUpdatingId ===
+                          promotion._id
+                            ? "Updating..."
+                            : promotion.status ===
+                                "inactive"
+                              ? "Reactivate"
+                              : "Activate"}
+                        </button>
+                      )}
                     </div>
                   </article>
                 )
