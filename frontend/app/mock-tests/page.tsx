@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Footer from "@/components/layout/Footer";
 import Navbar from "@/components/layout/Navbar";
+import PromotionSlot from "@/components/public/PromotionSlot";
 
 export const metadata: Metadata = {
   title: "Mock Tests",
@@ -47,16 +48,22 @@ export default function MockTestsPublicPage() {
               </div>
             </div>
 
-            <aside className="rounded-3xl border border-white/10 bg-white/10 p-5 shadow-xl shadow-slate-950/20 sm:p-6">
-              <h2 className="text-xl font-bold tracking-tight">Why login is required?</h2>
+            <div className="space-y-4">
+              <PromotionSlot placement="mock_tests_hero" />
 
-              <ul className="mt-5 space-y-3 text-sm leading-7 text-slate-200">
-                <li>- Save and resume attempts securely.</li>
-                <li>- Show result and review after submission.</li>
-                <li>- Protect correct answers before submission.</li>
-                <li>- Keep student attempt history private.</li>
-              </ul>
-            </aside>
+              <aside className="rounded-3xl border border-white/10 bg-white/10 p-5 shadow-xl shadow-slate-950/20 sm:p-6">
+                <h2 className="text-xl font-bold tracking-tight">
+                  Why login is required?
+                </h2>
+
+                <ul className="mt-5 space-y-3 text-sm leading-7 text-slate-200">
+                  <li>- Save and resume attempts securely.</li>
+                  <li>- Show result and review after submission.</li>
+                  <li>- Protect correct answers before submission.</li>
+                  <li>- Keep student attempt history private.</li>
+                </ul>
+              </aside>
+            </div>
           </div>
         </section>
       </main>
