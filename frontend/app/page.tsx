@@ -1,7 +1,6 @@
 import Link from "next/link";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
-import PublicSearchBar from "@/components/common/PublicSearchBar";
 
 const examCards = [
   "MPPSC",
@@ -54,68 +53,65 @@ export default function Home() {
       <Navbar />
 
       <main>
-        <section className="relative overflow-hidden bg-slate-950 text-white">
+        <section className="relative overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 text-white">
           <div className="absolute left-[-10%] top-[-20%] h-72 w-72 rounded-full bg-blue-600/30 blur-3xl" />
           <div className="absolute bottom-[-20%] right-[-10%] h-80 w-80 rounded-full bg-cyan-400/20 blur-3xl" />
 
-          <div className="relative mx-auto grid max-w-7xl gap-10 px-4 py-20 lg:grid-cols-[1.15fr_0.85fr] lg:items-center lg:py-24">
+          <div className="relative mx-auto grid max-w-7xl gap-8 px-4 py-14 sm:py-16 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-12 lg:py-20">
             <div>
-              <p className="mb-4 inline-flex rounded-full border border-blue-300/30 bg-white/10 px-4 py-2 text-sm font-bold text-blue-100 backdrop-blur">
-                Public content + mock test practice for serious aspirants
+              <p className="mb-5 inline-flex rounded-full border border-blue-300/30 bg-white/10 px-4 py-2 text-xs font-bold uppercase tracking-[0.12em] text-blue-100 backdrop-blur sm:text-sm">
+                Government exam preparation, organised in one place
               </p>
 
-              <h1 className="max-w-4xl text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">
-                Prepare smarter for government exams with notes, updates and mock tests.
+              <h1 className="max-w-3xl text-4xl font-black leading-[1.08] tracking-tight sm:text-5xl lg:text-5xl xl:text-6xl">
+                Prepare smarter for government exams.
               </h1>
 
-              <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-300">
-                PravixoEduTech helps aspirants find exam updates, syllabus, current affairs,
-                study notes and practice tests in one focused platform.
+              <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg sm:leading-8">
+                Find exam updates, syllabus, current affairs,
+                study notes and mock tests through one focused platform.
               </p>
 
-              <div className="mt-8 max-w-2xl">
-                <PublicSearchBar />
-              </div>
 
-              <div className="mt-8 flex flex-wrap gap-3">
+              <div className="mt-7 flex flex-wrap gap-3">
                 <Link
                   href="/study-notes"
-                  className="rounded-full bg-white px-6 py-3 text-sm font-black text-slate-950 transition hover:bg-blue-50"
+                  className="inline-flex min-h-12 items-center rounded-xl bg-white px-6 text-sm font-bold text-slate-950 shadow-lg shadow-slate-950/20 transition hover:bg-blue-50"
                 >
-                  Explore Free Notes
+                  Explore Study Notes
                 </Link>
                 <Link
-                  href="/student/login"
-                  className="rounded-full border border-white/30 px-6 py-3 text-sm font-black text-white transition hover:bg-white/10"
+                  href="/mock-tests"
+                  className="inline-flex min-h-12 items-center rounded-xl border border-white/30 px-6 text-sm font-bold text-white transition hover:border-white/50 hover:bg-white/10"
                 >
-                  Login for Mock Tests
+                  Explore Mock Tests
                 </Link>
               </div>
             </div>
 
-            <aside className="rounded-[2rem] border border-white/10 bg-white/10 p-6 shadow-2xl backdrop-blur">
+            <aside className="rounded-3xl border border-white/10 bg-white/10 p-5 shadow-2xl shadow-slate-950/30 backdrop-blur sm:p-6">
               <h2 className="text-xl font-black">
                 Popular Exam Categories
               </h2>
 
-              <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="mt-5 grid grid-cols-2 gap-2.5 sm:gap-3">
                 {examCards.map((exam) => (
                   <Link
                     key={exam}
                     href="/exams"
-                    className="rounded-2xl border border-white/10 bg-white/10 p-4 text-sm font-bold text-white transition hover:bg-white/20"
+                    className="rounded-xl border border-white/10 bg-white/10 p-4 text-sm font-bold text-white transition hover:border-blue-300/30 hover:bg-white/20"
                   >
                     {exam}
                   </Link>
                 ))}
               </div>
 
-              <div className="mt-6 rounded-2xl bg-white p-5 text-slate-950">
+              <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 p-5 text-slate-950">
                 <p className="text-sm font-black uppercase tracking-[0.2em] text-blue-700">
-                  Platform Rule
+                  How Pravixo works
                 </p>
                 <p className="mt-2 text-sm leading-6 text-slate-700">
-                  Public articles are open. Mock tests, attempts and protected downloads require login.
+                  Read public notes and updates freely. Sign in only for mock tests and protected resources.
                 </p>
               </div>
             </aside>
@@ -137,7 +133,7 @@ export default function Home() {
               href="/notifications"
               className="text-sm font-black text-blue-700 hover:text-blue-900"
             >
-              View all updates ?
+              View all updates
             </Link>
           </div>
 
