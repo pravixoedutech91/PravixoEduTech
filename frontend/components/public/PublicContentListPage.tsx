@@ -109,38 +109,54 @@ export default async function PublicContentListPage({
     <>
       <Navbar />
 
-      <main>
-        <section className="border-b border-slate-200 bg-white">
-          <div className="mx-auto max-w-7xl px-4 py-12">
-            <p className="text-sm font-black uppercase tracking-[0.2em] text-blue-700">
-              {eyebrow}
-            </p>
+      <main className="bg-slate-50">
+        <section className="border-b border-blue-900/40 bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 text-white">
+          <div className="mx-auto max-w-7xl px-4 py-10 sm:py-14">
+            <nav
+              aria-label="Breadcrumb"
+              className="flex items-center gap-2 text-xs font-semibold text-blue-100/80 sm:text-sm"
+            >
+              <Link
+                href="/"
+                className="transition hover:text-white"
+              >
+                Home
+              </Link>
+              <span aria-hidden="true">/</span>
+              <span className="text-white">{title}</span>
+            </nav>
 
-            <div className="mt-4 grid gap-8 lg:grid-cols-[1fr_420px] lg:items-end">
+            <div className="mt-6 grid gap-7 lg:grid-cols-[minmax(0,1fr)_380px] lg:items-end">
               <div>
-                <h1 className="max-w-4xl text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-blue-200 sm:text-sm">
+                  {eyebrow}
+                </p>
+
+                <h1 className="mt-3 max-w-4xl text-3xl font-black leading-tight tracking-tight sm:text-4xl lg:text-5xl">
                   {title}
                 </h1>
 
-                <p className="mt-5 max-w-3xl text-base leading-8 text-slate-600">
+                <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-300 sm:text-base">
                   {description}
                 </p>
               </div>
 
-              <PublicSearchBar compact />
+              <div className="min-w-0 rounded-2xl border border-white/10 bg-white/10 p-2 shadow-xl shadow-slate-950/20 backdrop-blur">
+                <PublicSearchBar compact />
+              </div>
             </div>
           </div>
         </section>
 
-        <section className="mx-auto max-w-7xl px-4 py-12">
+        <section className="mx-auto max-w-7xl px-4 py-10 sm:py-12">
           {error ? (
-            <div className="mb-6 rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm font-semibold text-amber-900">
+            <div className="mb-7 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-semibold text-amber-900 shadow-sm">
               {error}
             </div>
           ) : null}
 
           {!error && total > 0 ? (
-            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-5 py-4">
+            <div className="mb-7 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-5">
               <p className="text-sm font-bold text-slate-700">
                 Showing {firstVisibleItem}-{lastVisibleItem} of{" "}
                 {total} published item{total === 1 ? "" : "s"}
@@ -154,11 +170,11 @@ export default async function PublicContentListPage({
 
           {items.length > 0 ? (
             <>
-              <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {items.map((item) => (
                 <article
                   key={item._id}
-                  className="flex min-h-64 flex-col rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-blue-200 hover:shadow-xl"
+                  className="group flex min-h-60 flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition duration-200 hover:-translate-y-1 hover:border-blue-300 hover:shadow-xl sm:p-6"
                 >
                   <div className="flex flex-wrap gap-2">
                     {item.category?.name ? (
@@ -172,17 +188,17 @@ export default async function PublicContentListPage({
                     </span>
                   </div>
 
-                  <h2 className="mt-5 text-xl font-black leading-snug text-slate-950">
+                  <h2 className="mt-4 text-lg font-black leading-snug text-slate-950 transition group-hover:text-blue-800 sm:text-xl">
                     {item.title}
                   </h2>
 
-                  <p className="mt-3 line-clamp-4 text-sm leading-7 text-slate-600">
+                  <p className="mt-3 line-clamp-3 text-sm leading-7 text-slate-600">
                     {item.summary ||
                       item.seoDescription ||
                       "Read this public exam preparation update on PravixoEduTech."}
                   </p>
 
-                  <div className="mt-5 flex flex-wrap gap-2">
+                  <div className="mt-4 flex flex-wrap gap-2">
                     {(item.tags || []).slice(0, 3).map((tag) => (
                       <span
                         key={tag}
@@ -193,12 +209,13 @@ export default async function PublicContentListPage({
                     ))}
                   </div>
 
-                  <div className="mt-auto pt-6">
+                  <div className="mt-auto border-t border-slate-100 pt-5">
                     <Link
                       href={`${routeBase}/${item.slug}`}
-                      className="text-sm font-black text-blue-700 hover:text-blue-900"
+                      aria-label={`Read ${item.title}`}
+                      className="inline-flex items-center gap-2 text-sm font-black text-blue-700 transition hover:text-blue-900"
                     >
-                      Read details &gt;
+                      Read details <span aria-hidden="true">&rarr;</span>
                     </Link>
                   </div>
                 </article>
@@ -207,7 +224,7 @@ export default async function PublicContentListPage({
 
               {totalPages > 1 ? (
                 <nav
-                  className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-6"
+                  className="mt-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5"
                   aria-label={`${title} pages`}
                 >
                   {currentPage > 1 ? (
@@ -249,12 +266,12 @@ export default async function PublicContentListPage({
               ) : null}
             </>
           ) : (
-            <div className="rounded-[2rem] border border-dashed border-slate-300 bg-white p-10 text-center">
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center shadow-sm sm:p-12">
               <p className="text-sm font-black uppercase tracking-[0.2em] text-blue-700">
                 Coming Soon
               </p>
 
-              <h2 className="mt-3 text-3xl font-black text-slate-950">
+              <h2 className="mt-3 text-2xl font-black text-slate-950 sm:text-3xl">
                 {emptyTitle}
               </h2>
 
