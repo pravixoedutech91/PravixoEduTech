@@ -27,6 +27,7 @@ export default async function Page({
       eyebrow="Notes"
       description="Find topic-wise study notes for revision, concept clarity and exam preparation."
       routeBase="/study-notes"
+      promotionPlacement="study_notes_hero"
       emptyTitle="Study notes will appear here"
       emptyDescription="Published study notes will be listed here once content is added."
     />

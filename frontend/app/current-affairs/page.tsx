@@ -27,6 +27,7 @@ export default async function Page({
       eyebrow="Current Affairs"
       description="Read current affairs updates designed for competitive exam preparation."
       routeBase="/current-affairs"
+      promotionPlacement="current_affairs_hero"
       emptyTitle="Current affairs updates will appear here"
       emptyDescription="Published current affairs posts will be listed here."
     />

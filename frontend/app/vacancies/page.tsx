@@ -27,6 +27,7 @@ export default async function Page({
       eyebrow="Vacancies"
       description="Find government job vacancy updates arranged for quick reading and action."
       routeBase="/vacancies"
+      promotionPlacement="jobs_hero"
       emptyTitle="Vacancy updates will appear here"
       emptyDescription="Published vacancy updates will be listed here."
     />
