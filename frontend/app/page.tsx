@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
+import PromotionSlot from "@/components/public/PromotionSlot";
 
 const examCards = [
   "MPPSC",
@@ -89,32 +90,36 @@ export default function Home() {
               </div>
             </div>
 
-            <aside className="rounded-3xl border border-white/10 bg-white/10 p-5 shadow-2xl shadow-slate-950/30 backdrop-blur sm:p-6">
-              <h2 className="text-xl font-black">
-                Popular Exam Categories
-              </h2>
+            <div className="space-y-4">
+              <PromotionSlot placement="home_hero" />
 
-              <div className="mt-5 grid grid-cols-2 gap-2.5 sm:gap-3">
-                {examCards.map((exam) => (
-                  <Link
-                    key={exam}
-                    href="/exams"
-                    className="rounded-xl border border-white/10 bg-white/10 p-4 text-sm font-bold text-white transition hover:border-blue-300/30 hover:bg-white/20"
-                  >
-                    {exam}
-                  </Link>
-                ))}
-              </div>
+              <aside className="rounded-3xl border border-white/10 bg-white/10 p-5 shadow-2xl shadow-slate-950/30 backdrop-blur sm:p-6">
+                <h2 className="text-xl font-black">
+                  Popular Exam Categories
+                </h2>
 
-              <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 p-5 text-slate-950">
-                <p className="text-sm font-black uppercase tracking-[0.2em] text-blue-700">
-                  How Pravixo works
-                </p>
-                <p className="mt-2 text-sm leading-6 text-slate-700">
-                  Read public notes and updates freely. Sign in only for mock tests and protected resources.
-                </p>
-              </div>
-            </aside>
+                <div className="mt-5 grid grid-cols-2 gap-2.5 sm:gap-3">
+                  {examCards.map((exam) => (
+                    <Link
+                      key={exam}
+                      href="/exams"
+                      className="rounded-xl border border-white/10 bg-white/10 p-4 text-sm font-bold text-white transition hover:border-blue-300/30 hover:bg-white/20"
+                    >
+                      {exam}
+                    </Link>
+                  ))}
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50 p-5 text-slate-950">
+                  <p className="text-sm font-black uppercase tracking-[0.2em] text-blue-700">
+                    How Pravixo works
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-slate-700">
+                    Read public notes and updates freely. Sign in only for mock tests and protected resources.
+                  </p>
+                </div>
+              </aside>
+            </div>
           </div>
         </section>
 
