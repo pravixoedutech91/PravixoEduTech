@@ -12,6 +12,7 @@ const mockTestRoutes = require("./routes/mockTestRoutes");
 const questionGroupRoutes = require("./routes/questionGroupRoutes");
 const studentMockTestRoutes = require("./routes/studentMockTestRoutes");
 const paymentProductRoutes = require("./routes/paymentProductRoutes");
+const sitePromotionRoutes = require("./routes/sitePromotionRoutes");
 const referralPartnerRoutes = require("./routes/referralPartnerRoutes");
 dotenv.config();
 
@@ -122,6 +123,7 @@ app.use("/api/mock-tests", mockTestRoutes);
 app.use("/api/question-groups", questionGroupRoutes);
 app.use("/api/student", studentMockTestRoutes);
 app.use("/api/payment-products", paymentProductRoutes);
+app.use("/api/promotions", sitePromotionRoutes);
 app.use("/api/referral-partners", referralPartnerRoutes);
 
 app.get("/", (req, res) => {
