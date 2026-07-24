@@ -27,6 +27,7 @@ export default async function Page({
       eyebrow="Exams"
       description="Explore exam-wise preparation guidance, syllabus direction, important updates and learning resources for government exams."
       routeBase="/exams"
+      promotionPlacement="exams_hero"
       emptyTitle="Exam hub pages will appear here"
       emptyDescription="Admin-created exam pages will be shown here after publishing."
     />

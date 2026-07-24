@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import PublicSearchBar from "@/components/common/PublicSearchBar";
 import Footer from "@/components/layout/Footer";
 import Navbar from "@/components/layout/Navbar";
+import PromotionSlot, {
+  type PromotionPlacement,
+} from "@/components/public/PromotionSlot";
 import {
   getPublicContentList,
   type PublicContentType,
@@ -17,6 +20,7 @@ type PublicContentListPageProps = {
   emptyTitle: string;
   emptyDescription: string;
   page?: string;
+  promotionPlacement?: PromotionPlacement;
 };
 
 const PAGE_SIZE = 24;
@@ -65,6 +69,7 @@ export default async function PublicContentListPage({
   emptyTitle,
   emptyDescription,
   page,
+  promotionPlacement,
 }: PublicContentListPageProps) {
   const requestedPage = parsePage(page);
 
@@ -141,8 +146,14 @@ export default async function PublicContentListPage({
                 </p>
               </div>
 
-              <div className="min-w-0 rounded-2xl border border-white/10 bg-white/10 p-2 shadow-xl shadow-slate-950/20 backdrop-blur">
-                <PublicSearchBar compact />
+              <div className="min-w-0 space-y-4">
+                {promotionPlacement ? (
+                  <PromotionSlot placement={promotionPlacement} />
+                ) : null}
+
+                <div className="rounded-2xl border border-white/10 bg-white/10 p-2 shadow-xl shadow-slate-950/20 backdrop-blur">
+                  <PublicSearchBar compact />
+                </div>
               </div>
             </div>
           </div>
