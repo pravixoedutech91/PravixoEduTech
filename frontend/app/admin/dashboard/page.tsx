@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -305,6 +305,16 @@ export default function AdminDashboardPage() {
                                         Open
                                     </span>
                                 </Link>
+
+                                <Link
+                                    href="/admin/promotions"
+                                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
+                                >
+                                    <span>Site Promotions</span>
+                                    <span className="rounded-full bg-cyan-950 px-2 py-0.5 text-[11px] text-cyan-200">
+                                        Open
+                                    </span>
+                                </Link>
                             </div>
                         </div>
 
@@ -446,6 +456,18 @@ export default function AdminDashboardPage() {
                                     </p>
                                     <p className="mt-2 text-sm leading-6 text-amber-950">
                                         Create, edit, deactivate and reactivate public content categories.
+                                    </p>
+                                </Link>
+
+                                <Link
+                                    href="/admin/promotions"
+                                    className="rounded-3xl border border-cyan-100 bg-cyan-50 p-5 hover:bg-cyan-100"
+                                >
+                                    <p className="text-sm font-black text-cyan-800">
+                                        Site Promotions
+                                    </p>
+                                    <p className="mt-2 text-sm leading-6 text-cyan-950">
+                                        Create and schedule promotional campaigns for public hero areas.
                                     </p>
                                 </Link>
                                 <Link
