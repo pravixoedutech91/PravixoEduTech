@@ -13,12 +13,17 @@ const {
 const { protect, authorize } = require("../middleware/authMiddleware");
 
 const {
+  requirePublicRegistrationAvailable,
+} = require("../middleware/publicRegistrationMiddleware");
+
+const {
   checkStudentLimit,
 } = require("../middleware/tenantLimitMiddleware");
 
 // Register
 router.post(
   "/register",
+  requirePublicRegistrationAvailable,
   checkStudentLimit,
   registerUser
 );
