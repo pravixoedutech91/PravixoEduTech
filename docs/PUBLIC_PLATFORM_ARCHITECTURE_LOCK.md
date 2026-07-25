@@ -31,6 +31,24 @@ It will be a connected government-exam preparation and opportunity platform comb
 9. paid test packages and future courses;
 10. future LMS capabilities.
 
+### Dual operating model (locked)
+
+PravixoEduTech has two connected product responsibilities that must be preserved in every architecture, security, data, API, UI and deployment decision:
+
+1. **PravixoEduTech Educational Platform - current launch priority.**
+   PravixoEduTech directly serves its own students through public educational content, exam and recruitment information, study notes, current affairs, PYQs, question-bank content, Mock Tests, paid packages, student progress and analytics, and future course/LMS capabilities.
+
+2. **PravixoEduTech SaaS Platform - near-term expansion.**
+   The same core platform will serve independent educational institutes as isolated tenants. Each institute may have its own branding, students, content, Mock Tests, configuration and website/domain while sharing the secure PravixoEduTech technology foundation.
+
+All implementation decisions must satisfy both responsibilities.
+
+Launch hardening must not collapse the architecture into permanent single-tenancy. SaaS preparation must not destabilize the current PravixoEduTech educational-platform launch.
+
+Preserve `tenantId`, tenant isolation, tenant-scoped data boundaries, role authorization and feature controls. Tenant identity must ultimately be established from trusted server-validated context such as a verified domain, subdomain, invite or other approved tenant-resolution mechanism rather than blindly trusting a client-supplied tenant identifier.
+
+Prefer backward-compatible and additive changes that minimize future migrations. SaaS capabilities that are not securely ready for launch may remain disabled while their multi-tenant foundation is preserved.
+
 Connected journey:
 
 ```text
