@@ -11,7 +11,6 @@ const {
   loginUser,
   getMe,
   createTenantAdmin,
-  //createSuperAdmin,
 } = require("../controllers/authController");
 
 const { protect, authorize } = require("../middleware/authMiddleware");
@@ -42,8 +41,6 @@ router.post(
 
 router.get("/me", protect, getMe);
 
-//create super Admin
-//router.post("/create-super-admin", createSuperAdmin);
 
 router.post(
   "/create-tenant-admin",
