@@ -1,9 +1,13 @@
 const express = require("express");
 const cors = require("cors");
+const helmet = require("helmet");
 const {
   notFoundHandler,
   errorHandler,
 } = require("./middleware/errorMiddleware");
+const {
+  isHostedEnvironment: isHostedRuntimeEnvironment,
+} = require("./utils/runtimeSecurity");
 const dotenv = require("dotenv");
 const connectDB = require("./config/db");
 const categoryRoutes = require("./routes/categoryRoutes");
@@ -114,7 +118,17 @@ connectDB();
 
 const app = express();
 
+const helmetOptions = isHostedRuntimeEnvironment()
+  ? {
+      contentSecurityPolicy: false,
+    }
+  : {
+      contentSecurityPolicy: false,
+      strictTransportSecurity: false,
+    };
+
 app.disable("x-powered-by");
+app.use(helmet(helmetOptions));
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use("/api/categories", categoryRoutes);
