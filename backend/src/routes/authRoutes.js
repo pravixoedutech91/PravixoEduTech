@@ -1,4 +1,8 @@
 const express = require("express");
+const {
+  loginRateLimiter,
+} = require("../middleware/loginRateLimitMiddleware");
+
 const router = express.Router();
 
 
@@ -30,7 +34,11 @@ router.post(
  
 
 // Login
-router.post("/login", loginUser);
+router.post(
+  "/login",
+  loginRateLimiter,
+  loginUser
+);
 
 router.get("/me", protect, getMe);
 
