@@ -49,20 +49,4 @@ router.post(
   createTenantAdmin
 );
 
-router.get(
-  "/super-admin-test",
-  protect,
-  authorize("super_admin"),
-  (req, res) => {
-    res.status(200).json({
-      success: true,
-      message: "Super Admin access granted",
-      user: {
-        id: req.user._id,
-        role: req.user.role,
-      },
-    });
-  }
-);
-
 module.exports = router;
