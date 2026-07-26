@@ -1,4 +1,5 @@
-﻿const mongoose = require("mongoose");
+﻿const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
+const mongoose = require("mongoose");
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
 
@@ -1538,7 +1539,7 @@ const getPublishedMockTestsForStudent = async (req, res) => {
 
         return res.status(500).json({
             success: false,
-            message: error.message,
+            message: getInternalErrorMessage(error),
         });
     }
 };
@@ -1751,7 +1752,7 @@ const startMockTestAttempt = async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: error.message,
+            message: getInternalErrorMessage(error),
         });
     }
 };
@@ -1968,7 +1969,7 @@ const saveMockTestAnswer = async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: error.message,
+            message: getInternalErrorMessage(error),
         });
     }
 };
@@ -2598,7 +2599,7 @@ const submitMockTestAttempt = async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: error.message,
+            message: getInternalErrorMessage(error),
         });
     }
 };
@@ -2667,7 +2668,7 @@ const getMockTestResult = async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: error.message,
+            message: getInternalErrorMessage(error),
         });
     }
 };
@@ -2752,7 +2753,7 @@ const getMockTestReview = async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: error.message,
+            message: getInternalErrorMessage(error),
         });
     }
 };

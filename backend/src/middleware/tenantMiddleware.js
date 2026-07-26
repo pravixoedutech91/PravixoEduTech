@@ -1,3 +1,4 @@
+const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
 
 const Tenant = require("../models/Tenant");
 
@@ -101,7 +102,7 @@ const checkFeatureAccess = (featureName) => {
 
       res.status(500).json({
         success: false,
-        message: error.message,
+        message: getInternalErrorMessage(error),
       });
     }
   };
@@ -138,7 +139,7 @@ const checkContentFeatureAccess = async (req, res, next) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };

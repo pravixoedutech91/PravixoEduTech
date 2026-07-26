@@ -1,3 +1,4 @@
+const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
 const Category = require("../models/Category");
 const {
   getTenantFilter,
@@ -52,7 +53,7 @@ const createCategory = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -76,7 +77,7 @@ const getPublicCategories = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -99,7 +100,7 @@ const getAllCategories = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -136,7 +137,7 @@ const updateCategory = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -166,7 +167,7 @@ const deleteCategory = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };

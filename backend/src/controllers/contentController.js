@@ -1,3 +1,4 @@
+const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
 const mongoose = require("mongoose");
 const Content = require("../models/Content");
 const Category = require("../models/Category");
@@ -213,7 +214,7 @@ const createContent = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -259,7 +260,7 @@ const getPublicContentList = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -288,7 +289,7 @@ const getPublicContentBySlug = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -368,7 +369,7 @@ const updateContent = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -398,7 +399,7 @@ const deleteContent = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -421,7 +422,7 @@ const getAdminContentList = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };

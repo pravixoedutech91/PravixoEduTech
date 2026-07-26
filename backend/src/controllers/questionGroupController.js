@@ -1,3 +1,4 @@
+const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
 const mongoose = require("mongoose");
 
 const QuestionGroup = require("../models/QuestionGroup");
@@ -287,7 +288,7 @@ const createQuestionGroup = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -348,7 +349,7 @@ const getAllQuestionGroups = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -388,7 +389,7 @@ const getSingleQuestionGroup = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -484,7 +485,7 @@ const updateQuestionGroup = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -536,7 +537,7 @@ const disableQuestionGroup = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };

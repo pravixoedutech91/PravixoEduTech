@@ -1,3 +1,4 @@
+const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
 const Tenant = require("../models/Tenant");
 
 // Create Tenant
@@ -14,7 +15,7 @@ const createTenant = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -36,7 +37,7 @@ const getAllTenants = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -104,7 +105,7 @@ const updateTenant = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };

@@ -1,4 +1,5 @@
-﻿const jwt = require("jsonwebtoken");
+﻿const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
+const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 
 const User = require("../models/User");
@@ -226,7 +227,7 @@ const registerUser = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -290,7 +291,7 @@ const loginUser = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -349,7 +350,7 @@ const createSuperAdmin = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -404,7 +405,7 @@ const createTenantAdmin = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };

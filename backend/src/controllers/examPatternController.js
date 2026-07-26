@@ -1,3 +1,4 @@
+const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
 const mongoose = require("mongoose");
 const ExamPattern = require("../models/ExamPattern");
 const { getTenantFilter } = require("../middleware/tenantMiddleware");
@@ -46,7 +47,7 @@ const createExamPattern = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -70,7 +71,7 @@ const getAllExamPatterns = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -131,7 +132,7 @@ const updateExamPattern = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
@@ -173,7 +174,7 @@ const disableExamPattern = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };

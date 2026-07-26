@@ -1,3 +1,4 @@
+const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
 //---------------//
 //Imports + Basic Helpers
 //---------------//
@@ -666,7 +667,7 @@ const createMockTest = async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: error.message,
+            message: getInternalErrorMessage(error),
         });
     }
 };
@@ -712,7 +713,7 @@ const getAllMockTests = async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: error.message,
+            message: getInternalErrorMessage(error),
         });
     }
 };
@@ -746,7 +747,7 @@ const getSingleMockTest = async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: error.message,
+            message: getInternalErrorMessage(error),
         });
     }
 };
@@ -801,7 +802,7 @@ const getMockTestVersions = async (req, res) => {
 
         return res.status(500).json({
             success: false,
-            message: error.message,
+            message: getInternalErrorMessage(error),
         });
     }
 };
@@ -963,7 +964,7 @@ const updateMockTest = async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: error.message,
+            message: getInternalErrorMessage(error),
         });
     }
 };
@@ -1006,7 +1007,7 @@ const disableMockTest = async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: error.message,
+            message: getInternalErrorMessage(error),
         });
     }
 };
@@ -1047,7 +1048,7 @@ const unpublishMockTest = async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: error.message,
+            message: getInternalErrorMessage(error),
         });
     }
 };
@@ -1191,7 +1192,7 @@ const publishMockTest = async (req, res) => {
 
         res.status(500).json({
             success: false,
-            message: error.message,
+            message: getInternalErrorMessage(error),
         });
     }
 };

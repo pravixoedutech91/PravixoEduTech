@@ -1,3 +1,4 @@
+const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
 const Tenant = require("../models/Tenant");
 const User = require("../models/User");
 
@@ -45,7 +46,7 @@ const checkStudentLimit = async (req, res, next) => {
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: getInternalErrorMessage(error),
     });
   }
 };
