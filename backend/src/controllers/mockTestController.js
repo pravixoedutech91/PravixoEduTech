@@ -1,4 +1,7 @@
-const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
+const {
+  getInternalErrorMessage,
+  logRuntimeError,
+} = require("../utils/runtimeSecurity");
 //---------------//
 //Imports + Basic Helpers
 //---------------//
@@ -663,7 +666,7 @@ const createMockTest = async (req, res) => {
             data: mockTest,
         });
     } catch (error) {
-        console.error(error);
+        logRuntimeError("mockTestController error:", error);
 
         res.status(500).json({
             success: false,
@@ -709,7 +712,7 @@ const getAllMockTests = async (req, res) => {
             data: mockTests,
         });
     } catch (error) {
-        console.error(error);
+        logRuntimeError("mockTestController error:", error);
 
         res.status(500).json({
             success: false,
@@ -743,7 +746,7 @@ const getSingleMockTest = async (req, res) => {
             data: mockTest,
         });
     } catch (error) {
-        console.error(error);
+        logRuntimeError("mockTestController error:", error);
 
         res.status(500).json({
             success: false,
@@ -798,7 +801,7 @@ const getMockTestVersions = async (req, res) => {
             data: versions,
         });
     } catch (error) {
-        console.error(error);
+        logRuntimeError("mockTestController error:", error);
 
         return res.status(500).json({
             success: false,
@@ -960,7 +963,7 @@ const updateMockTest = async (req, res) => {
             data: mockTest,
         });
     } catch (error) {
-        console.error(error);
+        logRuntimeError("mockTestController error:", error);
 
         res.status(500).json({
             success: false,
@@ -1003,7 +1006,7 @@ const disableMockTest = async (req, res) => {
             data: mockTest,
         });
     } catch (error) {
-        console.error(error);
+        logRuntimeError("mockTestController error:", error);
 
         res.status(500).json({
             success: false,
@@ -1044,7 +1047,7 @@ const unpublishMockTest = async (req, res) => {
             data: mockTest,
         });
     } catch (error) {
-        console.error(error);
+        logRuntimeError("mockTestController error:", error);
 
         res.status(500).json({
             success: false,
@@ -1188,7 +1191,7 @@ const publishMockTest = async (req, res) => {
             },
         });
     } catch (error) {
-        console.error(error);
+        logRuntimeError("mockTestController error:", error);
 
         res.status(500).json({
             success: false,

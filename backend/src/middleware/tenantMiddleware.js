@@ -1,4 +1,7 @@
-const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
+const {
+  getInternalErrorMessage,
+  logRuntimeError,
+} = require("../utils/runtimeSecurity");
 
 const Tenant = require("../models/Tenant");
 
@@ -98,7 +101,7 @@ const checkFeatureAccess = (featureName) => {
 
       next();
     } catch (error) {
-      console.error(error);
+      logRuntimeError("tenantMiddleware error:", error);
 
       res.status(500).json({
         success: false,
@@ -135,7 +138,7 @@ const checkContentFeatureAccess = async (req, res, next) => {
 
     return checkFeatureAccess(featureName)(req, res, next);
   } catch (error) {
-    console.error(error);
+    logRuntimeError("tenantMiddleware error:", error);
 
     res.status(500).json({
       success: false,

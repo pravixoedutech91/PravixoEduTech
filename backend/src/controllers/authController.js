@@ -1,4 +1,7 @@
-﻿const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
+﻿const {
+  getInternalErrorMessage,
+  logRuntimeError,
+} = require("../utils/runtimeSecurity");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 
@@ -147,7 +150,7 @@ const createReferralAttributionForStudent = async ({
       status: "active",
     });
   } catch (error) {
-    console.error("Referral attribution creation failed:", error);
+    logRuntimeError("Referral attribution creation failed:", error);
 
     return null;
   }
@@ -223,7 +226,7 @@ const registerUser = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("authController error:", error);
 
     res.status(500).json({
       success: false,
@@ -287,7 +290,7 @@ const loginUser = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("authController error:", error);
 
     res.status(500).json({
       success: false,
@@ -346,7 +349,7 @@ const createSuperAdmin = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("authController error:", error);
 
     res.status(500).json({
       success: false,
@@ -401,7 +404,7 @@ const createTenantAdmin = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("authController error:", error);
 
     res.status(500).json({
       success: false,

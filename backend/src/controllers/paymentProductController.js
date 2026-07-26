@@ -1,3 +1,4 @@
+const { logRuntimeError } = require("../utils/runtimeSecurity");
 const mongoose = require("mongoose");
 
 const PaymentProduct = require("../models/PaymentProduct");
@@ -384,7 +385,7 @@ const getPaymentProducts = async (req, res) => {
       data: products,
     });
   } catch (error) {
-    console.error("Get payment products error:", error);
+    logRuntimeError("Get payment products error:", error);
 
     res.status(500).json({
       success: false,
@@ -417,7 +418,7 @@ const getPaymentProductById = async (req, res) => {
       data: product,
     });
   } catch (error) {
-    console.error("Get payment product error:", error);
+    logRuntimeError("Get payment product error:", error);
 
     res.status(500).json({
       success: false,
@@ -445,7 +446,7 @@ const createPaymentProduct = async (req, res) => {
       data: product,
     });
   } catch (error) {
-    console.error("Create payment product error:", error);
+    logRuntimeError("Create payment product error:", error);
 
     if (error.code === 11000) {
       return res.status(409).json({
@@ -497,7 +498,7 @@ const updatePaymentProduct = async (req, res) => {
       data: product,
     });
   } catch (error) {
-    console.error("Update payment product error:", error);
+    logRuntimeError("Update payment product error:", error);
 
     if (error.code === 11000) {
       return res.status(409).json({
@@ -547,7 +548,7 @@ const disablePaymentProduct = async (req, res) => {
       data: product,
     });
   } catch (error) {
-    console.error("Disable payment product error:", error);
+    logRuntimeError("Disable payment product error:", error);
 
     res.status(500).json({
       success: false,
@@ -590,7 +591,7 @@ const reactivatePaymentProduct = async (req, res) => {
       data: product,
     });
   } catch (error) {
-    console.error("Reactivate payment product error:", error);
+    logRuntimeError("Reactivate payment product error:", error);
 
     res.status(500).json({
       success: false,
@@ -860,7 +861,7 @@ const getPaymentPurchaseLedger = async (req, res) => {
       data,
     });
   } catch (error) {
-    console.error("Get payment purchase ledger error:", error);
+    logRuntimeError("Get payment purchase ledger error:", error);
 
     res.status(500).json({
       success: false,

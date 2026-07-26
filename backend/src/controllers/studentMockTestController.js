@@ -1,4 +1,7 @@
-﻿const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
+﻿const {
+  getInternalErrorMessage,
+  logRuntimeError,
+} = require("../utils/runtimeSecurity");
 const mongoose = require("mongoose");
 const Razorpay = require("razorpay");
 const crypto = require("crypto");
@@ -931,7 +934,7 @@ const createPendingReferralRewardForPaidPurchase = async ({ purchase }) => {
             });
         }
 
-        console.error("Create pending referral reward error:", error);
+        logRuntimeError("Create pending referral reward error:", error);
         return null;
     }
 };
@@ -1066,7 +1069,7 @@ const getActivePaymentPackagesForStudent = async (req, res) => {
             data: visibleProducts,
         });
     } catch (error) {
-        console.error("Get student payment packages error:", error);
+        logRuntimeError("Get student payment packages error:", error);
 
         res.status(500).json({
             success: false,
@@ -1195,7 +1198,7 @@ const createPaymentPackageOrderForStudent = async (req, res) => {
             ),
         });
     } catch (error) {
-        console.error("Create student payment package order error:", error);
+        logRuntimeError("Create student payment package order error:", error);
 
         if (error.code === 11000) {
             return res.status(409).json({
@@ -1434,7 +1437,7 @@ const verifyPaymentPackagePaymentForStudent = async (req, res) => {
             },
         });
     } catch (error) {
-        console.error("Verify student payment package payment error:", error);
+        logRuntimeError("Verify student payment package payment error:", error);
 
         if (error.code === 11000) {
             return res.status(409).json({
@@ -1535,7 +1538,7 @@ const getPublishedMockTestsForStudent = async (req, res) => {
             }),
         });
     } catch (error) {
-        console.error(error);
+        logRuntimeError("studentMockTestController error:", error);
 
         return res.status(500).json({
             success: false,
@@ -1748,7 +1751,7 @@ const startMockTestAttempt = async (req, res) => {
             ),
         });
     } catch (error) {
-        console.error(error);
+        logRuntimeError("studentMockTestController error:", error);
 
         res.status(500).json({
             success: false,
@@ -1965,7 +1968,7 @@ const saveMockTestAnswer = async (req, res) => {
             data: buildSavedAnswerPayload(attempt, answer),
         });
     } catch (error) {
-        console.error(error);
+        logRuntimeError("studentMockTestController error:", error);
 
         res.status(500).json({
             success: false,
@@ -2595,7 +2598,7 @@ const submitMockTestAttempt = async (req, res) => {
             data: buildSubmitAttemptPayload(attempt, resultAvailableImmediately),
         });
     } catch (error) {
-        console.error(error);
+        logRuntimeError("studentMockTestController error:", error);
 
         res.status(500).json({
             success: false,
@@ -2664,7 +2667,7 @@ const getMockTestResult = async (req, res) => {
             data: buildResultPayload(attempt, mockTestVersion),
         });
     } catch (error) {
-        console.error(error);
+        logRuntimeError("studentMockTestController error:", error);
 
         res.status(500).json({
             success: false,
@@ -2749,7 +2752,7 @@ const getMockTestReview = async (req, res) => {
             data: buildReviewPayload(attempt, mockTestVersion, attemptDetail),
         });
     } catch (error) {
-        console.error(error);
+        logRuntimeError("studentMockTestController error:", error);
 
         res.status(500).json({
             success: false,
@@ -2979,7 +2982,7 @@ const getMyMockTestAttempts = async (req, res) => {
             ),
         });
     } catch (error) {
-        console.error("Get my mock test attempts error:", error);
+        logRuntimeError("Get my mock test attempts error:", error);
 
         return res.status(500).json({
             success: false,

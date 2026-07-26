@@ -1,3 +1,4 @@
+const { logRuntimeError } = require("../utils/runtimeSecurity");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
@@ -49,7 +50,7 @@ const protect = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error(error);
+    logRuntimeError("authMiddleware error:", error);
 
     return res.status(401).json({
       success: false,

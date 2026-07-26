@@ -1,4 +1,7 @@
-const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
+const {
+  getInternalErrorMessage,
+  logRuntimeError,
+} = require("../utils/runtimeSecurity");
 const Tenant = require("../models/Tenant");
 
 // Create Tenant
@@ -11,7 +14,7 @@ const createTenant = async (req, res) => {
       data: tenant,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("tenantController error:", error);
 
     res.status(500).json({
       success: false,
@@ -33,7 +36,7 @@ const getAllTenants = async (req, res) => {
       data: tenants,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("tenantController error:", error);
 
     res.status(500).json({
       success: false,
@@ -101,7 +104,7 @@ const updateTenant = async (req, res) => {
       data: tenant,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("tenantController error:", error);
 
     res.status(500).json({
       success: false,

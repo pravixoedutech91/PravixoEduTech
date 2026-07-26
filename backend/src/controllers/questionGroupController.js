@@ -1,4 +1,7 @@
-const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
+const {
+  getInternalErrorMessage,
+  logRuntimeError,
+} = require("../utils/runtimeSecurity");
 const mongoose = require("mongoose");
 
 const QuestionGroup = require("../models/QuestionGroup");
@@ -284,7 +287,7 @@ const createQuestionGroup = async (req, res) => {
       });
     }
 
-    console.error(error);
+    logRuntimeError("questionGroupController error:", error);
 
     res.status(500).json({
       success: false,
@@ -345,7 +348,7 @@ const getAllQuestionGroups = async (req, res) => {
       data: questionGroups,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("questionGroupController error:", error);
 
     res.status(500).json({
       success: false,
@@ -385,7 +388,7 @@ const getSingleQuestionGroup = async (req, res) => {
       data: questionGroup,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("questionGroupController error:", error);
 
     res.status(500).json({
       success: false,
@@ -481,7 +484,7 @@ const updateQuestionGroup = async (req, res) => {
       });
     }
 
-    console.error(error);
+    logRuntimeError("questionGroupController error:", error);
 
     res.status(500).json({
       success: false,
@@ -533,7 +536,7 @@ const disableQuestionGroup = async (req, res) => {
       data: questionGroup,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("questionGroupController error:", error);
 
     res.status(500).json({
       success: false,

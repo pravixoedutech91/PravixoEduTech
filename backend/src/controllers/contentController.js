@@ -1,4 +1,7 @@
-const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
+const {
+  getInternalErrorMessage,
+  logRuntimeError,
+} = require("../utils/runtimeSecurity");
 const mongoose = require("mongoose");
 const Content = require("../models/Content");
 const Category = require("../models/Category");
@@ -210,7 +213,7 @@ const createContent = async (req, res) => {
       data: content,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("contentController error:", error);
 
     res.status(500).json({
       success: false,
@@ -256,7 +259,7 @@ const getPublicContentList = async (req, res) => {
       data: contents,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("contentController error:", error);
 
     res.status(500).json({
       success: false,
@@ -285,7 +288,7 @@ const getPublicContentBySlug = async (req, res) => {
       data: content,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("contentController error:", error);
 
     res.status(500).json({
       success: false,
@@ -365,7 +368,7 @@ const updateContent = async (req, res) => {
       data: content,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("contentController error:", error);
 
     res.status(500).json({
       success: false,
@@ -395,7 +398,7 @@ const deleteContent = async (req, res) => {
       message: "Content deleted successfully",
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("contentController error:", error);
 
     res.status(500).json({
       success: false,
@@ -418,7 +421,7 @@ const getAdminContentList = async (req, res) => {
       data: contents,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("contentController error:", error);
 
     res.status(500).json({
       success: false,

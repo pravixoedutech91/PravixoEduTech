@@ -1,3 +1,4 @@
+const { logRuntimeError } = require("../utils/runtimeSecurity");
 const mongoose = require("mongoose");
 
 const ReferralPartner = require("../models/ReferralPartner");
@@ -601,7 +602,7 @@ const getReferralAttributions = async (req, res) => {
       data,
     });
   } catch (error) {
-    console.error("Get referral attributions error:", error);
+    logRuntimeError("Get referral attributions error:", error);
 
     return res.status(500).json({
       success: false,
@@ -686,7 +687,7 @@ const getReferralPartners = async (req, res) => {
       data: partners.map(buildPartnerPayload),
     });
   } catch (error) {
-    console.error("Get referral partners error:", error);
+    logRuntimeError("Get referral partners error:", error);
 
     return res.status(500).json({
       success: false,
@@ -718,7 +719,7 @@ const getReferralPartnerById = async (req, res) => {
       data: buildPartnerPayload(partner),
     });
   } catch (error) {
-    console.error("Get referral partner detail error:", error);
+    logRuntimeError("Get referral partner detail error:", error);
 
     return res.status(500).json({
       success: false,
@@ -746,7 +747,7 @@ const createReferralPartner = async (req, res) => {
       data: buildPartnerPayload(partner),
     });
   } catch (error) {
-    console.error("Create referral partner error:", error);
+    logRuntimeError("Create referral partner error:", error);
 
     if (error.code === 11000) {
       return res.status(409).json({
@@ -801,7 +802,7 @@ const updateReferralPartner = async (req, res) => {
       data: buildPartnerPayload(partner),
     });
   } catch (error) {
-    console.error("Update referral partner error:", error);
+    logRuntimeError("Update referral partner error:", error);
 
     if (error.code === 11000) {
       return res.status(409).json({
@@ -845,7 +846,7 @@ const setReferralPartnerStatus = async (req, res, status) => {
       data: buildPartnerPayload(partner),
     });
   } catch (error) {
-    console.error("Set referral partner status error:", error);
+    logRuntimeError("Set referral partner status error:", error);
 
     return res.status(500).json({
       success: false,
@@ -1209,7 +1210,7 @@ const getReferralRewards = async (req, res) => {
       data,
     });
   } catch (error) {
-    console.error("Get referral rewards error:", error);
+    logRuntimeError("Get referral rewards error:", error);
 
     res.status(500).json({
       success: false,
@@ -1326,7 +1327,7 @@ const approveReferralReward = async (req, res) => {
       data: buildRewardMutationResponse(reward, partner),
     });
   } catch (error) {
-    console.error("Approve referral reward error:", error);
+    logRuntimeError("Approve referral reward error:", error);
 
     return res.status(500).json({
       success: false,
@@ -1389,7 +1390,7 @@ const rejectReferralReward = async (req, res) => {
       data: buildRewardMutationResponse(reward, partner),
     });
   } catch (error) {
-    console.error("Reject referral reward error:", error);
+    logRuntimeError("Reject referral reward error:", error);
 
     return res.status(500).json({
       success: false,
@@ -1638,7 +1639,7 @@ const createPartnerWithdrawalRequest = async (req, res) => {
       data: buildWithdrawalResponse(savedWithdrawal, updatedPartner),
     });
   } catch (error) {
-    console.error("Create partner withdrawal request error:", error);
+    logRuntimeError("Create partner withdrawal request error:", error);
 
     return res.status(error.statusCode || 500).json({
       success: false,
@@ -1805,7 +1806,7 @@ const getReferralSettings = async (req, res) => {
       data: buildReferralSettingsResponse(settings),
     });
   } catch (error) {
-    console.error("Get referral settings error:", error);
+    logRuntimeError("Get referral settings error:", error);
 
     return res.status(500).json({
       success: false,
@@ -1868,7 +1869,7 @@ const updateReferralSettings = async (req, res) => {
       data: buildReferralSettingsResponse(settings),
     });
   } catch (error) {
-    console.error("Update referral settings error:", error);
+    logRuntimeError("Update referral settings error:", error);
 
     return res.status(error.statusCode || 500).json({
       success: false,
@@ -2107,7 +2108,7 @@ const getReferralWithdrawals = async (req, res) => {
       data,
     });
   } catch (error) {
-    console.error("Get referral withdrawals error:", error);
+    logRuntimeError("Get referral withdrawals error:", error);
 
     return res.status(500).json({
       success: false,
@@ -2224,7 +2225,7 @@ const approveWithdrawalRequest = async (req, res) => {
       data: buildWithdrawalResponse(updatedWithdrawal, partner),
     });
   } catch (error) {
-    console.error("Approve withdrawal request error:", error);
+    logRuntimeError("Approve withdrawal request error:", error);
 
     return res.status(error.statusCode || 500).json({
       success: false,
@@ -2332,7 +2333,7 @@ const rejectWithdrawalRequest = async (req, res) => {
       data: buildWithdrawalResponse(updatedWithdrawal, partner),
     });
   } catch (error) {
-    console.error("Reject withdrawal request error:", error);
+    logRuntimeError("Reject withdrawal request error:", error);
 
     return res.status(error.statusCode || 500).json({
       success: false,
@@ -2434,7 +2435,7 @@ const markWithdrawalPaid = async (req, res) => {
       data: buildWithdrawalResponse(updatedWithdrawal, partner),
     });
   } catch (error) {
-    console.error("Mark withdrawal paid error:", error);
+    logRuntimeError("Mark withdrawal paid error:", error);
 
     return res.status(error.statusCode || 500).json({
       success: false,

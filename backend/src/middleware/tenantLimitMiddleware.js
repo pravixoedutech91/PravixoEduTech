@@ -1,4 +1,7 @@
-const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
+const {
+  getInternalErrorMessage,
+  logRuntimeError,
+} = require("../utils/runtimeSecurity");
 const Tenant = require("../models/Tenant");
 const User = require("../models/User");
 
@@ -42,7 +45,7 @@ const checkStudentLimit = async (req, res, next) => {
 
     next();
   } catch (error) {
-    console.error(error);
+    logRuntimeError("tenantLimitMiddleware error:", error);
 
     res.status(500).json({
       success: false,

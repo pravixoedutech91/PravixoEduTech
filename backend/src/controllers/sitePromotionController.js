@@ -1,3 +1,4 @@
+const { logRuntimeError } = require("../utils/runtimeSecurity");
 const mongoose = require("mongoose");
 
 const SitePromotion = require("../models/SitePromotion");
@@ -166,7 +167,7 @@ const validateDateOrder = (startAt, endAt) => {
 };
 
 const sendControllerError = (res, error) => {
-  console.error(error);
+  logRuntimeError("sitePromotionController error:", error);
 
   if (error?.name === "ValidationError") {
     return res.status(400).json({

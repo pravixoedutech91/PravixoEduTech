@@ -1,4 +1,7 @@
-const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
+const {
+  getInternalErrorMessage,
+  logRuntimeError,
+} = require("../utils/runtimeSecurity");
 const mongoose = require("mongoose");
 const ExamPattern = require("../models/ExamPattern");
 const { getTenantFilter } = require("../middleware/tenantMiddleware");
@@ -43,7 +46,7 @@ const createExamPattern = async (req, res) => {
       data: examPattern,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("examPatternController error:", error);
 
     res.status(500).json({
       success: false,
@@ -67,7 +70,7 @@ const getAllExamPatterns = async (req, res) => {
       data: examPatterns,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("examPatternController error:", error);
 
     res.status(500).json({
       success: false,
@@ -128,7 +131,7 @@ const updateExamPattern = async (req, res) => {
       data: examPattern,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("examPatternController error:", error);
 
     res.status(500).json({
       success: false,
@@ -170,7 +173,7 @@ const disableExamPattern = async (req, res) => {
       data: examPattern,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("examPatternController error:", error);
 
     res.status(500).json({
       success: false,
@@ -257,7 +260,7 @@ const deleteExamPattern = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Delete exam pattern error:", error);
+    logRuntimeError("Delete exam pattern error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to delete exam pattern",

@@ -1,4 +1,7 @@
-const { getInternalErrorMessage } = require("../utils/runtimeSecurity");
+const {
+  getInternalErrorMessage,
+  logRuntimeError,
+} = require("../utils/runtimeSecurity");
 const Category = require("../models/Category");
 const {
   getTenantFilter,
@@ -49,7 +52,7 @@ const createCategory = async (req, res) => {
       data: category,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("categoryController error:", error);
 
     res.status(500).json({
       success: false,
@@ -73,7 +76,7 @@ const getPublicCategories = async (req, res) => {
       data: categories,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("categoryController error:", error);
 
     res.status(500).json({
       success: false,
@@ -96,7 +99,7 @@ const getAllCategories = async (req, res) => {
       data: categories,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("categoryController error:", error);
 
     res.status(500).json({
       success: false,
@@ -133,7 +136,7 @@ const updateCategory = async (req, res) => {
       data: category,
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("categoryController error:", error);
 
     res.status(500).json({
       success: false,
@@ -163,7 +166,7 @@ const deleteCategory = async (req, res) => {
       message: "Category deleted successfully",
     });
   } catch (error) {
-    console.error(error);
+    logRuntimeError("categoryController error:", error);
 
     res.status(500).json({
       success: false,
