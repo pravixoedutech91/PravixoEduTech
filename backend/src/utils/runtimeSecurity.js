@@ -22,5 +22,6 @@ const getInternalErrorMessage = (error) => {
 };
 
 module.exports = {
+  isHostedEnvironment,
   getInternalErrorMessage,
 };

@@ -1,5 +1,9 @@
 const express = require("express");
 const cors = require("cors");
+const {
+  notFoundHandler,
+  errorHandler,
+} = require("./middleware/errorMiddleware");
 const dotenv = require("dotenv");
 const connectDB = require("./config/db");
 const categoryRoutes = require("./routes/categoryRoutes");
@@ -132,6 +136,9 @@ app.get("/", (req, res) => {
     message: "PravixoEduTech Backend Running 🚀",
   });
 });
+
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
