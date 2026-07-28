@@ -406,6 +406,20 @@ export default function StudentMockTestsPage() {
     const [errorMessage, setErrorMessage] = useState("");
     const [actionMessage, setActionMessage] = useState("");
 
+    useEffect(() => {
+        if (!actionMessage) {
+            return;
+        }
+
+        const actionMessageTimer = window.setTimeout(() => {
+            setActionMessage("");
+        }, 3000);
+
+        return () => {
+            window.clearTimeout(actionMessageTimer);
+        };
+    }, [actionMessage]);
+
     const loadMockTests = useCallback(async (tokenOverride?: string) => {
         const cleanToken = (tokenOverride || token).trim();
 
@@ -1035,7 +1049,12 @@ export default function StudentMockTestsPage() {
                     ) : null}
 
                     {actionMessage ? (
-                        <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+                        <div
+                            role="status"
+                            aria-live="polite"
+                            aria-atomic="true"
+                            className="fixed inset-x-4 top-4 z-50 mx-auto max-w-md rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-medium text-blue-700 shadow-lg"
+                        >
                             {actionMessage}
                         </div>
                     ) : null}
