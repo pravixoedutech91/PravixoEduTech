@@ -1404,7 +1404,7 @@ export default function AdminMockTestsPage() {
     return (
         <main className="min-h-screen bg-slate-100 px-4 py-6 text-slate-950 sm:px-6 lg:px-8">
             {toast ? (
-                <div className="fixed right-4 top-4 z-50 max-w-sm rounded-2xl bg-white p-4 text-sm font-semibold shadow-lg ring-1 ring-slate-200">
+                <div className="fixed inset-x-4 top-4 z-50 mx-auto max-w-sm break-words rounded-2xl bg-white p-4 text-sm font-semibold shadow-lg ring-1 ring-slate-200">
                     <p
                         className={
                             toast.type === "success"
