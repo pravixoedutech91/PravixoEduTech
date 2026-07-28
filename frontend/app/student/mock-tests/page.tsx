@@ -11,7 +11,9 @@ type PrimaryAction =
     | "view_result"
     | "view_review"
     | "retake"
-    | "limit_reached";
+    | "limit_reached"
+    | "purchase_required"
+    | "assignment_required";
 
 type MockTest = {
     _id: string;
@@ -39,6 +41,13 @@ type MockTest = {
         canRetake: boolean;
         isAttemptLimitReached: boolean;
         primaryAction: PrimaryAction;
+        access?: {
+            canAttempt: boolean;
+            reason:
+                | "purchase_required"
+                | "assignment_required"
+                | null;
+        };
         result: {
             attemptId?: string | null;
             isResultVisible: boolean;
@@ -247,7 +256,6 @@ const isInvalidStudentSessionResponse = (
 
     return (
         response.status === 401 ||
-        response.status === 403 ||
         normalizedMessage.includes("jwt expired") ||
         normalizedMessage.includes("invalid token") ||
         normalizedMessage.includes("not authorized") ||
@@ -262,6 +270,8 @@ const actionLabels: Record<PrimaryAction, string> = {
     view_review: "View Review",
     retake: "Retake Test",
     limit_reached: "Attempt Limit Reached",
+    purchase_required: "Purchase Required",
+    assignment_required: "Assignment Required",
 };
 
 const getActionClassName = (action: PrimaryAction) => {
@@ -279,6 +289,14 @@ const getActionClassName = (action: PrimaryAction) => {
 
     if (action === "retake") {
         return "bg-purple-600 hover:bg-purple-700";
+    }
+
+    if (action === "purchase_required") {
+        return "bg-amber-600 hover:bg-amber-700";
+    }
+
+    if (action === "assignment_required") {
+        return "bg-slate-600 hover:bg-slate-700";
     }
 
     if (action === "limit_reached") {
@@ -576,8 +594,45 @@ export default function StudentMockTestsPage() {
     const showPendingActionMessage = (mockTest: MockTest) => {
         const action = mockTest.studentAttemptSummary.primaryAction;
 
+        if (action === "purchase_required") {
+            setActionMessage(
+                `Purchase required before starting "${mockTest.title}". Choose an available payment package on this page.`
+            );
+            return;
+        }
+
+        if (action === "assignment_required") {
+            setActionMessage(
+                `"${mockTest.title}" requires assignment by your institute before it can be started.`
+            );
+            return;
+        }
+
         setActionMessage(
             `${actionLabels[action]} for "${mockTest.title}" will be connected in a later frontend step.`
+        );
+    };
+
+    const showAccessRequiredMessage = (mockTest: MockTest) => {
+        const accessReason =
+            mockTest.studentAttemptSummary.access?.reason;
+
+        if (accessReason === "purchase_required") {
+            setActionMessage(
+                `Purchase required before retaking "${mockTest.title}". Choose an available payment package on this page.`
+            );
+            return;
+        }
+
+        if (accessReason === "assignment_required") {
+            setActionMessage(
+                `"${mockTest.title}" requires assignment by your institute before it can be retaken.`
+            );
+            return;
+        }
+
+        setActionMessage(
+            `Access is required before "${mockTest.title}" can be retaken.`
         );
     };
 
@@ -1263,19 +1318,42 @@ export default function StudentMockTestsPage() {
 
                                                 {summary.canRetake &&
                                                     action !== "retake" ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
-                                                            void startOrResumeAttempt(
-                                                                mockTest,
-                                                                "retake"
-                                                            )
-                                                        }
-                                                        disabled={isActionLoading}
-                                                        className="rounded-2xl border border-purple-200 bg-purple-50 px-5 py-3 text-sm font-semibold text-purple-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                                                    >
-                                                        Retake Test
-                                                    </button>
+                                                    summary.access?.canAttempt !== false ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                void startOrResumeAttempt(
+                                                                    mockTest,
+                                                                    "retake"
+                                                                )
+                                                            }
+                                                            disabled={isActionLoading}
+                                                            className="rounded-2xl border border-purple-200 bg-purple-50 px-5 py-3 text-sm font-semibold text-purple-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                        >
+                                                            Retake Test
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                showAccessRequiredMessage(
+                                                                    mockTest
+                                                                )
+                                                            }
+                                                            disabled={isActionLoading}
+                                                            className={
+                                                                summary.access?.reason ===
+                                                                "purchase_required"
+                                                                    ? "rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                                    : "rounded-2xl border border-slate-300 bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                            }
+                                                        >
+                                                            {summary.access?.reason ===
+                                                            "purchase_required"
+                                                                ? "Purchase Required"
+                                                                : "Assignment Required"}
+                                                        </button>
+                                                    )
                                                 ) : null}
                                             </div>
                                         </div>
