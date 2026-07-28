@@ -551,7 +551,11 @@ const groupAttemptsByMockTestId = (attempts) => {
 const buildStudentAttemptSummary = (
     mockTest,
     attempts = [],
-    now = new Date()
+    now = new Date(),
+    studentAccess = {
+        canAttempt: true,
+        reason: null,
+    }
 ) => {
     const activeVersionSettings =
         mockTest.activeVersionId?.settings || mockTest.settings || {};
@@ -625,13 +629,24 @@ const buildStudentAttemptSummary = (
         attemptsUsed >= maxAttempts && !canResume
     );
 
-    const primaryAction = getPrimaryMockTestAction({
+    const attemptPrimaryAction = getPrimaryMockTestAction({
         canResume,
         canViewReview,
         canViewResult,
         canRetake,
         isAttemptLimitReached,
     });
+
+    const isAttemptStartAction = ["start", "resume", "retake"].includes(
+        attemptPrimaryAction
+    );
+
+    const primaryAction =
+        studentAccess.canAttempt === false && isAttemptStartAction
+            ? studentAccess.reason === "purchase_required"
+                ? "purchase_required"
+                : "assignment_required"
+            : attemptPrimaryAction;
 
     return {
         maxAttempts,
@@ -655,6 +670,11 @@ const buildStudentAttemptSummary = (
         isAttemptLimitReached,
 
         primaryAction,
+
+        access: {
+            canAttempt: studentAccess.canAttempt !== false,
+            reason: studentAccess.reason || null,
+        },
 
         result: {
             attemptId: getAttemptIdForSummary(latestSubmittedAttempt),
@@ -1521,19 +1541,80 @@ const getPublishedMockTestsForStudent = async (req, res) => {
                     .lean()
                 : [];
 
-        const attemptsByMockTestId = groupAttemptsByMockTestId(attempts);
         const now = new Date();
+
+        const paidMockTestIds = mockTests
+            .filter((mockTest) => mockTest.accessType === "paid")
+            .map((mockTest) => mockTest._id);
+
+        const paidMockTestIdSet = new Set(
+            paidMockTestIds.map((mockTestId) => String(mockTestId))
+        );
+
+        const activeEntitlements =
+            paidMockTestIds.length > 0
+                ? await Entitlement.find({
+                    tenantId,
+                    studentId,
+                    entitlementType: "mock_test_pack",
+                    status: "active",
+                    validFrom: { $lte: now },
+                    validUntil: { $gte: now },
+                    mockTestIds: { $in: paidMockTestIds },
+                })
+                    .select("mockTestIds")
+                    .lean()
+                : [];
+
+        const entitledMockTestIds = new Set();
+
+        for (const entitlement of activeEntitlements) {
+            for (const entitlementMockTestId of entitlement.mockTestIds || []) {
+                const mockTestId = String(entitlementMockTestId);
+
+                if (paidMockTestIdSet.has(mockTestId)) {
+                    entitledMockTestIds.add(mockTestId);
+                }
+            }
+        }
+
+        const attemptsByMockTestId = groupAttemptsByMockTestId(attempts);
 
         return res.status(200).json({
             success: true,
             count: mockTests.length,
             data: mockTests.map((mockTest) => {
+                const mockTestId = String(mockTest._id);
+
                 const mockTestAttempts =
-                    attemptsByMockTestId.get(String(mockTest._id)) || [];
+                    attemptsByMockTestId.get(mockTestId) || [];
+
+                const studentAccess =
+                    mockTest.accessType === "paid"
+                        ? {
+                            canAttempt: entitledMockTestIds.has(mockTestId),
+                            reason: entitledMockTestIds.has(mockTestId)
+                                ? null
+                                : "purchase_required",
+                        }
+                        : mockTest.accessType === "assigned"
+                            ? {
+                                canAttempt: false,
+                                reason: "assignment_required",
+                            }
+                            : {
+                                canAttempt: true,
+                                reason: null,
+                            };
 
                 return buildStudentMockTestListItem(
                     mockTest,
-                    buildStudentAttemptSummary(mockTest, mockTestAttempts, now)
+                    buildStudentAttemptSummary(
+                        mockTest,
+                        mockTestAttempts,
+                        now,
+                        studentAccess
+                    )
                 );
             }),
         });
