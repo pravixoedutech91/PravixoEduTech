@@ -1285,11 +1285,47 @@ const verifyPaymentPackagePaymentForStudent = async (req, res) => {
         }
 
         if (purchase.status === "paid") {
-            const existingEntitlement = await Entitlement.findOne({
-                tenantId,
-                studentId,
-                purchaseId: purchase._id,
-            });
+            const mockTestIds =
+                purchase.productSnapshot?.includedMockTestIds || [];
+
+            if (!Array.isArray(mockTestIds) || mockTestIds.length === 0) {
+                return res.status(409).json({
+                    success: false,
+                    message: "Paid purchase has no mock tests to unlock",
+                });
+            }
+
+            const paidAt = purchase.paidAt || new Date();
+            const validUntil = addDays(
+                paidAt,
+                purchase.productSnapshot?.validityDays || 365
+            );
+
+            const entitlement = await Entitlement.findOneAndUpdate(
+                {
+                    tenantId,
+                    studentId,
+                    purchaseId: purchase._id,
+                },
+                {
+                    $setOnInsert: {
+                        tenantId,
+                        studentId,
+                        productId: purchase.productId,
+                        purchaseId: purchase._id,
+                        entitlementType: "mock_test_pack",
+                        mockTestIds,
+                        validFrom: paidAt,
+                        validUntil,
+                        status: "active",
+                    },
+                },
+                {
+                    new: true,
+                    upsert: true,
+                    setDefaultsOnInsert: true,
+                }
+            );
 
             const referralReward =
                 await createPendingReferralRewardForPaidPurchase({ purchase });
@@ -1307,7 +1343,7 @@ const verifyPaymentPackagePaymentForStudent = async (req, res) => {
                         razorpayPaymentId: purchase.razorpayPaymentId,
                         paidAt: purchase.paidAt,
                     },
-                    entitlement: buildEntitlementResponse(existingEntitlement),
+                    entitlement: buildEntitlementResponse(entitlement),
                     referralReward: buildReferralRewardResponse(referralReward),
                 },
             });
@@ -1402,39 +1438,55 @@ const verifyPaymentPackagePaymentForStudent = async (req, res) => {
             purchase.productSnapshot?.validityDays || 365
         );
 
-        purchase.status = "paid";
-        purchase.razorpayPaymentId = razorpay_payment_id.trim();
-        purchase.razorpaySignature = razorpay_signature.trim();
-        purchase.paidAt = paidAt;
-        purchase.failureReason = undefined;
+        const paymentSession = await mongoose.startSession();
+        let entitlement;
 
-        await purchase.save();
+        try {
+            await paymentSession.withTransaction(async () => {
+                entitlement = await Entitlement.findOneAndUpdate(
+                    {
+                        tenantId,
+                        studentId,
+                        purchaseId: purchase._id,
+                    },
+                    {
+                        $setOnInsert: {
+                            tenantId,
+                            studentId,
+                            productId: purchase.productId,
+                            purchaseId: purchase._id,
+                            entitlementType: "mock_test_pack",
+                            mockTestIds,
+                            validFrom: paidAt,
+                            validUntil,
+                            status: "active",
+                        },
+                    },
+                    {
+                        new: true,
+                        upsert: true,
+                        setDefaultsOnInsert: true,
+                        session: paymentSession,
+                    }
+                );
 
-        const entitlement = await Entitlement.findOneAndUpdate(
-            {
-                tenantId,
-                studentId,
-                purchaseId: purchase._id,
-            },
-            {
-                $setOnInsert: {
-                    tenantId,
-                    studentId,
-                    productId: purchase.productId,
-                    purchaseId: purchase._id,
-                    entitlementType: "mock_test_pack",
-                    mockTestIds,
-                    validFrom: paidAt,
-                    validUntil,
-                    status: "active",
-                },
-            },
-            {
-                new: true,
-                upsert: true,
-                setDefaultsOnInsert: true,
-            }
-        );
+                purchase.status = "paid";
+                purchase.razorpayPaymentId = razorpay_payment_id.trim();
+                purchase.razorpaySignature = razorpay_signature.trim();
+                purchase.paidAt = paidAt;
+                purchase.failureReason = undefined;
+
+                await purchase.save({ session: paymentSession });
+            });
+        } finally {
+            await paymentSession.endSession();
+        }
+
+        if (!entitlement) {
+            throw new Error(
+                "Payment fulfilment transaction did not return an entitlement"
+            );
+        }
 
         const referralReward =
             await createPendingReferralRewardForPaidPurchase({ purchase });
