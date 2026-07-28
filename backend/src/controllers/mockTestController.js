@@ -842,6 +842,38 @@ const updateMockTest = async (req, res) => {
         delete updateData.activeVersionId;
         delete updateData.publishedAt;
 
+        const publishedCommercialAccessChanged =
+            existingMockTest.isPublished &&
+            (
+                (
+                    updateData.accessType !== undefined &&
+                    updateData.accessType !== existingMockTest.accessType
+                ) ||
+                (
+                    updateData.price !== undefined &&
+                    Number(updateData.price) !==
+                        Number(existingMockTest.price || 0)
+                ) ||
+                (
+                    updateData.salePrice !== undefined &&
+                    Number(updateData.salePrice) !==
+                        Number(existingMockTest.salePrice || 0)
+                ) ||
+                (
+                    updateData.isPurchasable !== undefined &&
+                    Boolean(updateData.isPurchasable) !==
+                        Boolean(existingMockTest.isPurchasable)
+                )
+            );
+
+        if (publishedCommercialAccessChanged) {
+            return res.status(409).json({
+                success: false,
+                message:
+                    "Unpublish this mock test before changing access type or pricing. Publish it again afterward to create a matching frozen version.",
+            });
+        }
+
         if (updateData.settings) {
             const existingSettings = JSON.parse(
                 JSON.stringify(existingMockTest.settings || {})
