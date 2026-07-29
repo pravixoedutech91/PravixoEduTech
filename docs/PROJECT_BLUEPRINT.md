@@ -81,7 +81,7 @@ Avoid future rewrites by creating:
 
 Frontend:
 
-* Vercel
+* Cloudflare Workers (OpenNext)
 
 Backend:
 
