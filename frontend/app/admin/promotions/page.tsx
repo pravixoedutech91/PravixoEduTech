@@ -917,7 +917,7 @@ export default function AdminPromotionsPage() {
 
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
                 Create scheduled promotional cards for public hero areas.
-                One active promotion will later be selected for each placement by priority.
+                The highest-priority eligible active promotion is selected for each placement.
               </p>
             </div>
 

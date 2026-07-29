@@ -17,13 +17,13 @@ export default function Page() {
                 "title": "Student support",
                 "paragraphs": [
                         "Students can contact the PravixoEduTech team for help related to mock test access, login issues, published content, corrections and platform guidance.",
-                        "Official email, phone and office details will be added here before production launch."
+                        "For support, email pravixoedutech@gmail.com."
                 ]
         },
         {
                 "title": "Content correction requests",
                 "paragraphs": [
-                        "If any public page contains outdated, incomplete or unclear information, users should report it with the page title, page link and correction details.",
+                        "If any public page contains outdated, incomplete or unclear information, email pravixoedutech@gmail.com with the page title, page link and correction details.",
                         "Correction requests will be reviewed and updated according to the correction policy."
                 ]
         },
@@ -31,11 +31,11 @@ export default function Page() {
                 "title": "Partnership and institute queries",
                 "paragraphs": [
                         "PravixoEduTech is designed as an education platform that can support institutes, organizations and learning partners through structured content and mock test systems.",
-                        "Partnership contact details and official business communication channels will be added before public production launch."
+                        "For partnership and institute queries, email pravixoedutech@gmail.com."
                 ]
         }
 ]}
-      finalNote="Do not publish personal contact details here until the official PravixoEduTech contact email and support process are finalized."
+      finalNote="Official support email: pravixoedutech@gmail.com"
     />
   );
 }

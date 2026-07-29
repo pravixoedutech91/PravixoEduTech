@@ -516,8 +516,8 @@ export default function AdminContentPage() {
                     </div>
 
                     <div className="mt-5 rounded-2xl bg-blue-50 p-4 text-sm leading-6 text-blue-900 ring-1 ring-blue-100">
-                        T-43I Step 1: listing and filters only. Create, edit,
-                        publish and category creation controls will be added in the next steps.
+                        Search, filter, create, edit and publish public website content.
+                        Manage categories from the Categories workspace.
                     </div>
                 </section>
 
@@ -551,7 +551,7 @@ export default function AdminContentPage() {
                                 No content found
                             </h3>
                             <p className="mt-2 text-sm text-slate-600">
-                                No content matches the current filters. The create form will be added in the next step.
+                                No content matches the current filters. Use New Content to create an item.
                             </p>
                         </div>
                     ) : null}

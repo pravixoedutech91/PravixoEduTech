@@ -200,7 +200,7 @@ export default function StudentLoginPage() {
                                 </Link>
 
                                 <span className="text-slate-500">
-                                    Registration/OTP will be added later.
+                                    Use your registered mobile number or email to sign in.
                                 </span>
                             </div>
                         </div>

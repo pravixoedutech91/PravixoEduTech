@@ -705,8 +705,8 @@ export default function AdminPaymentPackagesPage() {
                             </h1>
 
                             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                                Create and manage paid mock test packs. Razorpay checkout is not connected yet;
-                                this page only prepares packages safely.
+                                Create and manage paid mock test packs. Student access unlocks only after
+                                backend payment verification.
                             </p>
                         </div>
 
