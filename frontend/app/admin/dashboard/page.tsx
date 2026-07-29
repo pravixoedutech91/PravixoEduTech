@@ -478,7 +478,7 @@ export default function AdminDashboardPage() {
                                         Payment Packages
                                     </p>
                                     <p className="mt-2 text-sm leading-6 text-rose-950">
-                                        Create and manage paid mock test packs before Razorpay checkout.
+                                        Create and manage paid mock test packs with backend-verified student access.
                                     </p>
                                 </Link>
                                 <Link

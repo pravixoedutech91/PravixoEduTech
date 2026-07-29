@@ -42,7 +42,7 @@ export default function Page() {
                 ]
         }
 ]}
-      finalNote="This editorial policy is a foundation version and should be reviewed again before public production launch."
+      finalNote="This editorial policy guides the accuracy, clarity, independence and responsible presentation of PravixoEduTech content."
     />
   );
 }

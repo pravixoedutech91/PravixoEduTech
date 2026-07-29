@@ -35,7 +35,7 @@ export default function Page() {
                 ]
         }
 ]}
-      finalNote="This About page is the first E-E-A-T foundation page. More organization details, team information and official contact details can be added before production launch."
+      finalNote="PravixoEduTech is committed to clear, trustworthy exam information and secure practice tools for government-exam aspirants."
     />
   );
 }
