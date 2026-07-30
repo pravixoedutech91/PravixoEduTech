@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import MarkdownContentEditor from "@/components/admin/content/MarkdownContentEditor";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -577,15 +578,18 @@ export default function CreateAdminContentPage() {
                         </div>
 
                         <div className="md:col-span-2">
-                            <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <label
+                                htmlFor="content-body"
+                                className="text-xs font-semibold uppercase tracking-wide text-slate-500"
+                            >
                                 Content Body
                             </label>
-                            <textarea
+
+                            <MarkdownContentEditor
+                                id="content-body"
                                 value={form.content}
-                                onChange={(event) => updateForm("content", event.target.value)}
-                                placeholder="Write the full public content body. Use blank lines between paragraphs."
-                                rows={10}
-                                className="mt-2 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm leading-7 outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                                onChange={(value) => updateForm("content", value)}
+                                placeholder="Write the full public content body. Use the toolbar for headings, lists, tables and official links."
                             />
                         </div>
 
