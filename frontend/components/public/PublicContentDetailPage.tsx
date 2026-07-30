@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import Footer from "@/components/layout/Footer";
 import Navbar from "@/components/layout/Navbar";
+import PublicContentBody from "@/components/public/PublicContentBody";
 import {
   getPublicContentBySlug,
   type PublicContentItem,
@@ -212,7 +213,7 @@ export default async function PublicContentDetailPage({
     notFound();
   }
 
-  const paragraphs = getParagraphs(item.content);
+  const hasContent = Boolean(item.content?.trim());
   const typeLabel = getContentTypeLabel(item.type);
   const updatedDate = formatDate(item.updatedAt || item.publishedAt || item.createdAt);
   const jsonLd = buildJsonLd({ item, backHref });
@@ -326,14 +327,9 @@ export default async function PublicContentDetailPage({
                 </div>
               ) : null}
 
-              {paragraphs.length > 0 ? (
-                <section
-                  aria-label="Main content"
-                  className="space-y-6 text-base leading-8 text-slate-700"
-                >
-                  {paragraphs.map((paragraph) => (
-                    <p key={paragraph}>{paragraph}</p>
-                  ))}
+              {hasContent ? (
+                <section aria-label="Main content">
+                  <PublicContentBody content={item.content ?? ""} />
                 </section>
               ) : (
                 <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
