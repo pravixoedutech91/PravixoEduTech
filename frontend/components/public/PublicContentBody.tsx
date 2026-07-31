@@ -40,13 +40,13 @@ const safeUrlTransform = (url: string) => {
 
 const markdownComponents: Components = {
   h1: ({ children }) => (
-    <h2 className="mt-10 rounded-r-2xl border-l-4 border-blue-600 bg-blue-50 px-5 py-4 text-2xl font-black tracking-tight text-slate-950">
+    <h2 className="mt-8 rounded-r-2xl border-l-4 border-blue-600 bg-blue-50 px-4 py-3 text-[1.375rem] font-black leading-7 tracking-tight text-slate-950">
       {children}
     </h2>
   ),
 
   h2: ({ children }) => (
-    <h2 className="mt-10 rounded-r-2xl border-l-4 border-blue-600 bg-blue-50 px-5 py-4 text-2xl font-black tracking-tight text-slate-950">
+    <h2 className="mt-8 rounded-r-2xl border-l-4 border-blue-600 bg-blue-50 px-4 py-3 text-[1.375rem] font-black leading-7 tracking-tight text-slate-950">
       {children}
     </h2>
   ),
@@ -100,7 +100,7 @@ const markdownComponents: Components = {
   ),
 
   blockquote: ({ children }) => (
-    <blockquote className="my-7 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-slate-800">
+    <blockquote className="my-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-slate-800 [&>p]:my-0 [&>p]:leading-7">
       {children}
     </blockquote>
   ),
@@ -127,7 +127,7 @@ const markdownComponents: Components = {
   },
 
   table: ({ children }) => (
-    <div className="my-7 overflow-x-auto rounded-2xl border border-slate-200">
+    <div className="my-5 overflow-x-auto rounded-2xl border border-slate-200">
       <table className="min-w-full border-collapse text-left text-sm">
         {children}
       </table>
@@ -153,13 +153,13 @@ const markdownComponents: Components = {
   ),
 
   th: ({ children }) => (
-    <th className="px-4 py-3 font-black">
+    <th className="px-3 py-2.5 font-black">
       {children}
     </th>
   ),
 
   td: ({ children }) => (
-    <td className="px-4 py-3 leading-6 text-slate-700">
+    <td className="px-3 py-2.5 leading-6 text-slate-700">
       {children}
     </td>
   ),
