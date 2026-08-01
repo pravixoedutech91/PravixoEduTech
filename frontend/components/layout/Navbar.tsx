@@ -1,13 +1,16 @@
 import Link from "next/link";
+import MobileQuickNav from "./MobileQuickNav";
 
 const primaryLinks = [
   { href: "/", label: "Home" },
   { href: "/exams", label: "Exams" },
-  { href: "/study-notes", label: "Study Notes" },
+  { href: "/vacancies", label: "Vacancies" },
+  { href: "/syllabus", label: "Syllabus" },
   { href: "/current-affairs", label: "Current Affairs" },
-  { href: "/vacancies", label: "Jobs" },
+  { href: "/study-notes", label: "Study Notes" },
   { href: "/mock-tests", label: "Mock Tests" },
 ];
+
 
 function SearchIcon() {
   return (
@@ -77,7 +80,13 @@ export default function Navbar() {
           </Link>
 
           <details className="group relative">
-            <summary className="flex h-10 cursor-pointer list-none items-center justify-center gap-2 rounded-full bg-blue-700 px-3 font-bold text-white shadow-md shadow-blue-700/20 transition hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-100 [&::-webkit-details-marker]:hidden">
+            <summary
+              className="flex h-10 cursor-pointer list-none items-center justify-center gap-2 rounded-full bg-blue-700 px-3 font-bold text-white shadow-md shadow-blue-700/20 transition hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-100 motion-safe:animate-pulse [&::-webkit-details-marker]:hidden"
+              style={{
+                animationDuration: "1.1s",
+                animationIterationCount: 3,
+              }}
+            >
               <MenuIcon />
               <span className="sr-only sm:not-sr-only">Menu</span>
             </summary>
@@ -126,6 +135,7 @@ export default function Navbar() {
         </div>
       </div>
 
+      <MobileQuickNav />
       <div className="hidden border-t border-slate-100 bg-white lg:block">
         <nav
           aria-label="Main navigation"
