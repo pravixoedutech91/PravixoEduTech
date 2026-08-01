@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import Footer from "@/components/layout/Footer";
 import Navbar from "@/components/layout/Navbar";
 import PublicContentBody from "@/components/public/PublicContentBody";
+import PublicShareButton from "@/components/public/PublicShareButton";
 import {
   getPublicContentBySlug,
   type PublicContentItem,
@@ -233,14 +234,25 @@ export default async function PublicContentDetailPage({
         <article className="bg-white">
           <header className="border-b border-slate-200">
             <div className="mx-auto max-w-4xl px-4 py-12">
-              <nav aria-label="Breadcrumb">
-                <Link
-                  href={backHref}
-                  className="text-sm font-black text-blue-700 hover:text-blue-900"
-                >
-                  &lt; Back to {backLabel}
-                </Link>
-              </nav>
+              <div className="flex items-center justify-between gap-3">
+                <nav aria-label="Breadcrumb">
+                  <Link
+                    href={backHref}
+                    className="text-sm font-black text-blue-700 hover:text-blue-900"
+                  >
+                    &lt; Back to {backLabel}
+                  </Link>
+                </nav>
+
+                <PublicShareButton
+                  title={item.title}
+                  text={
+                    item.summary ||
+                    item.seoDescription ||
+                    `Read ${item.title} on PravixoEduTech.`
+                  }
+                />
+              </div>
 
               <div className="mt-6 flex flex-wrap gap-2">
                 <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-blue-700">
