@@ -107,6 +107,21 @@ const markdownComponents: Components = {
 
   a: ({ href = "", children, title }) => {
     const isExternal = /^https?:\/\//i.test(href);
+    const isButton = title === "button" && !isExternal;
+
+    if (isButton) {
+      return (
+        <a
+          href={href}
+          className="inline-flex w-full items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-black leading-6 text-blue-800 no-underline shadow-sm transition hover:border-blue-300 hover:bg-blue-100 hover:text-blue-950 focus:outline-none focus:ring-4 focus:ring-blue-100 sm:w-auto"
+        >
+          <span className="min-w-0">{children}</span>
+          <span aria-hidden="true" className="shrink-0 text-base">
+            &rarr;
+          </span>
+        </a>
+      );
+    }
 
     return (
       <a
@@ -119,13 +134,12 @@ const markdownComponents: Components = {
         {children}
         {isExternal ? (
           <span aria-hidden="true" className="ml-1 text-xs">
-            ↗
+            &#8599;
           </span>
         ) : null}
       </a>
     );
   },
-
   table: ({ children }) => (
     <div className="my-5 overflow-x-auto rounded-2xl border border-slate-200">
       <table className="min-w-full border-collapse text-left text-sm">

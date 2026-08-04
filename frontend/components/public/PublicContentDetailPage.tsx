@@ -94,6 +94,50 @@ const getContentTypeLabel = (type: PublicContentType) => {
   return typeLabels[type] || "Public Content";
 };
 
+const getSafeFeaturedImageUrl = (value?: string) => {
+  if (!value) {
+    return "";
+  }
+
+  const trimmedUrl = value.trim();
+
+  if (
+    trimmedUrl.startsWith("/") &&
+    !trimmedUrl.startsWith("//")
+  ) {
+    return trimmedUrl;
+  }
+
+  try {
+    const parsedUrl = new URL(trimmedUrl);
+
+    if (parsedUrl.protocol === "https:") {
+      return trimmedUrl;
+    }
+  } catch {
+    return "";
+  }
+
+  return "";
+};
+
+const getAbsoluteFeaturedImageUrl = (value?: string) => {
+  const safeUrl = getSafeFeaturedImageUrl(value);
+
+  if (!safeUrl) {
+    return undefined;
+  }
+
+  if (!safeUrl.startsWith("/")) {
+    return safeUrl;
+  }
+
+  try {
+    return new URL(safeUrl, SITE_URL).toString();
+  } catch {
+    return undefined;
+  }
+};
 const getJsonLdType = (type: PublicContentType) => {
   if (type === "current_affairs" || type === "notification") {
     return "NewsArticle";
@@ -190,7 +234,7 @@ const buildJsonLd = ({
     breadcrumb: {
       "@id": `${pageUrl}#breadcrumb`,
     },
-    primaryImageOfPage: item.featuredImage || undefined,
+    primaryImageOfPage: getAbsoluteFeaturedImageUrl(item.featuredImage),
     datePublished: publishedDate,
     dateModified: modifiedDate,
     inLanguage: "en-IN",
@@ -217,6 +261,10 @@ export default async function PublicContentDetailPage({
   const hasContent = Boolean(item.content?.trim());
   const typeLabel = getContentTypeLabel(item.type);
   const updatedDate = formatDate(item.updatedAt || item.publishedAt || item.createdAt);
+  const featuredImageUrl =
+    item.type === "exam_page"
+      ? getSafeFeaturedImageUrl(item.featuredImage)
+      : "";
   const jsonLd = buildJsonLd({ item, backHref });
 
   return (
@@ -339,6 +387,19 @@ export default async function PublicContentDetailPage({
                 </div>
               ) : null}
 
+              {featuredImageUrl ? (
+                <figure className="mb-8 overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-sm">
+                  <img
+                    src={featuredImageUrl}
+                    alt={`${item.title} featured preparation image`}
+                    width={1672}
+                    height={941}
+                    loading="eager"
+                    decoding="async"
+                    className="block aspect-video w-full object-cover"
+                  />
+                </figure>
+              ) : null}
               {hasContent ? (
                 <section aria-label="Main content">
                   <PublicContentBody content={item.content ?? ""} />
