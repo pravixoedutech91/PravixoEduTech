@@ -16,6 +16,9 @@ const Entitlement = require("../models/Entitlement");
 const ReferralAttribution = require("../models/ReferralAttribution");
 const ReferralPartner = require("../models/ReferralPartner");
 const ReferralReward = require("../models/ReferralReward");
+const {
+    fulfillPaymentPackagePurchase,
+} = require("../services/paymentFulfillmentService");
 
 const REVIEW_RETENTION_DAYS = 7;
 
@@ -1275,7 +1278,7 @@ const verifyPaymentPackagePaymentForStudent = async (req, res) => {
             purchaseFilter._id = purchaseId;
         }
 
-        const purchase = await Purchase.findOne(purchaseFilter);
+        let purchase = await Purchase.findOne(purchaseFilter);
 
         if (!purchase) {
             return res.status(404).json({
@@ -1295,38 +1298,13 @@ const verifyPaymentPackagePaymentForStudent = async (req, res) => {
                 });
             }
 
-            const paidAt = purchase.paidAt || new Date();
-            const validUntil = addDays(
-                paidAt,
-                purchase.productSnapshot?.validityDays || 365
-            );
+            const fulfillmentResult = await fulfillPaymentPackagePurchase({
+                purchase,
+                paidAt: purchase.paidAt || new Date(),
+            });
 
-            const entitlement = await Entitlement.findOneAndUpdate(
-                {
-                    tenantId,
-                    studentId,
-                    purchaseId: purchase._id,
-                },
-                {
-                    $setOnInsert: {
-                        tenantId,
-                        studentId,
-                        productId: purchase.productId,
-                        purchaseId: purchase._id,
-                        entitlementType: "mock_test_pack",
-                        mockTestIds,
-                        validFrom: paidAt,
-                        validUntil,
-                        status: "active",
-                    },
-                },
-                {
-                    new: true,
-                    upsert: true,
-                    setDefaultsOnInsert: true,
-                }
-            );
-
+            purchase = fulfillmentResult.purchase;
+            const entitlement = fulfillmentResult.entitlement;
             const referralReward =
                 await createPendingReferralRewardForPaidPurchase({ purchase });
 
@@ -1432,62 +1410,15 @@ const verifyPaymentPackagePaymentForStudent = async (req, res) => {
             });
         }
 
-        const paidAt = new Date();
-        const validUntil = addDays(
-            paidAt,
-            purchase.productSnapshot?.validityDays || 365
-        );
+        const fulfillmentResult = await fulfillPaymentPackagePurchase({
+            purchase,
+            razorpayPaymentId: razorpay_payment_id.trim(),
+            razorpaySignature: razorpay_signature.trim(),
+            paidAt: new Date(),
+        });
 
-        const paymentSession = await mongoose.startSession();
-        let entitlement;
-
-        try {
-            await paymentSession.withTransaction(async () => {
-                entitlement = await Entitlement.findOneAndUpdate(
-                    {
-                        tenantId,
-                        studentId,
-                        purchaseId: purchase._id,
-                    },
-                    {
-                        $setOnInsert: {
-                            tenantId,
-                            studentId,
-                            productId: purchase.productId,
-                            purchaseId: purchase._id,
-                            entitlementType: "mock_test_pack",
-                            mockTestIds,
-                            validFrom: paidAt,
-                            validUntil,
-                            status: "active",
-                        },
-                    },
-                    {
-                        new: true,
-                        upsert: true,
-                        setDefaultsOnInsert: true,
-                        session: paymentSession,
-                    }
-                );
-
-                purchase.status = "paid";
-                purchase.razorpayPaymentId = razorpay_payment_id.trim();
-                purchase.razorpaySignature = razorpay_signature.trim();
-                purchase.paidAt = paidAt;
-                purchase.failureReason = undefined;
-
-                await purchase.save({ session: paymentSession });
-            });
-        } finally {
-            await paymentSession.endSession();
-        }
-
-        if (!entitlement) {
-            throw new Error(
-                "Payment fulfilment transaction did not return an entitlement"
-            );
-        }
-
+        purchase = fulfillmentResult.purchase;
+        const entitlement = fulfillmentResult.entitlement;
         const referralReward =
             await createPendingReferralRewardForPaidPurchase({ purchase });
 
