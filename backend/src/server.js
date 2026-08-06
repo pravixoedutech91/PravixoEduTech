@@ -22,6 +22,7 @@ const studentMockTestRoutes = require("./routes/studentMockTestRoutes");
 const paymentProductRoutes = require("./routes/paymentProductRoutes");
 const sitePromotionRoutes = require("./routes/sitePromotionRoutes");
 const referralPartnerRoutes = require("./routes/referralPartnerRoutes");
+const razorpayWebhookRoutes = require("./routes/razorpayWebhookRoutes");
 dotenv.config();
 
 const normalizeConfiguredOrigin = (value) => {
@@ -130,6 +131,14 @@ const helmetOptions = isHostedRuntimeEnvironment()
 app.disable("x-powered-by");
 app.use(helmet(helmetOptions));
 app.use(cors(corsOptions));
+app.use(
+  "/api/webhooks/razorpay",
+  express.raw({
+    type: "application/json",
+    limit: "256kb",
+  }),
+  razorpayWebhookRoutes
+);
 app.use(express.json());
 app.use("/api/categories", categoryRoutes);
 app.use("/api/content", contentRoutes);
