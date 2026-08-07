@@ -1,6 +1,6 @@
 # T-44 Payment MVP Checkpoint
 
-Last updated: 2026-07-16
+Last updated: 2026-08-07
 Branch: feature/question-group-stimulus-support
 
 ## Scope locked
@@ -22,6 +22,9 @@ Referral is not included in T-44. Referral starts after payment foundation is st
 - Purchased package UX
 - Admin Payment Ledger API and UI
 - Razorpay checkout prefill sanitized
+- Signed Razorpay payment.captured webhook endpoint
+- Raw-body webhook HMAC verification with dedicated webhook secret
+- Razorpay webhook event persistence and event-ID idempotency
 
 ## Backend APIs
 Admin:
@@ -51,6 +54,8 @@ POST /api/student/payment-packages/verify-payment
 - Paid mock test start checks active entitlement.
 - Duplicate active package purchase is blocked.
 - Razorpay keys remain in backend env only.
+- Razorpay webhook secret remains backend-only and separate from RAZORPAY_KEY_SECRET.
+- Webhook raw-body route must remain mounted before express.json().
 
 ## Cleanup completed
 - T44B Proof Mock Test Pack disabled in DB.
@@ -73,6 +78,10 @@ Future duplicate active package purchases are blocked by backend guard.
 - Entitlement created.
 - Purchased package shows Access Active.
 - Admin ledger shows purchases, status, Razorpay IDs, entitlement validity.
+- Razorpay Test Mode webhook registered for payment.captured only.
+- Controlled BSR Package payment produced one paid purchase and one active entitlement.
+- Production Railway proof confirmed one processed payment.captured webhook with matching Razorpay order/payment IDs.
+- Exactly one payment.captured webhook record was stored for the controlled purchase; no duplicate entitlement was created.
 
 ## T-44 commit log
 - 959f885 Add payment product purchase entitlement models
@@ -90,10 +99,7 @@ Future duplicate active package purchases are blocked by backend guard.
 - f4e80a6 Add admin payment purchase ledger API
 - 3f37bee Add admin payment ledger UI
 - fb2040c Sanitize Razorpay checkout prefill
-
-## Next step
-T-44K Final Payment MVP smoke test.
-After T-44K passes, move to Referral MVP.
+- fce7a65 Add signed Razorpay webhook processing
 
 ## T-44K Final Payment MVP Smoke Test
 
@@ -109,4 +115,27 @@ Verified:
 - Paid ledger filter returns only paid purchases.
 - Working tree clean after final smoke.
 
-Payment MVP is locked. Next module: Referral MVP.
+Payment MVP is locked.
+
+## T-44A Signed Razorpay Webhook Production Verification
+
+Status: PASSED
+
+Verified:
+- Webhook code deployed successfully to the Railway production backend.
+- RAZORPAY_WEBHOOK_SECRET configured only in Railway.
+- Unsigned live webhook probe returned HTTP 401 as expected.
+- Razorpay Test Mode webhook is enabled for payment.captured.
+- Controlled INR 199 BSR Package payment completed successfully.
+- Purchase status is paid with Razorpay order and payment IDs.
+- Exactly one active entitlement exists for the controlled purchase.
+- Exactly one payment.captured webhook record exists for the controlled purchase with status processed.
+- Webhook order ID and payment ID match the paid purchase.
+- Referral outcome was checked; this controlled purchase created no referral reward.
+- Read-only production diagnostic performed no database writes.
+- Package entitlement does not override the Mock Test attempt limit; the existing test correctly remains 25/25 with 0 remaining.
+
+## Next step
+
+Continue T-45 Referral MVP from the existing referral architecture and implementation checkpoint.
+After Referral is stabilized, continue Mock Test completion, Student Dashboard/UI improvement, and measured loading-performance optimization.
