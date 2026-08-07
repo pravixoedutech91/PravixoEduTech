@@ -1410,7 +1410,11 @@ function ReferralSettingsSection({
     );
 }
 
-function RewardLedgerSection() {
+function RewardLedgerSection({
+    onPartnerStateChanged,
+}: {
+    onPartnerStateChanged: () => Promise<void>;
+}) {
     const [rewards, setRewards] = useState<ReferralReward[]>([]);
     const [summary, setSummary] = useState<ReferralRewardSummary>(
         defaultRewardSummary
@@ -1562,6 +1566,11 @@ function RewardLedgerSection() {
             }
 
             await loadRewards();
+
+            if (action === "approve") {
+                await onPartnerStateChanged();
+            }
+
             setSuccessMessage(
                 result.message || "Referral reward updated successfully."
             );
@@ -1821,7 +1830,11 @@ function RewardLedgerSection() {
 }
 
 
-function WithdrawalLedgerSection() {
+function WithdrawalLedgerSection({
+    onPartnerStateChanged,
+}: {
+    onPartnerStateChanged: () => Promise<void>;
+}) {
     const [withdrawals, setWithdrawals] = useState<ReferralWithdrawal[]>([]);
     const [summary, setSummary] = useState<ReferralWithdrawalSummary>(
         defaultWithdrawalSummary
@@ -2001,6 +2014,11 @@ function WithdrawalLedgerSection() {
             }
 
             await loadWithdrawals();
+
+            if (action === "reject" || action === "paid") {
+                await onPartnerStateChanged();
+            }
+
             setSuccessMessage(
                 result.message || "Withdrawal request updated successfully."
             );
@@ -3350,9 +3368,21 @@ export default function AdminReferralPartnersPage() {
 
                     {activeSection === "attributions" ? <AttributionLedgerSection /> : null}
 
-                    {activeSection === "rewards" ? <RewardLedgerSection /> : null}
+                    {activeSection === "rewards" ? (
+                        <RewardLedgerSection
+                            onPartnerStateChanged={() =>
+                                loadPartners(adminToken, { clearToast: false })
+                            }
+                        />
+                    ) : null}
 
-                    {activeSection === "withdrawals" ? <WithdrawalLedgerSection /> : null}
+                    {activeSection === "withdrawals" ? (
+                        <WithdrawalLedgerSection
+                            onPartnerStateChanged={() =>
+                                loadPartners(adminToken, { clearToast: false })
+                            }
+                        />
+                    ) : null}
                 </section>
 
 
