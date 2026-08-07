@@ -9,6 +9,7 @@ const User = require("../models/User");
 const Tenant = require("../models/Tenant");
 const ReferralPartner = require("../models/ReferralPartner");
 const ReferralAttribution = require("../models/ReferralAttribution");
+const ReferralSettings = require("../models/ReferralSettings");
 
 const DEFAULT_TENANT_ID = "pravixoedutech";
 
@@ -91,6 +92,16 @@ const validateReferralCodeForRegistration = async ({
   if (!tenant.features?.referrals) {
     return {
       error: "Referral program is not enabled for this tenant",
+    };
+  }
+
+  const referralSettings = await ReferralSettings.findOne({
+    tenantId,
+  }).lean();
+
+  if (!referralSettings?.isReferralEnabled) {
+    return {
+      error: "Referral program is currently disabled",
     };
   }
 

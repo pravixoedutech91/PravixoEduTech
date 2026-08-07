@@ -8,6 +8,9 @@ const ReferralSettings = require("../models/ReferralSettings");
 const WithdrawalRequest = require("../models/WithdrawalRequest");
 const User = require("../models/User");
 const Purchase = require("../models/Purchase");
+const {
+  calculateReferralEligibleAt,
+} = require("../services/referralRewardService");
 
 const adminRoles = ["super_admin", "tenant_admin"];
 
@@ -1260,7 +1263,65 @@ const buildRewardMutationFilter = (req) => {
   return filter;
 };
 
+const createReferralRewardHttpError = (message, statusCode) => {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+};
+
+const getReferralRewardEligibleAt = async ({
+  reward,
+  session,
+}) => {
+  const purchase = await Purchase.findOne({
+    _id: reward.purchaseId,
+    tenantId: reward.tenantId,
+    status: "paid",
+  })
+    .select("paidAt")
+    .session(session)
+    .lean();
+
+  if (!purchase?.paidAt) {
+    throw createReferralRewardHttpError(
+      "Paid purchase is unavailable for reward approval",
+      409
+    );
+  }
+
+  if (reward.eligibleAt) {
+    const storedEligibleAt = new Date(reward.eligibleAt);
+
+    if (!Number.isNaN(storedEligibleAt.getTime())) {
+      return storedEligibleAt;
+    }
+  }
+
+  const settings = await ReferralSettings.findOne({
+    tenantId: reward.tenantId,
+  })
+    .session(session)
+    .lean();
+
+  const eligibleAt = calculateReferralEligibleAt({
+    paidAt: purchase.paidAt,
+    rewardLockDays: settings?.rewardLockDays ?? 7,
+    refundSafetyDays: settings?.refundSafetyDays ?? 7,
+  });
+
+  if (!eligibleAt) {
+    throw createReferralRewardHttpError(
+      "Reward eligibility could not be calculated",
+      409
+    );
+  }
+
+  return eligibleAt;
+};
+
 const approveReferralReward = async (req, res) => {
+  const session = await mongoose.startSession();
+
   try {
     if (!isValidObjectId(req.params.id)) {
       return res.status(400).json({
@@ -1269,70 +1330,136 @@ const approveReferralReward = async (req, res) => {
       });
     }
 
-    const reward = await ReferralReward.findOne(buildRewardMutationFilter(req));
+    let updatedReward = null;
+    let partner = null;
 
-    if (!reward) {
-      return res.status(404).json({
-        success: false,
-        message: "Referral reward not found or access denied",
-      });
-    }
+    await session.withTransaction(async () => {
+      const reward = await ReferralReward.findOne(
+        buildRewardMutationFilter(req)
+      ).session(session);
 
-    if (reward.status !== "pending") {
-      return res.status(409).json({
-        success: false,
-        message: "Only pending rewards can be approved",
-      });
-    }
-
-    const partner = await ReferralPartner.findOneAndUpdate(
-      {
-        _id: reward.referralPartnerId,
-        tenantId: reward.tenantId,
-      },
-      {
-        $inc: {
-          walletBalanceInPaise: reward.rewardAmountInPaise,
-          totalEarnedInPaise: reward.rewardAmountInPaise,
-        },
-        $set: {
-          updatedBy: req.user?._id,
-        },
-      },
-      {
-        new: true,
-        runValidators: true,
+      if (!reward) {
+        throw createReferralRewardHttpError(
+          "Referral reward not found or access denied",
+          404
+        );
       }
-    );
 
-    if (!partner) {
-      return res.status(404).json({
-        success: false,
-        message: "Referral partner not found for this reward",
-      });
-    }
+      if (reward.status !== "pending") {
+        throw createReferralRewardHttpError(
+          "Only pending rewards can be approved",
+          409
+        );
+      }
 
-    reward.status = "approved";
-    reward.approvedAt = new Date();
-    reward.adminNote = hasText(req.body?.adminNote)
-      ? String(req.body.adminNote).trim()
-      : reward.adminNote;
-    reward.updatedBy = req.user?._id;
+      const eligibleAt =
+        await getReferralRewardEligibleAt({
+          reward,
+          session,
+        });
 
-    await reward.save();
+      const now = new Date();
+
+      if (eligibleAt.getTime() > now.getTime()) {
+        throw createReferralRewardHttpError(
+          "Referral reward is locked until " +
+            eligibleAt.toISOString(),
+          409
+        );
+      }
+
+      const setData = {
+        status: "approved",
+        approvedAt: now,
+        eligibleAt,
+        updatedBy: req.user?._id,
+      };
+
+      if (hasText(req.body?.adminNote)) {
+        setData.adminNote =
+          String(req.body.adminNote).trim();
+      }
+
+      updatedReward =
+        await ReferralReward.findOneAndUpdate(
+          {
+            ...buildRewardMutationFilter(req),
+            status: "pending",
+          },
+          {
+            $set: setData,
+          },
+          {
+            new: true,
+            runValidators: true,
+            session,
+          }
+        );
+
+      if (!updatedReward) {
+        throw createReferralRewardHttpError(
+          "Referral reward was already reviewed",
+          409
+        );
+      }
+
+      partner =
+        await ReferralPartner.findOneAndUpdate(
+          {
+            _id: updatedReward.referralPartnerId,
+            tenantId: updatedReward.tenantId,
+            status: "active",
+          },
+          {
+            $inc: {
+              walletBalanceInPaise:
+                updatedReward.rewardAmountInPaise,
+              totalEarnedInPaise:
+                updatedReward.rewardAmountInPaise,
+            },
+            $set: {
+              updatedBy: req.user?._id,
+            },
+          },
+          {
+            new: true,
+            runValidators: true,
+            session,
+          }
+        );
+
+      if (!partner) {
+        throw createReferralRewardHttpError(
+          "Active referral partner not found for this reward",
+          404
+        );
+      }
+    });
 
     return res.status(200).json({
       success: true,
       message: "Referral reward approved successfully",
-      data: buildRewardMutationResponse(reward, partner),
+      data: buildRewardMutationResponse(
+        updatedReward,
+        partner
+      ),
     });
   } catch (error) {
-    logRuntimeError("Approve referral reward error:", error);
+    logRuntimeError(
+      "Approve referral reward error:",
+      error
+    );
 
-    return res.status(500).json({
+    return res.status(
+      error.statusCode || 500
+    ).json({
       success: false,
-      message: "Failed to approve referral reward",
+      message: error.statusCode
+        ? error.message
+        : "Failed to approve referral reward",
     });
+  } finally {
+    await session.endSession();
   }
 };
 
@@ -1342,22 +1469,6 @@ const rejectReferralReward = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid reward id",
-      });
-    }
-
-    const reward = await ReferralReward.findOne(buildRewardMutationFilter(req));
-
-    if (!reward) {
-      return res.status(404).json({
-        success: false,
-        message: "Referral reward not found or access denied",
-      });
-    }
-
-    if (reward.status !== "pending") {
-      return res.status(409).json({
-        success: false,
-        message: "Only pending rewards can be rejected",
       });
     }
 
@@ -1372,33 +1483,75 @@ const rejectReferralReward = async (req, res) => {
       });
     }
 
-    reward.status = "rejected";
-    reward.rejectedAt = new Date();
-    reward.adminNote = adminNote;
-    reward.updatedBy = req.user?._id;
+    const reward =
+      await ReferralReward.findOneAndUpdate(
+        {
+          ...buildRewardMutationFilter(req),
+          status: "pending",
+        },
+        {
+          $set: {
+            status: "rejected",
+            rejectedAt: new Date(),
+            adminNote,
+            updatedBy: req.user?._id,
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+        }
+      );
 
-    await reward.save();
+    if (!reward) {
+      const existingReward =
+        await ReferralReward.findOne(
+          buildRewardMutationFilter(req)
+        );
 
-    const partner = await ReferralPartner.findOne({
-      _id: reward.referralPartnerId,
-      tenantId: reward.tenantId,
-    });
+      if (!existingReward) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Referral reward not found or access denied",
+        });
+      }
+
+      return res.status(409).json({
+        success: false,
+        message:
+          "Only pending rewards can be rejected",
+      });
+    }
+
+    const partner =
+      await ReferralPartner.findOne({
+        _id: reward.referralPartnerId,
+        tenantId: reward.tenantId,
+      });
 
     return res.status(200).json({
       success: true,
-      message: "Referral reward rejected successfully",
-      data: buildRewardMutationResponse(reward, partner),
+      message:
+        "Referral reward rejected successfully",
+      data: buildRewardMutationResponse(
+        reward,
+        partner
+      ),
     });
   } catch (error) {
-    logRuntimeError("Reject referral reward error:", error);
+    logRuntimeError(
+      "Reject referral reward error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: "Failed to reject referral reward",
+      message:
+        "Failed to reject referral reward",
     });
   }
 };
-
 
 const withdrawalPayoutMethods = ["upi", "bank", "cash", "other"];
 

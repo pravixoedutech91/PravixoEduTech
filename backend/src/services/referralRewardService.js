@@ -8,6 +8,10 @@ const ReferralPartner =
     require("../models/ReferralPartner");
 const ReferralReward =
     require("../models/ReferralReward");
+const ReferralSettings =
+    require("../models/ReferralSettings");
+const Tenant =
+    require("../models/Tenant");
 
 const calculateReferralRewardAmountInPaise = ({
     commissionType,
@@ -47,6 +51,55 @@ const calculateReferralRewardAmountInPaise = ({
     );
 };
 
+const MILLISECONDS_PER_DAY =
+    24 * 60 * 60 * 1000;
+
+const calculateReferralEligibleAt = ({
+    paidAt,
+    rewardLockDays,
+    refundSafetyDays,
+}) => {
+    const normalizedPaidAt =
+        paidAt instanceof Date
+            ? paidAt
+            : new Date(paidAt);
+
+    if (
+        Number.isNaN(
+            normalizedPaidAt.getTime()
+        )
+    ) {
+        return null;
+    }
+
+    const normalizedRewardLockDays =
+        Math.max(
+            0,
+            Number.parseInt(
+                rewardLockDays,
+                10
+            ) || 0
+        );
+
+    const normalizedRefundSafetyDays =
+        Math.max(
+            0,
+            Number.parseInt(
+                refundSafetyDays,
+                10
+            ) || 0
+        );
+
+    return new Date(
+        normalizedPaidAt.getTime() +
+        (
+            normalizedRewardLockDays +
+            normalizedRefundSafetyDays
+        ) *
+        MILLISECONDS_PER_DAY
+    );
+};
+
 const createPendingReferralRewardForPaidPurchase =
     async ({ purchase }) => {
         if (!purchase || purchase.status !== "paid") {
@@ -62,6 +115,28 @@ const createPendingReferralRewardForPaidPurchase =
 
             if (existingReward) {
                 return existingReward;
+            }
+
+            const [
+                tenant,
+                referralSettings,
+            ] = await Promise.all([
+                Tenant.findOne({
+                    slug: purchase.tenantId,
+                    isActive: true,
+                })
+                    .select("features.referrals")
+                    .lean(),
+                ReferralSettings.findOne({
+                    tenantId: purchase.tenantId,
+                }).lean(),
+            ]);
+
+            if (
+                !tenant?.features?.referrals ||
+                !referralSettings?.isReferralEnabled
+            ) {
+                return null;
             }
 
             const attribution =
@@ -85,6 +160,19 @@ const createPendingReferralRewardForPaidPurchase =
                 }).lean();
 
             if (!partner) {
+                return null;
+            }
+
+            const eligibleAt =
+                calculateReferralEligibleAt({
+                    paidAt: purchase.paidAt,
+                    rewardLockDays:
+                        referralSettings.rewardLockDays ?? 7,
+                    refundSafetyDays:
+                        referralSettings.refundSafetyDays ?? 7,
+                });
+
+            if (!eligibleAt) {
                 return null;
             }
 
@@ -117,6 +205,7 @@ const createPendingReferralRewardForPaidPurchase =
                         purchaseAmountInPaise:
                             purchase.amountInPaise,
                         rewardAmountInPaise,
+                        eligibleAt,
                         status: "pending",
                         createdBy: purchase.studentId,
                         updatedBy: purchase.studentId,
@@ -147,5 +236,6 @@ const createPendingReferralRewardForPaidPurchase =
 
 module.exports = {
     calculateReferralRewardAmountInPaise,
+    calculateReferralEligibleAt,
     createPendingReferralRewardForPaidPurchase,
 };
