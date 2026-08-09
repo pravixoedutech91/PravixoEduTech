@@ -49,6 +49,14 @@ type CategorySummary = {
     _id: string;
     name?: string;
     slug?: string;
+    isActive?: boolean;
+};
+
+type CategoriesResponse = {
+    success: boolean;
+    message?: string;
+    count?: number;
+    data?: CategorySummary[];
 };
 
 type QuestionOption = {
@@ -103,6 +111,7 @@ type CreateQuestionOptionForm = {
 };
 
 type CreateQuestionForm = {
+    categoryId: string;
     questionTextEn: string;
     questionTextHi: string;
     subject: string;
@@ -126,6 +135,7 @@ type ToastState = {
 };
 
 const initialCreateQuestionForm: CreateQuestionForm = {
+    categoryId: "",
     questionTextEn: "",
     questionTextHi: "",
     subject: "",
@@ -178,20 +188,31 @@ const getCategorySummary = (categoryId?: CategorySummary | string | null) => {
     return categoryId;
 };
 
+const getCategoryIdValue = (categoryId?: CategorySummary | string | null) => {
+    if (!categoryId) {
+        return "";
+    }
+
+    return typeof categoryId === "string" ? categoryId : categoryId._id;
+};
+
 export default function AdminQuestionBankPage() {
     const [isReady, setIsReady] = useState(false);
     const [isAllowed, setIsAllowed] = useState(false);
     const [message, setMessage] = useState("");
     const [questions, setQuestions] = useState<Question[]>([]);
+    const [categories, setCategories] = useState<CategorySummary[]>([]);
     const [questionGroups, setQuestionGroups] = useState<QuestionGroupSummary[]>(
         []
     );
     const [isQuestionsLoading, setIsQuestionsLoading] = useState(false);
+    const [isCategoriesLoading, setIsCategoriesLoading] = useState(false);
     const [isQuestionGroupsLoading, setIsQuestionGroupsLoading] =
         useState(false);
     const [showInactiveQuestions, setShowInactiveQuestions] = useState(false);
     const [disablingQuestionId, setDisablingQuestionId] = useState("");
     const [questionsError, setQuestionsError] = useState("");
+    const [categoriesError, setCategoriesError] = useState("");
     const [questionGroupsError, setQuestionGroupsError] = useState("");
     const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
     const [isCreateSaving, setIsCreateSaving] = useState(false);
@@ -251,6 +272,45 @@ export default function AdminQuestionBankPage() {
             );
         } finally {
             setIsQuestionsLoading(false);
+        }
+    };
+
+    const loadCategories = async (savedToken: string) => {
+        setIsCategoriesLoading(true);
+        setCategoriesError("");
+
+        try {
+            const response = await fetch(API_BASE_URL + "/api/categories", {
+                headers: {
+                    Authorization: "Bearer " + savedToken,
+                },
+            });
+
+            const result = (await response.json()) as CategoriesResponse;
+
+            if (response.status === 401 || response.status === 403) {
+                clearAdminSessionStorage();
+                setIsAllowed(false);
+                setMessage(
+                    result.message ||
+                        "Your admin session has expired. Please login again."
+                );
+                return;
+            }
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || "Unable to load categories.");
+            }
+
+            setCategories(Array.isArray(result.data) ? result.data : []);
+        } catch (error) {
+            setCategoriesError(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to load categories."
+            );
+        } finally {
+            setIsCategoriesLoading(false);
         }
     };
 
@@ -344,6 +404,7 @@ export default function AdminQuestionBankPage() {
 
         setEditingQuestionId(question._id);
         setCreateQuestionForm({
+            categoryId: getCategoryIdValue(question.categoryId),
             questionTextEn: question.questionTextEn || "",
             questionTextHi: question.questionTextHi || "",
             subject: question.subject || "",
@@ -399,6 +460,7 @@ export default function AdminQuestionBankPage() {
         const negativeMarks = Number(createQuestionForm.negativeMarks);
 
         return {
+            categoryId: createQuestionForm.categoryId || null,
             questionType: "mcq",
             sourceType: createQuestionForm.sourceType,
             questionTextEn: createQuestionForm.questionTextEn.trim(),
@@ -770,6 +832,7 @@ export default function AdminQuestionBankPage() {
                 setIsAllowed(true);
                 setMessage("");
                 void loadQuestions(savedToken, false);
+                void loadCategories(savedToken);
                 void loadQuestionGroups(savedToken);
             } catch (error) {
                 clearAdminSessionStorage();
@@ -957,7 +1020,45 @@ export default function AdminQuestionBankPage() {
                                 </label>
                             </div>
 
-                            <div className="grid gap-4 md:grid-cols-3">
+                            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Category
+                                    <select
+                                        value={createQuestionForm.categoryId}
+                                        onChange={(event) =>
+                                            updateCreateQuestionForm(
+                                                "categoryId",
+                                                event.target.value
+                                            )
+                                        }
+                                        disabled={isCategoriesLoading}
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
+                                    >
+                                        <option value="">No category</option>
+                                        {categories.map((category) => (
+                                            <option
+                                                key={category._id}
+                                                value={category._id}
+                                                disabled={
+                                                    category.isActive === false &&
+                                                    createQuestionForm.categoryId !==
+                                                        category._id
+                                                }
+                                            >
+                                                {category.name || category.slug}
+                                                {category.isActive === false
+                                                    ? " (Inactive)"
+                                                    : ""}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <span className="text-xs font-normal text-slate-500">
+                                        {isCategoriesLoading
+                                            ? "Loading categories..."
+                                            : "Use an exam-specific category when applicable."}
+                                    </span>
+                                </label>
+
                                 <label className="grid gap-2 text-sm font-semibold text-slate-700">
                                     Subject
                                     <input
@@ -1002,6 +1103,12 @@ export default function AdminQuestionBankPage() {
                                         placeholder="Linear arrangement"
                                     />
                                 </label>
+
+                                {categoriesError ? (
+                                    <div className="md:col-span-2 xl:col-span-4 rounded-2xl bg-red-50 p-3 text-sm font-semibold text-red-700 ring-1 ring-red-100">
+                                        {categoriesError}
+                                    </div>
+                                ) : null}
                             </div>
 
                             <div className="grid gap-4 md:grid-cols-5">
@@ -1319,6 +1426,7 @@ export default function AdminQuestionBankPage() {
                                             savedToken,
                                             showInactiveQuestions
                                         );
+                                        void loadCategories(savedToken);
                                         void loadQuestionGroups(savedToken);
                                     }
                                 }}
