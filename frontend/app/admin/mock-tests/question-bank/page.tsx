@@ -1439,7 +1439,105 @@ export default function AdminQuestionBankPage() {
                     ) : null}
                 </section>
 
-                <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+                                <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                                PCRT-B1A
+                            </p>
+
+                            <h2 className="mt-2 text-xl font-bold">
+                                Bulk Import Questions
+                            </h2>
+
+                            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+                                Prepare question files for the controlled bulk-import workflow.
+                                This foundation does not read, validate, upload, or save question
+                                data yet.
+                            </p>
+                        </div>
+
+                        <span className="w-fit rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-100">
+                            UI foundation only
+                        </span>
+                    </div>
+
+                    <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                        <div className="rounded-2xl bg-slate-50 p-5 ring-1 ring-slate-200">
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Import Format
+                                    <select
+                                        value="csv"
+                                        disabled
+                                        className="rounded-2xl border border-slate-300 bg-slate-100 px-4 py-3 text-sm font-normal text-slate-500"
+                                    >
+                                        <option value="csv">CSV</option>
+                                    </select>
+                                </label>
+
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Question File
+                                    <input
+                                        type="file"
+                                        accept=".csv,text/csv"
+                                        disabled
+                                        className="block w-full rounded-2xl border border-slate-300 bg-slate-100 px-3 py-2.5 text-sm font-normal text-slate-400 file:mr-3 file:rounded-xl file:border-0 file:bg-slate-200 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-500"
+                                    />
+                                </label>
+                            </div>
+
+                            <p className="mt-4 text-xs leading-5 text-slate-500">
+                                File selection and local parsing will be enabled in PCRT-B1B.
+                            </p>
+                        </div>
+
+                        <div className="rounded-2xl bg-blue-50 p-5 ring-1 ring-blue-100">
+                            <p className="text-sm font-bold text-blue-950">
+                                Planned import support
+                            </p>
+
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {[
+                                    "Bilingual MCQ",
+                                    "Original / PYQ",
+                                    "Category mapping",
+                                    "Correct option",
+                                    "Marks",
+                                    "Negative marks",
+                                    "Explanations",
+                                ].map((item) => (
+                                    <span
+                                        key={item}
+                                        className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-blue-800 ring-1 ring-blue-100"
+                                    >
+                                        {item}
+                                    </span>
+                                ))}
+                            </div>
+
+                            <p className="mt-4 text-xs leading-5 text-blue-800">
+                                External keys will be resolved and validated before any future
+                                database import. CSV values will never be treated as MongoDB IDs.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <button
+                            type="button"
+                            disabled
+                            className="w-fit rounded-2xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+                        >
+                            Validate / Preview
+                        </button>
+
+                        <p className="text-xs leading-5 text-slate-500">
+                            Disabled in B1A — no file data is processed or sent anywhere.
+                        </p>
+                    </div>
+                </section>
+<section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
