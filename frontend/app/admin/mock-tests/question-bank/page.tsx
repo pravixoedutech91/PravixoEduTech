@@ -15,6 +15,7 @@ const ALLOWED_ADMIN_ROLES = ["super_admin", "tenant_admin", "content_admin"];
 const OPTION_IDS = ["A", "B", "C", "D"] as const;
 
 type OptionId = (typeof OPTION_IDS)[number];
+type QuestionSourceFilter = "all" | "original" | "pyq";
 
 type AdminProfile = {
     id?: string;
@@ -210,6 +211,9 @@ export default function AdminQuestionBankPage() {
     const [isQuestionGroupsLoading, setIsQuestionGroupsLoading] =
         useState(false);
     const [showInactiveQuestions, setShowInactiveQuestions] = useState(false);
+    const [questionCategoryFilter, setQuestionCategoryFilter] = useState("");
+    const [questionSourceFilter, setQuestionSourceFilter] =
+        useState<QuestionSourceFilter>("all");
     const [disablingQuestionId, setDisablingQuestionId] = useState("");
     const [questionsError, setQuestionsError] = useState("");
     const [categoriesError, setCategoriesError] = useState("");
@@ -231,15 +235,33 @@ export default function AdminQuestionBankPage() {
 
     const loadQuestions = async (
         savedToken: string,
-        includeInactive = showInactiveQuestions
+        includeInactive = showInactiveQuestions,
+        categoryId = questionCategoryFilter,
+        sourceType = questionSourceFilter
     ) => {
         setIsQuestionsLoading(true);
         setQuestionsError("");
 
         try {
-            const questionsUrl = includeInactive
-                ? API_BASE_URL + "/api/questions"
-                : API_BASE_URL + "/api/questions?isActive=true";
+            const params = new URLSearchParams();
+
+            if (!includeInactive) {
+                params.set("isActive", "true");
+            }
+
+            if (categoryId) {
+                params.set("categoryId", categoryId);
+            }
+
+            if (sourceType !== "all") {
+                params.set("sourceType", sourceType);
+            }
+
+            const queryString = params.toString();
+            const questionsUrl =
+                API_BASE_URL +
+                "/api/questions" +
+                (queryString ? "?" + queryString : "");
 
             const response = await fetch(questionsUrl, {
                 headers: {
@@ -695,6 +717,40 @@ export default function AdminQuestionBankPage() {
         }
     };
 
+    const handleQuestionCategoryFilterChange = (categoryId: string) => {
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        setQuestionCategoryFilter(categoryId);
+
+        if (savedToken) {
+            void loadQuestions(
+                savedToken,
+                showInactiveQuestions,
+                categoryId,
+                questionSourceFilter
+            );
+        }
+    };
+
+    const handleQuestionSourceFilterChange = (
+        sourceType: QuestionSourceFilter
+    ) => {
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        setQuestionSourceFilter(sourceType);
+
+        if (savedToken) {
+            void loadQuestions(
+                savedToken,
+                showInactiveQuestions,
+                questionCategoryFilter,
+                sourceType
+            );
+        }
+    };
+
     const handleShowInactiveQuestionsChange = (checked: boolean) => {
         const savedToken =
             window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
@@ -702,7 +758,12 @@ export default function AdminQuestionBankPage() {
         setShowInactiveQuestions(checked);
 
         if (savedToken) {
-            void loadQuestions(savedToken, checked);
+            void loadQuestions(
+                savedToken,
+                checked,
+                questionCategoryFilter,
+                questionSourceFilter
+            );
         }
     };
 
@@ -1398,7 +1459,54 @@ export default function AdminQuestionBankPage() {
                             </p>
                         </div>
 
-                        <div className="flex flex-wrap gap-3">
+                        <div className="flex flex-wrap items-end gap-3">
+                            <label className="grid min-w-[210px] gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Category
+                                <select
+                                    value={questionCategoryFilter}
+                                    onChange={(event) =>
+                                        handleQuestionCategoryFilterChange(
+                                            event.target.value
+                                        )
+                                    }
+                                    disabled={isQuestionsLoading}
+                                    className="rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold normal-case tracking-normal text-slate-700 outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
+                                >
+                                    <option value="">All Categories</option>
+
+                                    {categories.map((category) => (
+                                        <option
+                                            key={category._id}
+                                            value={category._id}
+                                        >
+                                            {category.name || category.slug}
+                                            {category.isActive === false
+                                                ? " (Inactive)"
+                                                : ""}
+                                        </option>
+                                    ))}
+                                </select>
+                            </label>
+
+                            <label className="grid min-w-[160px] gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Source
+                                <select
+                                    value={questionSourceFilter}
+                                    onChange={(event) =>
+                                        handleQuestionSourceFilterChange(
+                                            event.target
+                                                .value as QuestionSourceFilter
+                                        )
+                                    }
+                                    disabled={isQuestionsLoading}
+                                    className="rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold normal-case tracking-normal text-slate-700 outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-400"
+                                >
+                                    <option value="all">All Sources</option>
+                                    <option value="original">Original</option>
+                                    <option value="pyq">PYQ</option>
+                                </select>
+                            </label>
+
                             <label className="flex w-fit items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700">
                                 <input
                                     type="checkbox"
@@ -1424,7 +1532,9 @@ export default function AdminQuestionBankPage() {
                                     if (savedToken) {
                                         void loadQuestions(
                                             savedToken,
-                                            showInactiveQuestions
+                                            showInactiveQuestions,
+                                            questionCategoryFilter,
+                                            questionSourceFilter
                                         );
                                         void loadCategories(savedToken);
                                         void loadQuestionGroups(savedToken);
@@ -1483,8 +1593,11 @@ export default function AdminQuestionBankPage() {
                         </div>
                     ) : questions.length === 0 ? (
                         <div className="mt-5 rounded-2xl bg-blue-50 p-5 text-sm text-blue-900 ring-1 ring-blue-100">
-                            No questions found yet. Use Add Question to create
-                            your first MCQ.
+                            {questionCategoryFilter ||
+                            questionSourceFilter !== "all" ||
+                            showInactiveQuestions
+                                ? "No questions match the current filters."
+                                : "No questions found yet. Use Add Question to create your first MCQ."}
                         </div>
                     ) : (
                         <div className="mt-5 grid gap-4">
