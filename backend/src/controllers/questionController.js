@@ -200,6 +200,8 @@ const createQuestion = async (req, res) => {
       createdBy: req.user._id,
     };
 
+    delete questionData.externalQuestionKey;
+
     sanitizeQuestionGroupFields(questionData);
 
     const contentError = validateQuestionContent(questionData);
@@ -581,6 +583,7 @@ const updateQuestion = async (req, res) => {
 
     delete updateData.tenantId;
     delete updateData.createdBy;
+    delete updateData.externalQuestionKey;
 
     sanitizeQuestionGroupFields(updateData);
 

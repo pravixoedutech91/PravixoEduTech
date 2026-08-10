@@ -36,6 +36,14 @@ const questionSchema = new mongoose.Schema(
       index: true,
     },
 
+    externalQuestionKey: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      minlength: 1,
+      immutable: true,
+    },
+
     categoryId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
@@ -192,6 +200,17 @@ const questionSchema = new mongoose.Schema(
     },
   },
   { timestamps: true }
+);
+
+questionSchema.index(
+  { tenantId: 1, externalQuestionKey: 1 },
+  {
+    unique: true,
+    name: "tenant_externalQuestionKey_unique",
+    partialFilterExpression: {
+      externalQuestionKey: { $type: "string" },
+    },
+  }
 );
 
 questionSchema.index({ tenantId: 1, isActive: 1 });
