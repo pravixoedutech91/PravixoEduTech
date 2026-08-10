@@ -324,6 +324,582 @@ const formatBulkImportFileSize = (bytes: number) => {
 
     return (bytes / (1024 * 1024)).toFixed(2) + " MB";
 };
+type BulkImportValidationSeverity = "error" | "warning";
+
+type BulkImportValidationIssue = {
+    severity: BulkImportValidationSeverity;
+    rowNumber: number | null;
+    externalQuestionKey: string;
+    field: string;
+    message: string;
+};
+
+type BulkImportValidationResult = {
+    errorCount: number;
+    warningCount: number;
+    validRowCount: number;
+    invalidRowCount: number;
+    issues: BulkImportValidationIssue[];
+    missingHeaders: string[];
+    duplicateHeaders: string[];
+};
+
+const BULK_IMPORT_REQUIRED_HEADERS = [
+    "externalQuestionKey",
+    "categoryExternalKey",
+    "questionGroupExternalKey",
+    "groupQuestionOrder",
+    "questionType",
+    "sourceType",
+    "subject",
+    "topic",
+    "subTopic",
+    "questionTextEn",
+    "questionTextHi",
+    "optionAEn",
+    "optionBEn",
+    "optionCEn",
+    "optionDEn",
+    "optionAHi",
+    "optionBHi",
+    "optionCHi",
+    "optionDHi",
+    "correctOptionId",
+    "explanationEn",
+    "explanationHi",
+    "marks",
+    "negativeMarks",
+    "difficulty",
+    "tagsCsv",
+    "pyqExamName",
+    "pyqYear",
+    "pyqShift",
+    "pyqPaperCode",
+    "isActive",
+    "contentStatus",
+    "answerVerifiedBy",
+    "languageVerifiedBy",
+] as const;
+
+const hasBulkImportText = (value: string) => value.trim().length > 0;
+
+const isNonNegativeBulkImportNumber = (value: string) => {
+    if (!hasBulkImportText(value)) {
+        return false;
+    }
+
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) && parsed >= 0;
+};
+
+const validateBulkImportCsv = (
+    headers: string[],
+    rows: string[][]
+): BulkImportValidationResult => {
+    const issues: BulkImportValidationIssue[] = [];
+    const invalidRowIndexes = new Set<number>();
+
+    const addHeaderError = (field: string, message: string) => {
+        issues.push({
+            severity: "error",
+            rowNumber: null,
+            externalQuestionKey: "",
+            field,
+            message,
+        });
+    };
+
+    const addRowIssue = (
+        severity: BulkImportValidationSeverity,
+        rowIndex: number,
+        externalQuestionKey: string,
+        field: string,
+        message: string
+    ) => {
+        issues.push({
+            severity,
+            rowNumber: rowIndex + 1,
+            externalQuestionKey,
+            field,
+            message,
+        });
+
+        if (severity === "error") {
+            invalidRowIndexes.add(rowIndex);
+        }
+    };
+
+    const missingHeaders = BULK_IMPORT_REQUIRED_HEADERS.filter(
+        (header) => !headers.includes(header)
+    );
+
+    missingHeaders.forEach((header) => {
+        addHeaderError(header, `Required CSV header "${header}" is missing.`);
+    });
+
+    const normalizedHeaderIndexes = new Map<string, number>();
+    const duplicateHeaders: string[] = [];
+
+    headers.forEach((header, index) => {
+        const normalizedHeader = header.trim().toLowerCase();
+        const existingIndex = normalizedHeaderIndexes.get(normalizedHeader);
+
+        if (existingIndex !== undefined) {
+            duplicateHeaders.push(header);
+            return;
+        }
+
+        normalizedHeaderIndexes.set(normalizedHeader, index);
+    });
+
+    duplicateHeaders.forEach((header) => {
+        addHeaderError(
+            header,
+            `CSV contains duplicate header "${header}".`
+        );
+    });
+
+    if (missingHeaders.length > 0 || duplicateHeaders.length > 0) {
+        return {
+            errorCount: issues.filter(
+                (issue) => issue.severity === "error"
+            ).length,
+            warningCount: 0,
+            validRowCount: 0,
+            invalidRowCount: rows.length,
+            issues,
+            missingHeaders: [...missingHeaders],
+            duplicateHeaders,
+        };
+    }
+
+    const seenExternalQuestionKeys = new Map<string, number>();
+
+    rows.forEach((row, rowIndex) => {
+        const externalQuestionKey = getBulkImportCsvValue(
+            headers,
+            row,
+            "externalQuestionKey"
+        ).trim();
+
+        if (row.length !== headers.length) {
+            addRowIssue(
+                "error",
+                rowIndex,
+                externalQuestionKey,
+                "row",
+                `Parsed row has ${row.length} columns but the header has ${headers.length}.`
+            );
+        }
+
+        if (!externalQuestionKey) {
+            addRowIssue(
+                "error",
+                rowIndex,
+                "",
+                "externalQuestionKey",
+                "External question key is required."
+            );
+        } else {
+            const normalizedExternalKey =
+                externalQuestionKey.toLowerCase();
+
+            const existingRowIndex =
+                seenExternalQuestionKeys.get(normalizedExternalKey);
+
+            if (existingRowIndex !== undefined) {
+                const firstExternalKey = getBulkImportCsvValue(
+                    headers,
+                    rows[existingRowIndex],
+                    "externalQuestionKey"
+                ).trim();
+
+                addRowIssue(
+                    "error",
+                    existingRowIndex,
+                    firstExternalKey,
+                    "externalQuestionKey",
+                    `External question key "${externalQuestionKey}" is duplicated.`
+                );
+
+                addRowIssue(
+                    "error",
+                    rowIndex,
+                    externalQuestionKey,
+                    "externalQuestionKey",
+                    `External question key "${externalQuestionKey}" is duplicated.`
+                );
+            } else {
+                seenExternalQuestionKeys.set(
+                    normalizedExternalKey,
+                    rowIndex
+                );
+            }
+        }
+
+        const categoryExternalKey = getBulkImportCsvValue(
+            headers,
+            row,
+            "categoryExternalKey"
+        ).trim();
+
+        if (!categoryExternalKey) {
+            addRowIssue(
+                "error",
+                rowIndex,
+                externalQuestionKey,
+                "categoryExternalKey",
+                "Category external key is required."
+            );
+        }
+
+        const questionType = getBulkImportCsvValue(
+            headers,
+            row,
+            "questionType"
+        )
+            .trim()
+            .toLowerCase();
+
+        if (questionType !== "mcq") {
+            addRowIssue(
+                "error",
+                rowIndex,
+                externalQuestionKey,
+                "questionType",
+                'Question type must be "mcq".'
+            );
+        }
+
+        const sourceType = getBulkImportCsvValue(
+            headers,
+            row,
+            "sourceType"
+        )
+            .trim()
+            .toLowerCase();
+
+        if (!["original", "pyq"].includes(sourceType)) {
+            addRowIssue(
+                "error",
+                rowIndex,
+                externalQuestionKey,
+                "sourceType",
+                'Source type must be "original" or "pyq".'
+            );
+        }
+
+        const questionTextEn = getBulkImportCsvValue(
+            headers,
+            row,
+            "questionTextEn"
+        );
+
+        const questionTextHi = getBulkImportCsvValue(
+            headers,
+            row,
+            "questionTextHi"
+        );
+
+        if (!hasBulkImportText(questionTextEn)) {
+            addRowIssue(
+                "error",
+                rowIndex,
+                externalQuestionKey,
+                "questionTextEn",
+                "English question text is required for this bilingual import contract."
+            );
+        }
+
+        if (!hasBulkImportText(questionTextHi)) {
+            addRowIssue(
+                "error",
+                rowIndex,
+                externalQuestionKey,
+                "questionTextHi",
+                "Hindi question text is required for this bilingual import contract."
+            );
+        }
+
+        const bilingualOptionFields = [
+            "optionAEn",
+            "optionBEn",
+            "optionCEn",
+            "optionDEn",
+            "optionAHi",
+            "optionBHi",
+            "optionCHi",
+            "optionDHi",
+        ];
+
+        bilingualOptionFields.forEach((field) => {
+            const value = getBulkImportCsvValue(
+                headers,
+                row,
+                field
+            );
+
+            if (!hasBulkImportText(value)) {
+                addRowIssue(
+                    "error",
+                    rowIndex,
+                    externalQuestionKey,
+                    field,
+                    `${field} is required for the four-option bilingual MCQ contract.`
+                );
+            }
+        });
+
+        const correctOptionId = getBulkImportCsvValue(
+            headers,
+            row,
+            "correctOptionId"
+        )
+            .trim()
+            .toUpperCase();
+
+        if (!["A", "B", "C", "D"].includes(correctOptionId)) {
+            addRowIssue(
+                "error",
+                rowIndex,
+                externalQuestionKey,
+                "correctOptionId",
+                "Correct option must be A, B, C or D."
+            );
+        }
+
+        const marks = getBulkImportCsvValue(
+            headers,
+            row,
+            "marks"
+        );
+
+        if (!isNonNegativeBulkImportNumber(marks)) {
+            addRowIssue(
+                "error",
+                rowIndex,
+                externalQuestionKey,
+                "marks",
+                "Marks must be a valid non-negative number."
+            );
+        }
+
+        const negativeMarks = getBulkImportCsvValue(
+            headers,
+            row,
+            "negativeMarks"
+        );
+
+        if (!isNonNegativeBulkImportNumber(negativeMarks)) {
+            addRowIssue(
+                "error",
+                rowIndex,
+                externalQuestionKey,
+                "negativeMarks",
+                "Negative marks must be a valid non-negative number."
+            );
+        }
+
+        const difficulty = getBulkImportCsvValue(
+            headers,
+            row,
+            "difficulty"
+        )
+            .trim()
+            .toLowerCase();
+
+        if (!["easy", "medium", "hard"].includes(difficulty)) {
+            addRowIssue(
+                "error",
+                rowIndex,
+                externalQuestionKey,
+                "difficulty",
+                'Difficulty must be "easy", "medium" or "hard".'
+            );
+        }
+
+        const isActive = getBulkImportCsvValue(
+            headers,
+            row,
+            "isActive"
+        )
+            .trim()
+            .toLowerCase();
+
+        if (!["true", "false"].includes(isActive)) {
+            addRowIssue(
+                "error",
+                rowIndex,
+                externalQuestionKey,
+                "isActive",
+                'isActive must be "true" or "false".'
+            );
+        }
+
+        const questionGroupExternalKey = getBulkImportCsvValue(
+            headers,
+            row,
+            "questionGroupExternalKey"
+        ).trim();
+
+        const groupQuestionOrder = getBulkImportCsvValue(
+            headers,
+            row,
+            "groupQuestionOrder"
+        ).trim();
+
+        if (questionGroupExternalKey) {
+            const parsedGroupQuestionOrder = Number(groupQuestionOrder);
+
+            if (
+                !Number.isInteger(parsedGroupQuestionOrder) ||
+                parsedGroupQuestionOrder < 1
+            ) {
+                addRowIssue(
+                    "error",
+                    rowIndex,
+                    externalQuestionKey,
+                    "groupQuestionOrder",
+                    "Grouped questions require a positive integer groupQuestionOrder."
+                );
+            }
+        } else if (groupQuestionOrder) {
+            addRowIssue(
+                "error",
+                rowIndex,
+                externalQuestionKey,
+                "groupQuestionOrder",
+                "groupQuestionOrder cannot be set without questionGroupExternalKey."
+            );
+        }
+
+        if (sourceType === "pyq") {
+            const requiredPyqFields = [
+                "pyqExamName",
+                "pyqYear",
+                "pyqShift",
+                "pyqPaperCode",
+            ];
+
+            const missingPyqFields = requiredPyqFields.filter(
+                (field) =>
+                    !hasBulkImportText(
+                        getBulkImportCsvValue(headers, row, field)
+                    )
+            );
+
+            if (missingPyqFields.length > 0) {
+                addRowIssue(
+                    "error",
+                    rowIndex,
+                    externalQuestionKey,
+                    "pyqDetails",
+                    `PYQ provenance is incomplete: ${missingPyqFields.join(", ")}.`
+                );
+            }
+        }
+
+        const contentStatus = getBulkImportCsvValue(
+            headers,
+            row,
+            "contentStatus"
+        )
+            .trim()
+            .toLowerCase();
+
+        const answerVerifiedBy = getBulkImportCsvValue(
+            headers,
+            row,
+            "answerVerifiedBy"
+        )
+            .trim()
+            .toLowerCase();
+
+        const languageVerifiedBy = getBulkImportCsvValue(
+            headers,
+            row,
+            "languageVerifiedBy"
+        )
+            .trim()
+            .toLowerCase();
+
+        const finalHumanReviewPending =
+            contentStatus === "editorial_review_required" ||
+            answerVerifiedBy.includes("final human") ||
+            answerVerifiedBy.includes("sign-off required") ||
+            languageVerifiedBy.includes("final human") ||
+            languageVerifiedBy.includes("sign-off required");
+
+        if (finalHumanReviewPending) {
+            addRowIssue(
+                "warning",
+                rowIndex,
+                externalQuestionKey,
+                "contentStatus",
+                "Final human editorial/answer/bilingual sign-off is still pending."
+            );
+        } else if (!contentStatus) {
+            addRowIssue(
+                "warning",
+                rowIndex,
+                externalQuestionKey,
+                "contentStatus",
+                "Content status is blank; editorial readiness is unknown."
+            );
+        }
+
+        const subject = getBulkImportCsvValue(
+            headers,
+            row,
+            "subject"
+        );
+
+        const topic = getBulkImportCsvValue(
+            headers,
+            row,
+            "topic"
+        );
+
+        if (!hasBulkImportText(subject)) {
+            addRowIssue(
+                "warning",
+                rowIndex,
+                externalQuestionKey,
+                "subject",
+                "Subject is blank."
+            );
+        }
+
+        if (!hasBulkImportText(topic)) {
+            addRowIssue(
+                "warning",
+                rowIndex,
+                externalQuestionKey,
+                "topic",
+                "Topic is blank."
+            );
+        }
+    });
+
+    const errorCount = issues.filter(
+        (issue) => issue.severity === "error"
+    ).length;
+
+    const warningCount = issues.filter(
+        (issue) => issue.severity === "warning"
+    ).length;
+
+    return {
+        errorCount,
+        warningCount,
+        validRowCount: rows.length - invalidRowIndexes.size,
+        invalidRowCount: invalidRowIndexes.size,
+        issues,
+        missingHeaders: [],
+        duplicateHeaders: [],
+    };
+};
 export default function AdminQuestionBankPage() {
     const [isReady, setIsReady] = useState(false);
     const [isAllowed, setIsAllowed] = useState(false);
@@ -348,6 +924,10 @@ export default function AdminQuestionBankPage() {
     const [bulkImportParseError, setBulkImportParseError] = useState("");
     const [isBulkImportParsing, setIsBulkImportParsing] = useState(false);
     const [showBulkImportPreview, setShowBulkImportPreview] = useState(false);
+    const [
+        bulkImportValidation,
+        setBulkImportValidation,
+    ] = useState<BulkImportValidationResult | null>(null);
     const [disablingQuestionId, setDisablingQuestionId] = useState("");
     const [questionsError, setQuestionsError] = useState("");
     const [categoriesError, setCategoriesError] = useState("");
@@ -856,6 +1436,7 @@ export default function AdminQuestionBankPage() {
         setBulkImportRows([]);
         setBulkImportParseError("");
         setShowBulkImportPreview(false);
+        setBulkImportValidation(null);
     };
 
     const handleBulkImportFileChange = async (file: File | null) => {
@@ -921,6 +1502,23 @@ export default function AdminQuestionBankPage() {
         } finally {
             setIsBulkImportParsing(false);
         }
+    };
+    const handleValidateBulkImportCsv = () => {
+        if (
+            bulkImportRows.length === 0 ||
+            bulkImportHeaders.length === 0 ||
+            bulkImportParseError
+        ) {
+            setBulkImportValidation(null);
+            return;
+        }
+
+        setBulkImportValidation(
+            validateBulkImportCsv(
+                bulkImportHeaders,
+                bulkImportRows
+            )
+        );
     };
     const handleQuestionCategoryFilterChange = (categoryId: string) => {
         const savedToken =
@@ -1648,7 +2246,7 @@ export default function AdminQuestionBankPage() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
-                                PCRT-B1B
+                                PCRT-B1C
                             </p>
 
                             <h2 className="mt-2 text-xl font-bold">
@@ -1656,14 +2254,14 @@ export default function AdminQuestionBankPage() {
                             </h2>
 
                             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-                                Select and parse a CSV locally in your browser before
-                                validation or import. No question data is sent to the
-                                backend in this step.
+                                Select, parse and validate a CSV locally in your browser
+                                before any controlled backend dry run. No question data
+                                is sent to the backend in this step.
                             </p>
                         </div>
 
                         <span className="w-fit rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
-                            Local preview only
+                            Local validation only
                         </span>
                     </div>
 
@@ -1797,12 +2395,123 @@ export default function AdminQuestionBankPage() {
                             Preview Parsed Rows
                         </button>
 
+                        <button
+                            type="button"
+                            onClick={handleValidateBulkImportCsv}
+                            disabled={
+                                isBulkImportParsing ||
+                                bulkImportRows.length === 0 ||
+                                Boolean(bulkImportParseError)
+                            }
+                            className="w-fit rounded-2xl border border-blue-200 bg-blue-50 px-5 py-3 text-sm font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                        >
+                            Validate CSV
+                        </button>
+
                         <p className="text-xs leading-5 text-slate-500">
-                            B1B performs no schema validation, API request or database
-                            write.
+                            B1C validates locally only — no API request or database
+                            write is performed.
                         </p>
                     </div>
 
+                    {bulkImportValidation ? (
+                        <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                    <p className="text-sm font-bold text-slate-950">
+                                        Validation Summary
+                                    </p>
+
+                                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                                        Structural checks run only against the locally
+                                        parsed CSV. Category/group resolution is not
+                                        performed yet.
+                                    </p>
+                                </div>
+
+                                <span
+                                    className={
+                                        "w-fit rounded-full px-3 py-1.5 text-xs font-semibold ring-1 " +
+                                        (bulkImportValidation.errorCount > 0
+                                            ? "bg-red-50 text-red-700 ring-red-100"
+                                            : bulkImportValidation.warningCount > 0
+                                              ? "bg-amber-50 text-amber-700 ring-amber-100"
+                                              : "bg-emerald-50 text-emerald-700 ring-emerald-100")
+                                    }
+                                >
+                                    {bulkImportValidation.errorCount > 0
+                                        ? "Blocked by errors"
+                                        : bulkImportValidation.warningCount > 0
+                                          ? "Valid with warnings"
+                                          : "Validation passed"}
+                                </span>
+                            </div>
+
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Errors
+                                    </p>
+                                    <p className="mt-1 text-2xl font-bold text-red-700">
+                                        {bulkImportValidation.errorCount}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Warnings
+                                    </p>
+                                    <p className="mt-1 text-2xl font-bold text-amber-700">
+                                        {bulkImportValidation.warningCount}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Structurally Valid Rows
+                                    </p>
+                                    <p className="mt-1 text-2xl font-bold text-emerald-700">
+                                        {bulkImportValidation.validRowCount}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Blocked Rows
+                                    </p>
+                                    <p className="mt-1 text-2xl font-bold text-slate-950">
+                                        {bulkImportValidation.invalidRowCount}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {bulkImportValidation.issues.length > 0 ? (
+                                <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        First Validation Message
+                                    </p>
+
+                                    <p className="mt-2 text-sm font-semibold text-slate-800">
+                                        {bulkImportValidation.issues[0].rowNumber
+                                            ? `Row ${bulkImportValidation.issues[0].rowNumber}: `
+                                            : ""}
+                                        {bulkImportValidation.issues[0].message}
+                                    </p>
+
+                                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                                        Detailed row-by-row validation diagnostics will
+                                        be added after this summary checkpoint is
+                                        verified.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-100">
+                                    No structural errors or editorial warnings were
+                                    detected.
+                                </div>
+                            )}
+                        </div>
+                    ) : null}
                     {showBulkImportPreview &&
                     bulkImportRows.length > 0 &&
                     !bulkImportParseError ? (
