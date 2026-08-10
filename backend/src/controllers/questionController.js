@@ -266,6 +266,235 @@ const createQuestion = async (req, res) => {
   }
 };
 
+const dryRunQuestionBulkImport = async (req, res) => {
+  try {
+    const tenantId = getRequestTenantId(req);
+
+    if (!hasText(String(tenantId || ""))) {
+      return res.status(400).json({
+        success: false,
+        message: "Tenant is required for bulk import dry run",
+      });
+    }
+
+    const rows = req.body?.rows;
+
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({
+        success: false,
+        message: "rows must be an array",
+      });
+    }
+
+    if (rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one row is required",
+      });
+    }
+
+    if (rows.length > 500) {
+      return res.status(400).json({
+        success: false,
+        message: "Bulk import dry run supports at most 500 rows per request",
+      });
+    }
+
+    const normalizedRows = rows.map((row, index) => {
+      const rowData =
+        row &&
+        typeof row === "object" &&
+        !Array.isArray(row)
+          ? row
+          : {};
+
+      const externalQuestionKey =
+        typeof rowData.externalQuestionKey === "string"
+          ? rowData.externalQuestionKey.trim()
+          : "";
+
+      const categoryExternalKey =
+        typeof rowData.categoryExternalKey === "string"
+          ? rowData.categoryExternalKey.trim().toLowerCase()
+          : "";
+
+      const issues = [];
+
+      if (
+        !row ||
+        typeof row !== "object" ||
+        Array.isArray(row)
+      ) {
+        issues.push({
+          field: "row",
+          message: "Each dry-run row must be an object",
+        });
+      }
+
+      if (!externalQuestionKey) {
+        issues.push({
+          field: "externalQuestionKey",
+          message: "External question key is required",
+        });
+      }
+
+      if (!categoryExternalKey) {
+        issues.push({
+          field: "categoryExternalKey",
+          message: "Category external key is required",
+        });
+      }
+
+      return {
+        rowNumber: index + 1,
+        externalQuestionKey,
+        categoryExternalKey,
+        issues,
+      };
+    });
+
+    const externalKeyRows = new Map();
+
+    normalizedRows.forEach((row, index) => {
+      if (!row.externalQuestionKey) {
+        return;
+      }
+
+      const normalizedExternalKey =
+        row.externalQuestionKey.toLowerCase();
+
+      const indexes =
+        externalKeyRows.get(normalizedExternalKey) || [];
+
+      indexes.push(index);
+
+      externalKeyRows.set(
+        normalizedExternalKey,
+        indexes
+      );
+    });
+
+    externalKeyRows.forEach((indexes) => {
+      if (indexes.length < 2) {
+        return;
+      }
+
+      indexes.forEach((index) => {
+        normalizedRows[index].issues.push({
+          field: "externalQuestionKey",
+          message:
+            "External question key is duplicated in this dry-run request",
+        });
+      });
+    });
+
+    const categoryExternalKeys = [
+      ...new Set(
+        normalizedRows
+          .map((row) => row.categoryExternalKey)
+          .filter(Boolean)
+      ),
+    ];
+
+    const categories =
+      categoryExternalKeys.length > 0
+        ? await Category.find({
+            tenantId,
+            slug: {
+              $in: categoryExternalKeys,
+            },
+          })
+            .select("_id name slug isActive")
+            .lean()
+        : [];
+
+    const categoryBySlug = new Map(
+      categories.map((category) => [
+        category.slug,
+        category,
+      ])
+    );
+
+    const data = normalizedRows.map((row) => {
+      const issues = [...row.issues];
+
+      const category = row.categoryExternalKey
+        ? categoryBySlug.get(
+            row.categoryExternalKey
+          ) || null
+        : null;
+
+      if (
+        row.categoryExternalKey &&
+        !category
+      ) {
+        issues.push({
+          field: "categoryExternalKey",
+          message:
+            "Category external key could not be resolved for the authorized tenant",
+        });
+      }
+
+      return {
+        rowNumber: row.rowNumber,
+        externalQuestionKey:
+          row.externalQuestionKey,
+        categoryExternalKey:
+          row.categoryExternalKey,
+        status:
+          issues.length > 0
+            ? "blocked"
+            : "resolved",
+        category: category
+          ? {
+              _id: String(category._id),
+              name: category.name,
+              slug: category.slug,
+              isActive: category.isActive,
+            }
+          : null,
+        issues,
+      };
+    });
+
+    const resolvedRows = data.filter(
+      (row) => row.status === "resolved"
+    ).length;
+
+    const blockedRows =
+      data.length - resolvedRows;
+
+    res.status(200).json({
+      success: true,
+      dryRun: true,
+      writesPerformed: 0,
+      targetTenantId: tenantId,
+      summary: {
+        rowsReceived: data.length,
+        resolvedRows,
+        blockedRows,
+        uniqueCategoryKeys:
+          categoryExternalKeys.length,
+        resolvedCategoryKeys:
+          categories.length,
+        unresolvedCategoryKeys:
+          categoryExternalKeys.length -
+          categories.length,
+      },
+      data,
+    });
+  } catch (error) {
+    logRuntimeError(
+      "questionController bulk import dry-run error:",
+      error
+    );
+
+    res.status(500).json({
+      success: false,
+      message: getInternalErrorMessage(error),
+    });
+  }
+};
 // Get All Questions
 const getAllQuestions = async (req, res) => {
   try {
@@ -476,6 +705,7 @@ const disableQuestion = async (req, res) => {
 
 module.exports = {
   createQuestion,
+  dryRunQuestionBulkImport,
   getAllQuestions,
   updateQuestion,
   disableQuestion,
