@@ -2487,22 +2487,92 @@ export default function AdminQuestionBankPage() {
 
                             {bulkImportValidation.issues.length > 0 ? (
                                 <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                        First Validation Message
-                                    </p>
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                        <div>
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                Validation Diagnostics
+                                            </p>
 
-                                    <p className="mt-2 text-sm font-semibold text-slate-800">
-                                        {bulkImportValidation.issues[0].rowNumber
-                                            ? `Row ${bulkImportValidation.issues[0].rowNumber}: `
-                                            : ""}
-                                        {bulkImportValidation.issues[0].message}
-                                    </p>
+                                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                                                Showing up to 25 local validation issues.
+                                                Errors are shown before warnings.
+                                            </p>
+                                        </div>
 
-                                    <p className="mt-2 text-xs leading-5 text-slate-500">
-                                        Detailed row-by-row validation diagnostics will
-                                        be added after this summary checkpoint is
-                                        verified.
-                                    </p>
+                                        <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                                            {Math.min(
+                                                25,
+                                                bulkImportValidation.issues.length
+                                            )}{" "}
+                                            of {bulkImportValidation.issues.length}
+                                        </span>
+                                    </div>
+
+                                    <div className="mt-4 max-h-[32rem] overflow-auto rounded-xl ring-1 ring-slate-200">
+                                        {[...bulkImportValidation.issues]
+                                            .sort((left, right) => {
+                                                if (left.severity === right.severity) {
+                                                    return (
+                                                        (left.rowNumber ?? 0) -
+                                                        (right.rowNumber ?? 0)
+                                                    );
+                                                }
+
+                                                return left.severity === "error" ? -1 : 1;
+                                            })
+                                            .slice(0, 25)
+                                            .map((issue, index) => (
+                                                <div
+                                                    key={`${issue.severity}-${issue.rowNumber ?? "csv"}-${issue.field}-${index}`}
+                                                    className="border-b border-slate-100 p-4 last:border-b-0"
+                                                >
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <span
+                                                            className={
+                                                                "rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide " +
+                                                                (issue.severity === "error"
+                                                                    ? "bg-red-50 text-red-700"
+                                                                    : "bg-amber-50 text-amber-700")
+                                                            }
+                                                        >
+                                                            {issue.severity}
+                                                        </span>
+
+                                                        <span className="text-xs font-semibold text-slate-700">
+                                                            {issue.rowNumber
+                                                                ? `Row ${issue.rowNumber}`
+                                                                : "CSV"}
+                                                        </span>
+
+                                                        <span className="text-xs text-slate-400">
+                                                            •
+                                                        </span>
+
+                                                        <span className="text-xs font-medium text-slate-600">
+                                                            Field: {issue.field}
+                                                        </span>
+                                                    </div>
+
+                                                    {issue.externalQuestionKey ? (
+                                                        <p className="mt-2 break-all font-mono text-xs text-blue-700">
+                                                            {issue.externalQuestionKey}
+                                                        </p>
+                                                    ) : null}
+
+                                                    <p className="mt-2 text-sm font-semibold leading-6 text-slate-800">
+                                                        {issue.message}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                    </div>
+
+                                    {bulkImportValidation.issues.length > 25 ? (
+                                        <p className="mt-3 text-xs leading-5 text-slate-500">
+                                            {bulkImportValidation.issues.length - 25}{" "}
+                                            additional issue(s) are not shown in this
+                                            compact preview.
+                                        </p>
+                                    ) : null}
                                 </div>
                             ) : (
                                 <div className="mt-4 rounded-2xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-100">
