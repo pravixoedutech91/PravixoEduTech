@@ -2673,6 +2673,197 @@ export default function AdminQuestionBankPage() {
                                     </p>
                                 </div>
                             </div>
+
+                            {(bulkImportDryRun.data || []).length > 0 ? (
+                                <div className="mt-5 rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                        <div>
+                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                Resolver Diagnostics
+                                            </p>
+
+                                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                                                Showing up to 25 backend resolution rows.
+                                                Blocked rows are shown first.
+                                            </p>
+                                        </div>
+
+                                        <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                                            {Math.min(
+                                                25,
+                                                (bulkImportDryRun.data || []).length
+                                            )}{" "}
+                                            of {(bulkImportDryRun.data || []).length}
+                                        </span>
+                                    </div>
+
+                                    <div className="mt-4 overflow-x-auto">
+                                        <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                                            <thead className="bg-slate-50">
+                                                <tr>
+                                                    <th className="px-4 py-3 font-semibold text-slate-700">
+                                                        Row
+                                                    </th>
+                                                    <th className="px-4 py-3 font-semibold text-slate-700">
+                                                        External Key
+                                                    </th>
+                                                    <th className="px-4 py-3 font-semibold text-slate-700">
+                                                        Status
+                                                    </th>
+                                                    <th className="px-4 py-3 font-semibold text-slate-700">
+                                                        Category External Key
+                                                    </th>
+                                                    <th className="min-w-[320px] px-4 py-3 font-semibold text-slate-700">
+                                                        Resolution
+                                                    </th>
+                                                </tr>
+                                            </thead>
+
+                                            <tbody className="divide-y divide-slate-100 bg-white">
+                                                {[...(bulkImportDryRun.data || [])]
+                                                    .sort((left, right) => {
+                                                        if (
+                                                            left.status !==
+                                                            right.status
+                                                        ) {
+                                                            return left.status ===
+                                                                "blocked"
+                                                                ? -1
+                                                                : 1;
+                                                        }
+
+                                                        return (
+                                                            left.rowNumber -
+                                                            right.rowNumber
+                                                        );
+                                                    })
+                                                    .slice(0, 25)
+                                                    .map((row) => (
+                                                        <tr
+                                                            key={
+                                                                row.rowNumber +
+                                                                "-" +
+                                                                row.externalQuestionKey
+                                                            }
+                                                            className="align-top"
+                                                        >
+                                                            <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-700">
+                                                                {row.rowNumber}
+                                                            </td>
+
+                                                            <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-700">
+                                                                {row.externalQuestionKey ||
+                                                                    "-"}
+                                                            </td>
+
+                                                            <td className="whitespace-nowrap px-4 py-3">
+                                                                <span
+                                                                    className={
+                                                                        "inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 " +
+                                                                        (row.status ===
+                                                                        "blocked"
+                                                                            ? "bg-red-50 text-red-700 ring-red-100"
+                                                                            : "bg-emerald-50 text-emerald-700 ring-emerald-100")
+                                                                    }
+                                                                >
+                                                                    {row.status ===
+                                                                    "blocked"
+                                                                        ? "Blocked"
+                                                                        : "Resolved"}
+                                                                </span>
+                                                            </td>
+
+                                                            <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-700">
+                                                                {row.categoryExternalKey ||
+                                                                    "-"}
+                                                            </td>
+
+                                                            <td className="px-4 py-3 text-slate-700">
+                                                                {row.category ? (
+                                                                    <div className="grid gap-1">
+                                                                        <span className="font-semibold text-slate-900">
+                                                                            {row
+                                                                                .category
+                                                                                .name ||
+                                                                                "-"}
+                                                                        </span>
+
+                                                                        <span className="font-mono text-xs text-slate-600">
+                                                                            slug:{" "}
+                                                                            {
+                                                                                row
+                                                                                    .category
+                                                                                    .slug
+                                                                            }
+                                                                        </span>
+
+                                                                        <span className="font-mono text-xs text-slate-600">
+                                                                            id:{" "}
+                                                                            {
+                                                                                row
+                                                                                    .category
+                                                                                    ._id
+                                                                            }
+                                                                        </span>
+
+                                                                        <span className="text-xs text-slate-500">
+                                                                            {row
+                                                                                .category
+                                                                                .isActive ===
+                                                                            false
+                                                                                ? "Inactive category"
+                                                                                : "Active category"}
+                                                                        </span>
+                                                                    </div>
+                                                                ) : row.issues &&
+                                                                  row.issues.length >
+                                                                      0 ? (
+                                                                    <div className="grid gap-1">
+                                                                        {row.issues.map(
+                                                                            (
+                                                                                issue,
+                                                                                issueIndex
+                                                                            ) => (
+                                                                                <p
+                                                                                    key={
+                                                                                        row.rowNumber +
+                                                                                        "-issue-" +
+                                                                                        issueIndex
+                                                                                    }
+                                                                                    className="text-xs leading-5 text-red-700"
+                                                                                >
+                                                                                    {issue.field
+                                                                                        ? issue.field +
+                                                                                          ": "
+                                                                                        : ""}
+                                                                                    {issue.message ||
+                                                                                        "Resolver issue"}
+                                                                                </p>
+                                                                            )
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    <span className="text-xs text-slate-500">
+                                                                        No resolution details.
+                                                                    </span>
+                                                                )}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {(bulkImportDryRun.data || []).length > 25 ? (
+                                        <p className="mt-3 text-xs leading-5 text-slate-500">
+                                            {(bulkImportDryRun.data || []).length -
+                                                25}{" "}
+                                            additional backend resolution rows are
+                                            not shown.
+                                        </p>
+                                    ) : null}
+                                </div>
+                            ) : null}
                         </div>
                     ) : null}
                     {bulkImportValidation ? (
