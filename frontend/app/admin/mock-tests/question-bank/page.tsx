@@ -344,6 +344,46 @@ type BulkImportValidationResult = {
     duplicateHeaders: string[];
 };
 
+type BulkImportDryRunSummary = {
+    rowsReceived: number;
+    resolvedRows: number;
+    blockedRows: number;
+    uniqueCategoryKeys: number;
+    resolvedCategoryKeys: number;
+    unresolvedCategoryKeys: number;
+};
+
+type BulkImportDryRunIssue = {
+    field?: string;
+    message?: string;
+};
+
+type BulkImportDryRunCategory = {
+    _id: string;
+    name?: string;
+    slug: string;
+    isActive?: boolean;
+};
+
+type BulkImportDryRunRow = {
+    rowNumber: number;
+    externalQuestionKey: string;
+    categoryExternalKey: string;
+    status: "resolved" | "blocked";
+    category: BulkImportDryRunCategory | null;
+    issues?: BulkImportDryRunIssue[];
+};
+
+type BulkImportDryRunResponse = {
+    success: boolean;
+    message?: string;
+    dryRun?: boolean;
+    writesPerformed?: number;
+    targetTenantId?: string;
+    summary?: BulkImportDryRunSummary;
+    data?: BulkImportDryRunRow[];
+};
+
 const BULK_IMPORT_REQUIRED_HEADERS = [
     "externalQuestionKey",
     "categoryExternalKey",
@@ -928,6 +968,10 @@ export default function AdminQuestionBankPage() {
         bulkImportValidation,
         setBulkImportValidation,
     ] = useState<BulkImportValidationResult | null>(null);
+    const [bulkImportDryRun, setBulkImportDryRun] =
+        useState<BulkImportDryRunResponse | null>(null);
+    const [bulkImportDryRunError, setBulkImportDryRunError] = useState("");
+    const [isBulkImportDryRunning, setIsBulkImportDryRunning] = useState(false);
     const [disablingQuestionId, setDisablingQuestionId] = useState("");
     const [questionsError, setQuestionsError] = useState("");
     const [categoriesError, setCategoriesError] = useState("");
@@ -1432,6 +1476,9 @@ export default function AdminQuestionBankPage() {
     };
 
     const resetBulkImportLocalPreview = () => {
+        setBulkImportDryRun(null);
+        setBulkImportDryRunError("");
+        setIsBulkImportDryRunning(false);
         setBulkImportHeaders([]);
         setBulkImportRows([]);
         setBulkImportParseError("");
@@ -1504,6 +1551,8 @@ export default function AdminQuestionBankPage() {
         }
     };
     const handleValidateBulkImportCsv = () => {
+        setBulkImportDryRun(null);
+        setBulkImportDryRunError("");
         if (
             bulkImportRows.length === 0 ||
             bulkImportHeaders.length === 0 ||
@@ -1519,6 +1568,102 @@ export default function AdminQuestionBankPage() {
                 bulkImportRows
             )
         );
+    };
+    const handleBulkImportBackendDryRun = async () => {
+        setBulkImportDryRun(null);
+        setBulkImportDryRunError("");
+
+        if (
+            !bulkImportValidation ||
+            bulkImportValidation.errorCount > 0 ||
+            bulkImportRows.length === 0 ||
+            bulkImportHeaders.length === 0 ||
+            bulkImportParseError
+        ) {
+            setBulkImportDryRunError(
+                "Run local validation successfully before the backend dry run."
+            );
+            return;
+        }
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (!savedToken) {
+            clearAdminSessionStorage();
+            setIsAllowed(false);
+            setMessage("Admin session not found. Please login again.");
+            return;
+        }
+
+        const rows = bulkImportRows.map((row) => ({
+            externalQuestionKey: getBulkImportCsvValue(
+                bulkImportHeaders,
+                row,
+                "externalQuestionKey"
+            ).trim(),
+            categoryExternalKey: getBulkImportCsvValue(
+                bulkImportHeaders,
+                row,
+                "categoryExternalKey"
+            ).trim(),
+        }));
+
+        setIsBulkImportDryRunning(true);
+
+        try {
+            const response = await fetch(
+                API_BASE_URL + "/api/questions/bulk-import/dry-run",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: "Bearer " + savedToken,
+                    },
+                    body: JSON.stringify({ rows }),
+                }
+            );
+
+            const result =
+                (await response.json()) as BulkImportDryRunResponse;
+
+            if (response.status === 401 || response.status === 403) {
+                clearAdminSessionStorage();
+                setIsAllowed(false);
+                setMessage(
+                    result.message ||
+                        "Your admin session has expired. Please login again."
+                );
+                return;
+            }
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message || "Backend dry run could not be completed."
+                );
+            }
+
+            if (
+                result.dryRun !== true ||
+                result.writesPerformed !== 0 ||
+                !result.summary ||
+                !Array.isArray(result.data)
+            ) {
+                throw new Error(
+                    "Unsafe or malformed backend dry-run response was rejected."
+                );
+            }
+
+            setBulkImportDryRun(result);
+        } catch (error) {
+            setBulkImportDryRunError(
+                error instanceof Error
+                    ? error.message
+                    : "Backend dry run could not be completed."
+            );
+        } finally {
+            setIsBulkImportDryRunning(false);
+        }
     };
     const handleQuestionCategoryFilterChange = (categoryId: string) => {
         const savedToken =
@@ -2246,7 +2391,7 @@ export default function AdminQuestionBankPage() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
-                                PCRT-B1C
+                                PCRT-B1D
                             </p>
 
                             <h2 className="mt-2 text-xl font-bold">
@@ -2261,7 +2406,7 @@ export default function AdminQuestionBankPage() {
                         </div>
 
                         <span className="w-fit rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
-                            Local validation only
+                            Local validation + backend dry run
                         </span>
                     </div>
 
@@ -2409,11 +2554,127 @@ export default function AdminQuestionBankPage() {
                         </button>
 
                         <p className="text-xs leading-5 text-slate-500">
-                            B1C validates locally only — no API request or database
-                            write is performed.
+                            Local validation runs first — backend dry run sends only external keys and must perform zero
+                            writes.
                         </p>
                     </div>
 
+                    {bulkImportValidation ? (
+                        <div className="mt-5 rounded-2xl border border-blue-100 bg-blue-50/60 p-4">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="text-sm font-bold text-slate-950">
+                                        Backend Resolver Dry Run
+                                    </p>
+
+                                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                                        Sends only the external question key and category
+                                        external key. This step must perform zero Question
+                                        writes.
+                                    </p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        void handleBulkImportBackendDryRun()
+                                    }
+                                    disabled={
+                                        bulkImportValidation.errorCount > 0 ||
+                                        isBulkImportDryRunning
+                                    }
+                                    className="w-fit rounded-2xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                                >
+                                    {isBulkImportDryRunning
+                                        ? "Resolving..."
+                                        : "Run Backend Dry Run"}
+                                </button>
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {bulkImportDryRunError ? (
+                        <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+                            {bulkImportDryRunError}
+                        </div>
+                    ) : null}
+
+                    {bulkImportDryRun?.summary ? (
+                        <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div>
+                                    <p className="text-sm font-bold text-slate-950">
+                                        Backend Resolution Summary
+                                    </p>
+
+                                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                                        Authorized tenant:{" "}
+                                        {bulkImportDryRun.targetTenantId || "-"}
+                                    </p>
+                                </div>
+
+                                <span className="w-fit rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
+                                    Zero writes confirmed
+                                </span>
+                            </div>
+
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+                                <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Rows
+                                    </p>
+                                    <p className="mt-1 text-2xl font-bold text-slate-950">
+                                        {bulkImportDryRun.summary.rowsReceived}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Resolved
+                                    </p>
+                                    <p className="mt-1 text-2xl font-bold text-emerald-700">
+                                        {bulkImportDryRun.summary.resolvedRows}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Blocked
+                                    </p>
+                                    <p className="mt-1 text-2xl font-bold text-red-700">
+                                        {bulkImportDryRun.summary.blockedRows}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Category Keys
+                                    </p>
+                                    <p className="mt-1 text-2xl font-bold text-slate-950">
+                                        {bulkImportDryRun.summary.uniqueCategoryKeys}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Categories Resolved
+                                    </p>
+                                    <p className="mt-1 text-2xl font-bold text-emerald-700">
+                                        {bulkImportDryRun.summary.resolvedCategoryKeys}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl bg-white p-4 ring-1 ring-slate-200">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Unresolved
+                                    </p>
+                                    <p className="mt-1 text-2xl font-bold text-red-700">
+                                        {bulkImportDryRun.summary.unresolvedCategoryKeys}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    ) : null}
                     {bulkImportValidation ? (
                         <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-5">
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
