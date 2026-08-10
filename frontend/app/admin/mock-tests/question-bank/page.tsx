@@ -197,6 +197,133 @@ const getCategoryIdValue = (categoryId?: CategorySummary | string | null) => {
     return typeof categoryId === "string" ? categoryId : categoryId._id;
 };
 
+type BulkImportCsvParseResult = {
+    headers: string[];
+    rows: string[][];
+};
+
+const MAX_BULK_IMPORT_CSV_BYTES = 10 * 1024 * 1024;
+const BULK_IMPORT_PREVIEW_LIMIT = 5;
+
+const parseBulkImportCsv = (input: string): BulkImportCsvParseResult => {
+    const text =
+        input.length > 0 && input.charCodeAt(0) === 0xfeff
+            ? input.slice(1)
+            : input;
+
+    const records: string[][] = [];
+    let row: string[] = [];
+    let field = "";
+    let inQuotes = false;
+
+    for (let index = 0; index < text.length; index += 1) {
+        const character = text[index];
+
+        if (inQuotes) {
+            if (character === '"') {
+                if (text[index + 1] === '"') {
+                    field += '"';
+                    index += 1;
+                } else {
+                    inQuotes = false;
+                }
+            } else {
+                field += character;
+            }
+
+            continue;
+        }
+
+        if (character === '"') {
+            if (field.length === 0) {
+                inQuotes = true;
+            } else {
+                field += character;
+            }
+
+            continue;
+        }
+
+        if (character === ",") {
+            row.push(field);
+            field = "";
+            continue;
+        }
+
+        if (character === "\r" || character === "\n") {
+            row.push(field);
+            field = "";
+            records.push(row);
+            row = [];
+
+            if (character === "\r" && text[index + 1] === "\n") {
+                index += 1;
+            }
+
+            continue;
+        }
+
+        field += character;
+    }
+
+    if (inQuotes) {
+        throw new Error("CSV contains an unclosed quoted field.");
+    }
+
+    if (field.length > 0 || row.length > 0) {
+        row.push(field);
+        records.push(row);
+    }
+
+    const nonEmptyRecords = records.filter((record) =>
+        record.some((value) => value.trim().length > 0)
+    );
+
+    if (nonEmptyRecords.length === 0) {
+        return {
+            headers: [],
+            rows: [],
+        };
+    }
+
+    const [headerRow, ...dataRows] = nonEmptyRecords;
+
+    return {
+        headers: headerRow.map((header, index) => {
+            const value =
+                index === 0 ? header.replace(/^\uFEFF/, "") : header;
+
+            return value.trim();
+        }),
+        rows: dataRows,
+    };
+};
+
+const getBulkImportCsvValue = (
+    headers: string[],
+    row: string[],
+    headerName: string
+) => {
+    const columnIndex = headers.indexOf(headerName);
+
+    if (columnIndex < 0) {
+        return "";
+    }
+
+    return row[columnIndex] || "";
+};
+
+const formatBulkImportFileSize = (bytes: number) => {
+    if (bytes < 1024) {
+        return bytes + " B";
+    }
+
+    if (bytes < 1024 * 1024) {
+        return (bytes / 1024).toFixed(1) + " KB";
+    }
+
+    return (bytes / (1024 * 1024)).toFixed(2) + " MB";
+};
 export default function AdminQuestionBankPage() {
     const [isReady, setIsReady] = useState(false);
     const [isAllowed, setIsAllowed] = useState(false);
@@ -214,6 +341,13 @@ export default function AdminQuestionBankPage() {
     const [questionCategoryFilter, setQuestionCategoryFilter] = useState("");
     const [questionSourceFilter, setQuestionSourceFilter] =
         useState<QuestionSourceFilter>("all");
+    const [bulkImportFileName, setBulkImportFileName] = useState("");
+    const [bulkImportFileSize, setBulkImportFileSize] = useState(0);
+    const [bulkImportHeaders, setBulkImportHeaders] = useState<string[]>([]);
+    const [bulkImportRows, setBulkImportRows] = useState<string[][]>([]);
+    const [bulkImportParseError, setBulkImportParseError] = useState("");
+    const [isBulkImportParsing, setIsBulkImportParsing] = useState(false);
+    const [showBulkImportPreview, setShowBulkImportPreview] = useState(false);
     const [disablingQuestionId, setDisablingQuestionId] = useState("");
     const [questionsError, setQuestionsError] = useState("");
     const [categoriesError, setCategoriesError] = useState("");
@@ -717,6 +851,77 @@ export default function AdminQuestionBankPage() {
         }
     };
 
+    const resetBulkImportLocalPreview = () => {
+        setBulkImportHeaders([]);
+        setBulkImportRows([]);
+        setBulkImportParseError("");
+        setShowBulkImportPreview(false);
+    };
+
+    const handleBulkImportFileChange = async (file: File | null) => {
+        resetBulkImportLocalPreview();
+        setBulkImportFileName("");
+        setBulkImportFileSize(0);
+
+        if (!file) {
+            return;
+        }
+
+        setBulkImportFileName(file.name);
+        setBulkImportFileSize(file.size);
+
+        const isCsvFile =
+            file.name.toLowerCase().endsWith(".csv") ||
+            file.type === "text/csv" ||
+            file.type === "application/vnd.ms-excel" ||
+            file.type === "";
+
+        if (!isCsvFile) {
+            setBulkImportParseError("Choose a CSV file.");
+            return;
+        }
+
+        if (file.size === 0) {
+            setBulkImportParseError("The selected CSV file is empty.");
+            return;
+        }
+
+        if (file.size > MAX_BULK_IMPORT_CSV_BYTES) {
+            setBulkImportParseError(
+                "CSV is larger than the 10 MB local-preview safety limit."
+            );
+            return;
+        }
+
+        setIsBulkImportParsing(true);
+
+        try {
+            const fileText = await file.text();
+            const parsed = parseBulkImportCsv(fileText);
+
+            if (parsed.headers.length === 0) {
+                throw new Error("CSV header row was not found.");
+            }
+
+            if (parsed.rows.length === 0) {
+                throw new Error("CSV contains a header but no data rows.");
+            }
+
+            setBulkImportHeaders(parsed.headers);
+            setBulkImportRows(parsed.rows);
+        } catch (error) {
+            setBulkImportHeaders([]);
+            setBulkImportRows([]);
+            setShowBulkImportPreview(false);
+            setBulkImportParseError(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to parse the selected CSV file."
+            );
+        } finally {
+            setIsBulkImportParsing(false);
+        }
+    };
     const handleQuestionCategoryFilterChange = (categoryId: string) => {
         const savedToken =
             window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
@@ -1443,7 +1648,7 @@ export default function AdminQuestionBankPage() {
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                             <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
-                                PCRT-B1A
+                                PCRT-B1B
                             </p>
 
                             <h2 className="mt-2 text-xl font-bold">
@@ -1451,14 +1656,14 @@ export default function AdminQuestionBankPage() {
                             </h2>
 
                             <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-                                Prepare question files for the controlled bulk-import workflow.
-                                This foundation does not read, validate, upload, or save question
-                                data yet.
+                                Select and parse a CSV locally in your browser before
+                                validation or import. No question data is sent to the
+                                backend in this step.
                             </p>
                         </div>
 
-                        <span className="w-fit rounded-full bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 ring-1 ring-amber-100">
-                            UI foundation only
+                        <span className="w-fit rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-100">
+                            Local preview only
                         </span>
                     </div>
 
@@ -1481,61 +1686,251 @@ export default function AdminQuestionBankPage() {
                                     <input
                                         type="file"
                                         accept=".csv,text/csv"
-                                        disabled
-                                        className="block w-full rounded-2xl border border-slate-300 bg-slate-100 px-3 py-2.5 text-sm font-normal text-slate-400 file:mr-3 file:rounded-xl file:border-0 file:bg-slate-200 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-500"
+                                        onChange={(event) =>
+                                            void handleBulkImportFileChange(
+                                                event.target.files?.[0] || null
+                                            )
+                                        }
+                                        disabled={isBulkImportParsing}
+                                        className="block w-full rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-sm font-normal text-slate-700 file:mr-3 file:rounded-xl file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-blue-700 disabled:cursor-not-allowed disabled:bg-slate-100"
                                     />
                                 </label>
                             </div>
 
                             <p className="mt-4 text-xs leading-5 text-slate-500">
-                                File selection and local parsing will be enabled in PCRT-B1B.
+                                Parsing is local and handles quoted commas, escaped
+                                quotes and multiline quoted fields.
                             </p>
+
+                            {bulkImportParseError ? (
+                                <div className="mt-4 rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700 ring-1 ring-red-100">
+                                    {bulkImportParseError}
+                                </div>
+                            ) : null}
                         </div>
 
                         <div className="rounded-2xl bg-blue-50 p-5 ring-1 ring-blue-100">
                             <p className="text-sm font-bold text-blue-950">
-                                Planned import support
+                                Local parse summary
                             </p>
 
-                            <div className="mt-3 flex flex-wrap gap-2">
-                                {[
-                                    "Bilingual MCQ",
-                                    "Original / PYQ",
-                                    "Category mapping",
-                                    "Correct option",
-                                    "Marks",
-                                    "Negative marks",
-                                    "Explanations",
-                                ].map((item) => (
-                                    <span
-                                        key={item}
-                                        className="rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-blue-800 ring-1 ring-blue-100"
-                                    >
-                                        {item}
-                                    </span>
-                                ))}
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-2xl bg-white p-3 ring-1 ring-blue-100">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Selected File
+                                    </p>
+                                    <p className="mt-1 break-all text-sm font-semibold text-slate-800">
+                                        {bulkImportFileName || "No file selected"}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl bg-white p-3 ring-1 ring-blue-100">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        File Size
+                                    </p>
+                                    <p className="mt-1 text-sm font-semibold text-slate-800">
+                                        {bulkImportFileName
+                                            ? formatBulkImportFileSize(
+                                                  bulkImportFileSize
+                                              )
+                                            : "-"}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl bg-white p-3 ring-1 ring-blue-100">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Rows Detected
+                                    </p>
+                                    <p className="mt-1 text-lg font-bold text-slate-950">
+                                        {bulkImportRows.length}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl bg-white p-3 ring-1 ring-blue-100">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                        Columns Detected
+                                    </p>
+                                    <p className="mt-1 text-lg font-bold text-slate-950">
+                                        {bulkImportHeaders.length}
+                                    </p>
+                                </div>
                             </div>
 
-                            <p className="mt-4 text-xs leading-5 text-blue-800">
-                                External keys will be resolved and validated before any future
-                                database import. CSV values will never be treated as MongoDB IDs.
-                            </p>
+                            <div className="mt-3 rounded-2xl bg-white p-3 ring-1 ring-blue-100">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Parse Status
+                                </p>
+
+                                <p
+                                    className={
+                                        "mt-1 text-sm font-semibold " +
+                                        (bulkImportParseError
+                                            ? "text-red-700"
+                                            : bulkImportRows.length > 0
+                                              ? "text-emerald-700"
+                                              : "text-slate-600")
+                                    }
+                                >
+                                    {isBulkImportParsing
+                                        ? "Parsing locally..."
+                                        : bulkImportParseError
+                                          ? "Parse error"
+                                          : bulkImportRows.length > 0
+                                            ? "Ready for local preview"
+                                            : "Waiting for CSV"}
+                                </p>
+                            </div>
                         </div>
                     </div>
 
                     <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
                         <button
                             type="button"
-                            disabled
-                            className="w-fit rounded-2xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+                            onClick={() => setShowBulkImportPreview(true)}
+                            disabled={
+                                isBulkImportParsing ||
+                                bulkImportRows.length === 0 ||
+                                Boolean(bulkImportParseError)
+                            }
+                            className="w-fit rounded-2xl bg-blue-700 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-slate-400"
                         >
-                            Validate / Preview
+                            Preview Parsed Rows
                         </button>
 
                         <p className="text-xs leading-5 text-slate-500">
-                            Disabled in B1A — no file data is processed or sent anywhere.
+                            B1B performs no schema validation, API request or database
+                            write.
                         </p>
                     </div>
+
+                    {showBulkImportPreview &&
+                    bulkImportRows.length > 0 &&
+                    !bulkImportParseError ? (
+                        <div className="mt-5 rounded-2xl border border-slate-200 bg-white">
+                            <div className="flex flex-col gap-2 border-b border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="text-sm font-bold text-slate-950">
+                                        Local CSV Preview
+                                    </p>
+
+                                    <p className="mt-1 text-xs text-slate-500">
+                                        Showing the first{" "}
+                                        {Math.min(
+                                            BULK_IMPORT_PREVIEW_LIMIT,
+                                            bulkImportRows.length
+                                        )}{" "}
+                                        of {bulkImportRows.length} parsed rows.
+                                    </p>
+                                </div>
+
+                                <span className="w-fit rounded-full bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
+                                    Nothing saved
+                                </span>
+                            </div>
+
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full text-left text-sm">
+                                    <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                                        <tr>
+                                            <th className="px-4 py-3">Row</th>
+                                            <th className="px-4 py-3">
+                                                External Question Key
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Category Key
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Source
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Subject
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Topic
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Question English
+                                            </th>
+                                            <th className="px-4 py-3">
+                                                Question Hindi
+                                            </th>
+                                        </tr>
+                                    </thead>
+
+                                    <tbody className="divide-y divide-slate-100">
+                                        {bulkImportRows
+                                            .slice(
+                                                0,
+                                                BULK_IMPORT_PREVIEW_LIMIT
+                                            )
+                                            .map((row, index) => (
+                                                <tr key={index}>
+                                                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-600">
+                                                        {index + 1}
+                                                    </td>
+
+                                                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-800">
+                                                        {getBulkImportCsvValue(
+                                                            bulkImportHeaders,
+                                                            row,
+                                                            "externalQuestionKey"
+                                                        ) || "-"}
+                                                    </td>
+
+                                                    <td className="whitespace-nowrap px-4 py-3 text-slate-700">
+                                                        {getBulkImportCsvValue(
+                                                            bulkImportHeaders,
+                                                            row,
+                                                            "categoryExternalKey"
+                                                        ) || "-"}
+                                                    </td>
+
+                                                    <td className="whitespace-nowrap px-4 py-3 text-slate-700">
+                                                        {getBulkImportCsvValue(
+                                                            bulkImportHeaders,
+                                                            row,
+                                                            "sourceType"
+                                                        ) || "-"}
+                                                    </td>
+
+                                                    <td className="whitespace-nowrap px-4 py-3 text-slate-700">
+                                                        {getBulkImportCsvValue(
+                                                            bulkImportHeaders,
+                                                            row,
+                                                            "subject"
+                                                        ) || "-"}
+                                                    </td>
+
+                                                    <td className="whitespace-nowrap px-4 py-3 text-slate-700">
+                                                        {getBulkImportCsvValue(
+                                                            bulkImportHeaders,
+                                                            row,
+                                                            "topic"
+                                                        ) || "-"}
+                                                    </td>
+
+                                                    <td className="min-w-[320px] px-4 py-3 leading-6 text-slate-700">
+                                                        {getBulkImportCsvValue(
+                                                            bulkImportHeaders,
+                                                            row,
+                                                            "questionTextEn"
+                                                        ) || "-"}
+                                                    </td>
+
+                                                    <td className="min-w-[320px] px-4 py-3 leading-6 text-slate-700">
+                                                        {getBulkImportCsvValue(
+                                                            bulkImportHeaders,
+                                                            row,
+                                                            "questionTextHi"
+                                                        ) || "-"}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    ) : null}
                 </section>
 <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
