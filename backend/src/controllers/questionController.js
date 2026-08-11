@@ -1261,6 +1261,466 @@ const dryRunQuestionBulkImport = async (req, res) => {
     });
   }
 };
+
+const executeQuestionBulkImport = async (req, res) => {
+  let session = null;
+
+  try {
+    const tenantId = getRequestTenantId(req);
+
+    if (!hasText(String(tenantId || ""))) {
+      return res.status(400).json({
+        success: false,
+        executed: false,
+        writesPerformed: 0,
+        message: "Tenant is required for bulk import execute",
+      });
+    }
+
+    const rows = req.body?.rows;
+
+    if (!Array.isArray(rows)) {
+      return res.status(400).json({
+        success: false,
+        executed: false,
+        writesPerformed: 0,
+        message: "rows must be an array",
+      });
+    }
+
+    if (rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        executed: false,
+        writesPerformed: 0,
+        message: "At least one row is required",
+      });
+    }
+
+    if (rows.length > 5) {
+      return res.status(400).json({
+        success: false,
+        executed: false,
+        writesPerformed: 0,
+        message:
+          "Controlled bulk import execute currently supports at most 5 rows per request",
+      });
+    }
+
+    const normalizedRows = rows.map((row, index) => {
+      const rowIsObject =
+        row &&
+        typeof row === "object" &&
+        !Array.isArray(row);
+
+      const rowData = rowIsObject
+        ? row
+        : {};
+
+      const issues = [];
+
+      if (!rowIsObject) {
+        addBulkImportIssue(
+          issues,
+          "row",
+          "Each bulk-import row must be an object"
+        );
+      }
+
+      const externalQuestionKey =
+        normalizeBulkImportString(
+          rowData.externalQuestionKey
+        ).toUpperCase();
+
+      const categoryExternalKey =
+        normalizeBulkImportString(
+          rowData.categoryExternalKey
+        ).toLowerCase();
+
+      if (!externalQuestionKey) {
+        addBulkImportIssue(
+          issues,
+          "externalQuestionKey",
+          "External question key is required"
+        );
+      }
+
+      if (!categoryExternalKey) {
+        addBulkImportIssue(
+          issues,
+          "categoryExternalKey",
+          "Category external key is required"
+        );
+      }
+
+      return {
+        rowNumber: index + 1,
+        rowData,
+        externalQuestionKey,
+        categoryExternalKey,
+        issues,
+      };
+    });
+
+    const externalKeyRows = new Map();
+
+    normalizedRows.forEach((row, index) => {
+      if (!row.externalQuestionKey) {
+        return;
+      }
+
+      const indexes =
+        externalKeyRows.get(
+          row.externalQuestionKey
+        ) || [];
+
+      indexes.push(index);
+
+      externalKeyRows.set(
+        row.externalQuestionKey,
+        indexes
+      );
+    });
+
+    externalKeyRows.forEach((indexes) => {
+      if (indexes.length < 2) {
+        return;
+      }
+
+      indexes.forEach((index) => {
+        addBulkImportIssue(
+          normalizedRows[index].issues,
+          "externalQuestionKey",
+          "External question key is duplicated in this execute request"
+        );
+      });
+    });
+
+    const categoryExternalKeys = [
+      ...new Set(
+        normalizedRows
+          .map((row) => row.categoryExternalKey)
+          .filter(Boolean)
+      ),
+    ];
+
+    const categories =
+      categoryExternalKeys.length > 0
+        ? await Category.find({
+            tenantId,
+            slug: {
+              $in: categoryExternalKeys,
+            },
+          })
+            .select("_id name slug isActive")
+            .lean()
+        : [];
+
+    const categoryBySlug = new Map(
+      categories.map((category) => [
+        String(category.slug)
+          .trim()
+          .toLowerCase(),
+        category,
+      ])
+    );
+
+    const externalQuestionKeys = [
+      ...new Set(
+        normalizedRows
+          .map((row) => row.externalQuestionKey)
+          .filter(Boolean)
+      ),
+    ];
+
+    const existingQuestions =
+      externalQuestionKeys.length > 0
+        ? await Question.find({
+            tenantId,
+            externalQuestionKey: {
+              $in: externalQuestionKeys,
+            },
+          })
+            .select("_id externalQuestionKey")
+            .lean()
+        : [];
+
+    const existingQuestionByExternalKey =
+      new Map(
+        existingQuestions.map((question) => [
+          question.externalQuestionKey,
+          question,
+        ])
+      );
+
+    const data = normalizedRows.map((row) => {
+      const issues = [...row.issues];
+      const warnings = [];
+
+      const category =
+        row.categoryExternalKey
+          ? categoryBySlug.get(
+              row.categoryExternalKey
+            ) || null
+          : null;
+
+      if (
+        row.categoryExternalKey &&
+        !category
+      ) {
+        addBulkImportIssue(
+          issues,
+          "categoryExternalKey",
+          "Category external key could not be resolved for the authorized tenant"
+        );
+      }
+
+      if (
+        category &&
+        category.isActive !== true
+      ) {
+        addBulkImportIssue(
+          issues,
+          "categoryExternalKey",
+          "Resolved category is inactive and cannot be used for bulk import"
+        );
+      }
+
+      const existingQuestion =
+        row.externalQuestionKey
+          ? existingQuestionByExternalKey.get(
+              row.externalQuestionKey
+            ) || null
+          : null;
+
+      if (existingQuestion) {
+        addBulkImportIssue(
+          issues,
+          "externalQuestionKey",
+          "External question key already exists for the authorized tenant"
+        );
+      }
+
+      const transformed =
+        transformBulkImportQuestionRow(
+          row.rowData,
+          tenantId,
+          category
+        );
+
+      issues.push(...transformed.issues);
+      warnings.push(...transformed.warnings);
+
+      return {
+        rowNumber: row.rowNumber,
+        externalQuestionKey:
+          row.externalQuestionKey,
+        categoryExternalKey:
+          row.categoryExternalKey,
+        status:
+          issues.length > 0
+            ? "blocked"
+            : "ready",
+        category: category
+          ? {
+              _id: String(category._id),
+              name: category.name,
+              slug: category.slug,
+              isActive: category.isActive,
+            }
+          : null,
+        issues,
+        warnings,
+        questionData:
+          transformed.questionData,
+      };
+    });
+
+    const blockedRows =
+      data.filter(
+        (row) => row.status === "blocked"
+      ).length;
+
+    const readyRows =
+      data.length - blockedRows;
+
+    const warningRows =
+      data.filter(
+        (row) => row.warnings.length > 0
+      ).length;
+
+    if (blockedRows > 0) {
+      const responseStatus =
+        existingQuestions.length > 0
+          ? 409
+          : 400;
+
+      return res.status(responseStatus).json({
+        success: false,
+        executed: false,
+        writesPerformed: 0,
+        targetTenantId: tenantId,
+        message:
+          "Bulk import execute was blocked by server-side preflight validation",
+        summary: {
+          rowsReceived: data.length,
+          readyRows,
+          blockedRows,
+          warningRows,
+          existingQuestionKeys:
+            existingQuestions.length,
+          uniqueCategoryKeys:
+            categoryExternalKeys.length,
+          resolvedCategoryKeys:
+            categories.length,
+          unresolvedCategoryKeys:
+            categoryExternalKeys.length -
+            categories.length,
+        },
+        data: data.map((row) => ({
+          rowNumber: row.rowNumber,
+          externalQuestionKey:
+            row.externalQuestionKey,
+          categoryExternalKey:
+            row.categoryExternalKey,
+          status: row.status,
+          category: row.category,
+          issues: row.issues,
+          warnings: row.warnings,
+        })),
+      });
+    }
+
+    session = await mongoose.startSession();
+
+    let createdRows = [];
+
+    await session.withTransaction(async () => {
+      const transactionExisting =
+        await Question.find({
+          tenantId,
+          externalQuestionKey: {
+            $in: externalQuestionKeys,
+          },
+        })
+          .select("_id externalQuestionKey")
+          .session(session)
+          .lean();
+
+      if (transactionExisting.length > 0) {
+        const conflictError = new Error(
+          "One or more external question keys already exist"
+        );
+
+        conflictError.code =
+          "BULK_IMPORT_CONFLICT";
+
+        conflictError.externalQuestionKeys =
+          transactionExisting.map(
+            (question) =>
+              question.externalQuestionKey
+          );
+
+        throw conflictError;
+      }
+
+      const pendingCreatedRows = [];
+
+      for (const row of data) {
+        const question = new Question({
+          ...row.questionData,
+          tenantId,
+          createdBy: req.user._id,
+        });
+
+        await question.save({
+          session,
+        });
+
+        pendingCreatedRows.push({
+          rowNumber: row.rowNumber,
+          externalQuestionKey:
+            question.externalQuestionKey,
+          questionId:
+            String(question._id),
+        });
+      }
+
+      createdRows = pendingCreatedRows;
+    });
+
+    return res.status(201).json({
+      success: true,
+      executed: true,
+      writesPerformed:
+        createdRows.length,
+      targetTenantId: tenantId,
+      message:
+        "Bulk question import completed successfully",
+      summary: {
+        rowsReceived: data.length,
+        createdRows:
+          createdRows.length,
+        blockedRows: 0,
+        warningRows,
+        existingQuestionKeys: 0,
+        uniqueCategoryKeys:
+          categoryExternalKeys.length,
+        resolvedCategoryKeys:
+          categories.length,
+        unresolvedCategoryKeys:
+          categoryExternalKeys.length -
+          categories.length,
+      },
+      data: createdRows,
+    });
+  } catch (error) {
+    if (
+      error?.code ===
+        "BULK_IMPORT_CONFLICT" ||
+      error?.code === 11000
+    ) {
+      return res.status(409).json({
+        success: false,
+        executed: false,
+        writesPerformed: 0,
+        message:
+          "Bulk import conflicted with an existing external question key; no import rows were committed",
+        existingQuestionKeys:
+          Array.isArray(
+            error.externalQuestionKeys
+          )
+            ? error.externalQuestionKeys
+            : [],
+      });
+    }
+
+    logRuntimeError(
+      "questionController bulk import execute error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      executed: false,
+      writesPerformed: 0,
+      message:
+        getInternalErrorMessage(error),
+    });
+  } finally {
+    if (session) {
+      try {
+        await session.endSession();
+      } catch (sessionError) {
+        logRuntimeError(
+          "questionController bulk import session cleanup error:",
+          sessionError
+        );
+      }
+    }
+  }
+};
+
 // Get All Questions
 const getAllQuestions = async (req, res) => {
   try {
@@ -1473,6 +1933,7 @@ const disableQuestion = async (req, res) => {
 module.exports = {
   createQuestion,
   dryRunQuestionBulkImport,
+  executeQuestionBulkImport,
   getAllQuestions,
   updateQuestion,
   disableQuestion,

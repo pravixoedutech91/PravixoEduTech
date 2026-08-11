@@ -4,6 +4,7 @@ const router = express.Router();
 const {
   createQuestion,
   dryRunQuestionBulkImport,
+  executeQuestionBulkImport,
   getAllQuestions,
   updateQuestion,
   disableQuestion,
@@ -38,6 +39,17 @@ router.post(
   ensureTenantAccess,
   dryRunQuestionBulkImport
 );
+
+// Controlled Bulk Import Execute
+router.post(
+  "/bulk-import/execute",
+  protect,
+  authorize("super_admin", "tenant_admin", "content_admin"),
+  checkFeatureAccess("mockTests"),
+  ensureTenantAccess,
+  executeQuestionBulkImport
+);
+
 // Get All Questions
 router.get(
   "/",
