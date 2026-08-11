@@ -184,6 +184,43 @@ const questionSchema = new mongoose.Schema(
       },
     },
 
+    importMetadata: {
+      sourceQuestionId: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      sourcePage: {
+        type: Number,
+        min: 1,
+      },
+
+      sourceTopicCode: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      contentStatus: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      answerVerifiedBy: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      languageVerifiedBy: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+    },
+
     isActive: {
       type: Boolean,
       default: true,
