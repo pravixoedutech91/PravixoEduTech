@@ -957,10 +957,10 @@ const dryRunQuestionBulkImport = async (req, res) => {
       });
     }
 
-    if (rows.length > 500) {
+    if (rows.length > 100) {
       return res.status(400).json({
         success: false,
-        message: "Bulk import dry run supports at most 500 rows per request",
+        message: "Bulk import dry run supports at most 100 rows per request",
       });
     }
 
@@ -1297,13 +1297,13 @@ const executeQuestionBulkImport = async (req, res) => {
       });
     }
 
-    if (rows.length > 5) {
+    if (rows.length > 100) {
       return res.status(400).json({
         success: false,
         executed: false,
         writesPerformed: 0,
         message:
-          "Controlled bulk import execute currently supports at most 5 rows per request",
+          "Controlled bulk import execute supports at most 100 rows per request",
       });
     }
 

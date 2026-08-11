@@ -139,7 +139,7 @@ app.use(
   }),
   razorpayWebhookRoutes
 );
-app.use(express.json());
+app.use(express.json({ limit: "512kb" }));
 app.use("/api/categories", categoryRoutes);
 app.use("/api/content", contentRoutes);
 app.use("/api/tenants", tenantRoutes);
