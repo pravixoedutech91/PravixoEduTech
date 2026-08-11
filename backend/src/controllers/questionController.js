@@ -189,6 +189,660 @@ const validateQuestionGroupAccess = async (questionData, tenantId) => {
   };
 };
 
+const BULK_IMPORT_QUESTION_FIELDS = [
+  "externalQuestionKey",
+  "categoryExternalKey",
+  "questionGroupExternalKey",
+  "groupQuestionOrder",
+  "questionType",
+  "sourceType",
+  "subject",
+  "topic",
+  "subTopic",
+  "questionTextEn",
+  "questionTextHi",
+  "questionImageUrl",
+  "optionAEn",
+  "optionBEn",
+  "optionCEn",
+  "optionDEn",
+  "optionAHi",
+  "optionBHi",
+  "optionCHi",
+  "optionDHi",
+  "optionAImageUrl",
+  "optionBImageUrl",
+  "optionCImageUrl",
+  "optionDImageUrl",
+  "correctOptionId",
+  "explanationEn",
+  "explanationHi",
+  "explanationImageUrl",
+  "marks",
+  "negativeMarks",
+  "difficulty",
+  "tagsCsv",
+  "pyqExamName",
+  "pyqYear",
+  "pyqShift",
+  "pyqPaperCode",
+  "isActive",
+  "sourceQuestionId",
+  "sourcePage",
+  "sourceTopicCode",
+  "contentStatus",
+  "answerVerifiedBy",
+  "languageVerifiedBy",
+];
+
+const BULK_IMPORT_QUESTION_FIELD_SET = new Set(
+  BULK_IMPORT_QUESTION_FIELDS
+);
+
+const normalizeBulkImportString = (value) => {
+  if (value === undefined || value === null) {
+    return "";
+  }
+
+  return String(value).trim();
+};
+
+const addBulkImportIssue = (
+  issues,
+  field,
+  message
+) => {
+  issues.push({
+    field,
+    message,
+  });
+};
+
+const parseBulkImportNumber = (
+  value,
+  field,
+  issues,
+  {
+    required = false,
+    integer = false,
+    min = null,
+  } = {}
+) => {
+  const normalizedValue =
+    normalizeBulkImportString(value);
+
+  if (!normalizedValue) {
+    if (required) {
+      addBulkImportIssue(
+        issues,
+        field,
+        `${field} is required`
+      );
+    }
+
+    return undefined;
+  }
+
+  const parsedValue = Number(normalizedValue);
+
+  if (!Number.isFinite(parsedValue)) {
+    addBulkImportIssue(
+      issues,
+      field,
+      `${field} must be a valid number`
+    );
+
+    return undefined;
+  }
+
+  if (integer && !Number.isInteger(parsedValue)) {
+    addBulkImportIssue(
+      issues,
+      field,
+      `${field} must be an integer`
+    );
+
+    return undefined;
+  }
+
+  if (min !== null && parsedValue < min) {
+    addBulkImportIssue(
+      issues,
+      field,
+      `${field} must be at least ${min}`
+    );
+
+    return undefined;
+  }
+
+  return parsedValue;
+};
+
+const parseBulkImportBoolean = (
+  value,
+  field,
+  issues,
+  { required = false } = {}
+) => {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalizedValue =
+    normalizeBulkImportString(value).toLowerCase();
+
+  if (!normalizedValue) {
+    if (required) {
+      addBulkImportIssue(
+        issues,
+        field,
+        `${field} is required`
+      );
+    }
+
+    return undefined;
+  }
+
+  if (normalizedValue === "true") {
+    return true;
+  }
+
+  if (normalizedValue === "false") {
+    return false;
+  }
+
+  addBulkImportIssue(
+    issues,
+    field,
+    `${field} must be true or false`
+  );
+
+  return undefined;
+};
+
+const parseBulkImportTags = (value) => {
+  const normalizedValue =
+    normalizeBulkImportString(value);
+
+  if (!normalizedValue) {
+    return [];
+  }
+
+  const seen = new Set();
+  const tags = [];
+
+  normalizedValue
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .forEach((tag) => {
+      const normalizedTag = tag.toLowerCase();
+
+      if (seen.has(normalizedTag)) {
+        return;
+      }
+
+      seen.add(normalizedTag);
+      tags.push(tag);
+    });
+
+  return tags;
+};
+
+const transformBulkImportQuestionRow = (
+  rowData,
+  tenantId,
+  category
+) => {
+  const issues = [];
+  const warnings = [];
+
+  BULK_IMPORT_QUESTION_FIELDS.forEach((field) => {
+    if (
+      !Object.prototype.hasOwnProperty.call(
+        rowData,
+        field
+      )
+    ) {
+      addBulkImportIssue(
+        issues,
+        field,
+        `Bulk import field ${field} is missing`
+      );
+    }
+  });
+
+  Object.keys(rowData).forEach((field) => {
+    if (!BULK_IMPORT_QUESTION_FIELD_SET.has(field)) {
+      addBulkImportIssue(
+        issues,
+        field,
+        `Unsupported bulk import field: ${field}`
+      );
+    }
+  });
+
+  const externalQuestionKey =
+    normalizeBulkImportString(
+      rowData.externalQuestionKey
+    ).toUpperCase();
+
+  const questionGroupExternalKey =
+    normalizeBulkImportString(
+      rowData.questionGroupExternalKey
+    );
+
+  const groupQuestionOrder =
+    parseBulkImportNumber(
+      rowData.groupQuestionOrder,
+      "groupQuestionOrder",
+      issues,
+      {
+        integer: true,
+        min: 1,
+      }
+    );
+
+  if (questionGroupExternalKey) {
+    addBulkImportIssue(
+      issues,
+      "questionGroupExternalKey",
+      "Question-group external-key resolution is not enabled in B1E-B2 yet"
+    );
+  }
+
+  if (
+    groupQuestionOrder !== undefined &&
+    !questionGroupExternalKey
+  ) {
+    addBulkImportIssue(
+      issues,
+      "groupQuestionOrder",
+      "questionGroupExternalKey is required when groupQuestionOrder is provided"
+    );
+  }
+
+  const questionType =
+    normalizeBulkImportString(
+      rowData.questionType
+    ).toLowerCase();
+
+  const sourceType =
+    normalizeBulkImportString(
+      rowData.sourceType
+    ).toLowerCase();
+
+  const difficulty =
+    normalizeBulkImportString(
+      rowData.difficulty
+    ).toLowerCase();
+
+  const correctOptionId =
+    normalizeBulkImportString(
+      rowData.correctOptionId
+    ).toUpperCase();
+
+  const marks =
+    parseBulkImportNumber(
+      rowData.marks,
+      "marks",
+      issues,
+      {
+        required: true,
+        min: 0,
+      }
+    );
+
+  const negativeMarks =
+    parseBulkImportNumber(
+      rowData.negativeMarks,
+      "negativeMarks",
+      issues,
+      {
+        required: true,
+        min: 0,
+      }
+    );
+
+  const isActive =
+    parseBulkImportBoolean(
+      rowData.isActive,
+      "isActive",
+      issues,
+      {
+        required: true,
+      }
+    );
+
+  const pyqYear =
+    parseBulkImportNumber(
+      rowData.pyqYear,
+      "pyqYear",
+      issues,
+      {
+        integer: true,
+        min: 1,
+      }
+    );
+
+  const sourcePage =
+    parseBulkImportNumber(
+      rowData.sourcePage,
+      "sourcePage",
+      issues,
+      {
+        integer: true,
+        min: 1,
+      }
+    );
+
+  const optionIds = ["A", "B", "C", "D"];
+
+  const options = optionIds.map((optionId) => ({
+    optionId,
+    textEn:
+      normalizeBulkImportString(
+        rowData[`option${optionId}En`]
+      ),
+    textHi:
+      normalizeBulkImportString(
+        rowData[`option${optionId}Hi`]
+      ),
+    imageUrl:
+      normalizeBulkImportString(
+        rowData[`option${optionId}ImageUrl`]
+      ),
+  }));
+
+  const pyqExamName =
+    normalizeBulkImportString(
+      rowData.pyqExamName
+    );
+
+  const pyqShift =
+    normalizeBulkImportString(
+      rowData.pyqShift
+    );
+
+  const pyqPaperCode =
+    normalizeBulkImportString(
+      rowData.pyqPaperCode
+    );
+
+  const contentStatus =
+    normalizeBulkImportString(
+      rowData.contentStatus
+    );
+
+  const questionData = {
+    tenantId,
+    externalQuestionKey,
+    categoryId: category
+      ? category._id
+      : undefined,
+
+    questionGroupId: null,
+    groupQuestionOrder: null,
+
+    subject:
+      normalizeBulkImportString(
+        rowData.subject
+      ),
+
+    topic:
+      normalizeBulkImportString(
+        rowData.topic
+      ),
+
+    subTopic:
+      normalizeBulkImportString(
+        rowData.subTopic
+      ),
+
+    questionType,
+    sourceType,
+
+    questionTextEn:
+      normalizeBulkImportString(
+        rowData.questionTextEn
+      ),
+
+    questionTextHi:
+      normalizeBulkImportString(
+        rowData.questionTextHi
+      ),
+
+    questionImageUrl:
+      normalizeBulkImportString(
+        rowData.questionImageUrl
+      ),
+
+    options,
+    correctOptionId,
+
+    explanationEn:
+      normalizeBulkImportString(
+        rowData.explanationEn
+      ),
+
+    explanationHi:
+      normalizeBulkImportString(
+        rowData.explanationHi
+      ),
+
+    explanationImageUrl:
+      normalizeBulkImportString(
+        rowData.explanationImageUrl
+      ),
+
+    marks,
+    negativeMarks,
+    difficulty,
+
+    tags:
+      parseBulkImportTags(
+        rowData.tagsCsv
+      ),
+
+    pyqDetails: {
+      examName: pyqExamName,
+      ...(pyqYear !== undefined
+        ? { year: pyqYear }
+        : {}),
+      shift: pyqShift,
+      paperCode: pyqPaperCode,
+    },
+
+    importMetadata: {
+      sourceQuestionId:
+        normalizeBulkImportString(
+          rowData.sourceQuestionId
+        ),
+
+      ...(sourcePage !== undefined
+        ? { sourcePage }
+        : {}),
+
+      sourceTopicCode:
+        normalizeBulkImportString(
+          rowData.sourceTopicCode
+        ),
+
+      contentStatus,
+
+      answerVerifiedBy:
+        normalizeBulkImportString(
+          rowData.answerVerifiedBy
+        ),
+
+      languageVerifiedBy:
+        normalizeBulkImportString(
+          rowData.languageVerifiedBy
+        ),
+    },
+
+    isActive,
+  };
+
+  if (!externalQuestionKey) {
+    addBulkImportIssue(
+      issues,
+      "externalQuestionKey",
+      "External question key is required"
+    );
+  }
+
+  if (!hasText(questionData.questionTextEn)) {
+    addBulkImportIssue(
+      issues,
+      "questionTextEn",
+      "English question text is required for bulk import"
+    );
+  }
+
+  if (!hasText(questionData.questionTextHi)) {
+    addBulkImportIssue(
+      issues,
+      "questionTextHi",
+      "Hindi question text is required for bulk import"
+    );
+  }
+
+  options.forEach((option) => {
+    if (!hasText(option.textEn)) {
+      addBulkImportIssue(
+        issues,
+        `option${option.optionId}En`,
+        `English text is required for option ${option.optionId}`
+      );
+    }
+
+    if (!hasText(option.textHi)) {
+      addBulkImportIssue(
+        issues,
+        `option${option.optionId}Hi`,
+        `Hindi text is required for option ${option.optionId}`
+      );
+    }
+  });
+
+  if (!hasText(questionData.explanationEn)) {
+    addBulkImportIssue(
+      issues,
+      "explanationEn",
+      "English explanation is required for bulk import"
+    );
+  }
+
+  if (!hasText(questionData.explanationHi)) {
+    addBulkImportIssue(
+      issues,
+      "explanationHi",
+      "Hindi explanation is required for bulk import"
+    );
+  }
+
+  if (!contentStatus) {
+    addBulkImportIssue(
+      issues,
+      "contentStatus",
+      "contentStatus is required for bulk import"
+    );
+  } else if (
+    contentStatus.toLowerCase() !== "approved"
+  ) {
+    warnings.push({
+      field: "contentStatus",
+      message:
+        `Content status is ${contentStatus}; editorial QA remains required before publication`,
+    });
+  }
+
+  const hasPyqProvenance =
+    hasText(pyqExamName) ||
+    pyqYear !== undefined ||
+    hasText(pyqShift) ||
+    hasText(pyqPaperCode);
+
+  if (sourceType === "pyq") {
+    if (!hasText(pyqExamName)) {
+      addBulkImportIssue(
+        issues,
+        "pyqExamName",
+        "PYQ exam name is required when sourceType is pyq"
+      );
+    }
+
+    if (pyqYear === undefined) {
+      addBulkImportIssue(
+        issues,
+        "pyqYear",
+        "PYQ year is required when sourceType is pyq"
+      );
+    }
+
+    if (!hasText(pyqShift)) {
+      addBulkImportIssue(
+        issues,
+        "pyqShift",
+        "PYQ shift is required when sourceType is pyq"
+      );
+    }
+  } else if (
+    sourceType === "original" &&
+    hasPyqProvenance
+  ) {
+    addBulkImportIssue(
+      issues,
+      "pyqDetails",
+      "Original questions must not contain PYQ provenance"
+    );
+  }
+
+  const contentError =
+    validateQuestionContent(questionData);
+
+  if (contentError) {
+    addBulkImportIssue(
+      issues,
+      "question",
+      contentError
+    );
+  }
+
+  const mcqError =
+    validateMcqQuestion(questionData);
+
+  if (mcqError) {
+    addBulkImportIssue(
+      issues,
+      "question",
+      mcqError
+    );
+  }
+
+  const schemaProbe = new Question(questionData);
+  const schemaError = schemaProbe.validateSync();
+
+  if (schemaError) {
+    Object.values(schemaError.errors).forEach(
+      (error) => {
+        addBulkImportIssue(
+          issues,
+          error.path || "schema",
+          error.message
+        );
+      }
+    );
+  }
+
+  return {
+    questionData,
+    issues,
+    warnings,
+  };
+};
+
 // Create Question
 const createQuestion = async (req, res) => {
   try {
@@ -281,6 +935,14 @@ const dryRunQuestionBulkImport = async (req, res) => {
 
     const rows = req.body?.rows;
 
+    const validationMode =
+      req.body?.validationMode === "full"
+        ? "full"
+        : "resolver";
+
+    const fullValidation =
+      validationMode === "full";
+
     if (!Array.isArray(rows)) {
       return res.status(400).json({
         success: false,
@@ -351,6 +1013,10 @@ const dryRunQuestionBulkImport = async (req, res) => {
         rowNumber: index + 1,
         externalQuestionKey,
         categoryExternalKey,
+        rowData:
+          fullValidation
+            ? rowData
+            : null,
         issues,
       };
     });
@@ -417,8 +1083,47 @@ const dryRunQuestionBulkImport = async (req, res) => {
       ])
     );
 
+    const externalQuestionKeys =
+      fullValidation
+        ? [
+            ...new Set(
+              normalizedRows
+                .map((row) =>
+                  row.externalQuestionKey
+                    ? row.externalQuestionKey
+                        .trim()
+                        .toUpperCase()
+                    : ""
+                )
+                .filter(Boolean)
+            ),
+          ]
+        : [];
+
+    const existingQuestions =
+      fullValidation &&
+      externalQuestionKeys.length > 0
+        ? await Question.find({
+            tenantId,
+            externalQuestionKey: {
+              $in: externalQuestionKeys,
+            },
+          })
+            .select("_id externalQuestionKey")
+            .lean()
+        : [];
+
+    const existingQuestionByExternalKey =
+      new Map(
+        existingQuestions.map((question) => [
+          question.externalQuestionKey,
+          question,
+        ])
+      );
+
     const data = normalizedRows.map((row) => {
       const issues = [...row.issues];
+      const warnings = [];
 
       const category = row.categoryExternalKey
         ? categoryBySlug.get(
@@ -435,6 +1140,56 @@ const dryRunQuestionBulkImport = async (req, res) => {
           message:
             "Category external key could not be resolved for the authorized tenant",
         });
+      }
+
+      let questionPreview = null;
+
+      if (fullValidation) {
+        if (
+          category &&
+          category.isActive !== true
+        ) {
+          issues.push({
+            field: "categoryExternalKey",
+            message:
+              "Resolved category is inactive and cannot be used for bulk import",
+          });
+        }
+
+        const normalizedExternalQuestionKey =
+          row.externalQuestionKey
+            ? row.externalQuestionKey
+                .trim()
+                .toUpperCase()
+            : "";
+
+        const existingQuestion =
+          normalizedExternalQuestionKey
+            ? existingQuestionByExternalKey.get(
+                normalizedExternalQuestionKey
+              ) || null
+            : null;
+
+        if (existingQuestion) {
+          issues.push({
+            field: "externalQuestionKey",
+            message:
+              "External question key already exists for the authorized tenant",
+          });
+        }
+
+        const transformed =
+          transformBulkImportQuestionRow(
+            row.rowData || {},
+            tenantId,
+            category
+          );
+
+        issues.push(...transformed.issues);
+        warnings.push(...transformed.warnings);
+
+        questionPreview =
+          transformed.questionData;
       }
 
       return {
@@ -456,6 +1211,8 @@ const dryRunQuestionBulkImport = async (req, res) => {
             }
           : null,
         issues,
+        warnings,
+        questionPreview,
       };
     });
 
@@ -471,10 +1228,17 @@ const dryRunQuestionBulkImport = async (req, res) => {
       dryRun: true,
       writesPerformed: 0,
       targetTenantId: tenantId,
+      validationMode,
       summary: {
         rowsReceived: data.length,
         resolvedRows,
         blockedRows,
+        warningRows:
+          data.filter(
+            (row) => row.warnings.length > 0
+          ).length,
+        existingQuestionKeys:
+          existingQuestions.length,
         uniqueCategoryKeys:
           categoryExternalKeys.length,
         resolvedCategoryKeys:
