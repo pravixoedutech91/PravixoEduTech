@@ -749,8 +749,14 @@ const transformBulkImportQuestionRow = (
       "contentStatus is required for bulk import"
     );
   } else if (
-    contentStatus.toLowerCase() !== "approved"
+    contentStatus.toLowerCase() === "approved"
   ) {
+    addBulkImportIssue(
+      issues,
+      "contentStatus",
+      "Bulk import cannot grant final editorial approval"
+    );
+  } else {
     warnings.push({
       field: "contentStatus",
       message:
