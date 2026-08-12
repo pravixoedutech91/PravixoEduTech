@@ -413,6 +413,63 @@ const validatePublishReady = (mockTest) => {
     return null;
 };
 
+const normalizeEditorialVerifier = (value) => {
+    return typeof value === "string" ? value.trim() : "";
+};
+
+const hasPendingHumanSignoffMarker = (value) => {
+    const normalized = normalizeEditorialVerifier(value).toLowerCase();
+
+    return (
+        normalized.includes("final human") ||
+        normalized.includes("sign-off required")
+    );
+};
+
+const validateImportedQuestionEditorialApproval = (questionMap) => {
+    const blockedQuestionKeys = [];
+
+    for (const question of questionMap.values()) {
+        const externalQuestionKey =
+            typeof question.externalQuestionKey === "string"
+                ? question.externalQuestionKey.trim()
+                : "";
+
+        // Legacy/manual questions are outside the importer QA gate.
+        if (!externalQuestionKey) {
+            continue;
+        }
+
+        const importMetadata = question.importMetadata || {};
+
+        const contentStatus =
+            typeof importMetadata.contentStatus === "string"
+                ? importMetadata.contentStatus.trim().toLowerCase()
+                : "";
+
+        const answerVerifiedBy = normalizeEditorialVerifier(
+            importMetadata.answerVerifiedBy
+        );
+
+        const languageVerifiedBy = normalizeEditorialVerifier(
+            importMetadata.languageVerifiedBy
+        );
+
+        const isApproved =
+            contentStatus === "approved" &&
+            Boolean(answerVerifiedBy) &&
+            Boolean(languageVerifiedBy) &&
+            !hasPendingHumanSignoffMarker(answerVerifiedBy) &&
+            !hasPendingHumanSignoffMarker(languageVerifiedBy);
+
+        if (!isApproved) {
+            blockedQuestionKeys.push(externalQuestionKey);
+        }
+    }
+
+    return blockedQuestionKeys;
+};
+
 const buildQuestionGroupSnapshot = (questionGroup) => {
     return {
         questionGroupId: questionGroup._id,
@@ -1168,6 +1225,24 @@ const publishMockTest = async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: questionValidation.message,
+            });
+        }
+
+        const editorialBlockedQuestionKeys =
+            validateImportedQuestionEditorialApproval(
+                questionValidation.questionMap
+            );
+
+        if (editorialBlockedQuestionKeys.length > 0) {
+            return res.status(409).json({
+                success: false,
+                message:
+                    `${editorialBlockedQuestionKeys.length} imported question(s) require final human editorial approval before publishing`,
+                editorialApproval: {
+                    blockedCount: editorialBlockedQuestionKeys.length,
+                    blockedQuestionKeys: editorialBlockedQuestionKeys.slice(0, 20),
+                    truncated: editorialBlockedQuestionKeys.length > 20,
+                },
             });
         }
 
