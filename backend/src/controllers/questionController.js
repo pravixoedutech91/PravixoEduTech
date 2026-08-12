@@ -1800,6 +1800,35 @@ const updateQuestion = async (req, res) => {
       });
     }
 
+    const containsImportMetadataMutation = (value) => {
+      if (!value || typeof value !== "object") {
+        return false;
+      }
+
+      for (const [key, nestedValue] of Object.entries(value)) {
+        if (
+          key === "importMetadata" ||
+          key.startsWith("importMetadata.")
+        ) {
+          return true;
+        }
+
+        if (containsImportMetadataMutation(nestedValue)) {
+          return true;
+        }
+      }
+
+      return false;
+    };
+
+    if (containsImportMetadataMutation(req.body || {})) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Import QA metadata cannot be changed through the normal question update endpoint",
+      });
+    }
+
     const updateData = {
       ...req.body,
       updatedBy: req.user._id,
@@ -1810,6 +1839,19 @@ const updateQuestion = async (req, res) => {
     delete updateData.externalQuestionKey;
 
     sanitizeQuestionGroupFields(updateData);
+
+    if (existingQuestion.externalQuestionKey) {
+      const existingImportMetadata = JSON.parse(
+        JSON.stringify(existingQuestion.importMetadata || {})
+      );
+
+      updateData.importMetadata = {
+        ...existingImportMetadata,
+        contentStatus: "editorial_review_required",
+        answerVerifiedBy: "",
+        languageVerifiedBy: "",
+      };
+    }
 
     const mergedQuestionData = {
       ...existingQuestion.toObject(),
