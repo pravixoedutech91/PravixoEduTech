@@ -1856,6 +1856,8 @@ const updateQuestion = async (req, res) => {
         contentStatus: "editorial_review_required",
         answerVerifiedBy: "",
         languageVerifiedBy: "",
+        approvedBy: null,
+        approvedAt: null,
       };
     }
 

@@ -455,10 +455,21 @@ const validateImportedQuestionEditorialApproval = (questionMap) => {
             importMetadata.languageVerifiedBy
         );
 
+        const approvedBy = importMetadata.approvedBy;
+
+        const approvedAt = new Date(
+            importMetadata.approvedAt || ""
+        );
+
+        const hasValidApprovalAudit =
+            Boolean(approvedBy) &&
+            !Number.isNaN(approvedAt.getTime());
+
         const isApproved =
             contentStatus === "approved" &&
             Boolean(answerVerifiedBy) &&
             Boolean(languageVerifiedBy) &&
+            hasValidApprovalAudit &&
             !hasPendingHumanSignoffMarker(answerVerifiedBy) &&
             !hasPendingHumanSignoffMarker(languageVerifiedBy);
 

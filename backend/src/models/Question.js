@@ -219,6 +219,17 @@ const questionSchema = new mongoose.Schema(
         default: "",
         trim: true,
       },
+
+      approvedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+
+      approvedAt: {
+        type: Date,
+        default: null,
+      },
     },
 
     isActive: {
