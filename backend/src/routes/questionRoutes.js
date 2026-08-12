@@ -7,6 +7,7 @@ const {
   executeQuestionBulkImport,
   getAllQuestions,
   updateQuestion,
+  approveQuestionEditorial,
   disableQuestion,
 } = require("../controllers/questionController");
 
@@ -69,6 +70,15 @@ router.put(
   updateQuestion
 );
 
+// Final Human Editorial Approval
+router.patch(
+  "/:id/editorial-approval",
+  protect,
+  authorize("super_admin", "tenant_admin"),
+  checkFeatureAccess("mockTests"),
+  ensureTenantAccess,
+  approveQuestionEditorial
+);
 // Disable Question
 router.patch(
   "/:id/disable",

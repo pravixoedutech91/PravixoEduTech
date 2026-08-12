@@ -1938,6 +1938,209 @@ const updateQuestion = async (req, res) => {
   }
 };
 
+// Final Human Editorial Approval
+const approveQuestionEditorial = async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid question ID",
+      });
+    }
+
+    if (req.body?.action !== "approve") {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Editorial approval action must be approve",
+      });
+    }
+
+    if (
+      req.body?.attestAnswerAccuracy !== true ||
+      req.body?.attestBilingualQuality !== true
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Answer accuracy and bilingual quality must both be explicitly attested before approval",
+      });
+    }
+
+    const expectedUpdatedAtRaw =
+      typeof req.body?.expectedUpdatedAt === "string"
+        ? req.body.expectedUpdatedAt.trim()
+        : "";
+
+    if (!expectedUpdatedAtRaw) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "expectedUpdatedAt is required for revision-safe editorial approval",
+      });
+    }
+
+    const expectedUpdatedAt =
+      new Date(expectedUpdatedAtRaw);
+
+    if (Number.isNaN(expectedUpdatedAt.getTime())) {
+      return res.status(400).json({
+        success: false,
+        message: "expectedUpdatedAt must be a valid timestamp",
+      });
+    }
+
+    const tenantFilter = getTenantFilter(req);
+
+    const existingQuestion = await Question.findOne({
+      ...tenantFilter,
+      _id: req.params.id,
+    });
+
+    if (!existingQuestion) {
+      return res.status(404).json({
+        success: false,
+        message: "Question not found or access denied",
+      });
+    }
+
+    const externalQuestionKey =
+      typeof existingQuestion.externalQuestionKey === "string"
+        ? existingQuestion.externalQuestionKey.trim()
+        : "";
+
+    if (!externalQuestionKey) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Editorial approval is only available for imported questions",
+      });
+    }
+
+    const currentContentStatus =
+      typeof existingQuestion.importMetadata?.contentStatus === "string"
+        ? existingQuestion.importMetadata.contentStatus
+            .trim()
+            .toLowerCase()
+        : "";
+
+    if (currentContentStatus === "approved") {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Question is already editorially approved; edit it to invalidate approval before approving a new revision",
+        currentUpdatedAt:
+          existingQuestion.updatedAt || null,
+      });
+    }
+
+    if (
+      !existingQuestion.updatedAt ||
+      existingQuestion.updatedAt.getTime() !==
+        expectedUpdatedAt.getTime()
+    ) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Question changed since review; reload and review the current revision before approval",
+        currentUpdatedAt:
+          existingQuestion.updatedAt || null,
+      });
+    }
+
+    const reviewerName =
+      hasText(req.user?.name)
+        ? req.user.name.trim()
+        : "";
+
+    const reviewerEmail =
+      hasText(req.user?.email)
+        ? req.user.email.trim().toLowerCase()
+        : "";
+
+    const reviewerIdentity =
+      reviewerName && reviewerEmail
+        ? `${reviewerName} <${reviewerEmail}>`
+        : reviewerEmail ||
+          reviewerName ||
+          String(req.user._id);
+
+    const verifierLabel =
+      `Human reviewer: ${reviewerIdentity}`;
+
+    const approvedAt = new Date();
+
+    const question = await Question.findOneAndUpdate(
+      {
+        ...tenantFilter,
+        _id: req.params.id,
+        externalQuestionKey: existingQuestion.externalQuestionKey,
+        "importMetadata.contentStatus": { $ne: "approved" },
+        updatedAt: expectedUpdatedAt,
+      },
+      {
+        $set: {
+          "importMetadata.contentStatus": "approved",
+          "importMetadata.answerVerifiedBy": verifierLabel,
+          "importMetadata.languageVerifiedBy": verifierLabel,
+          "importMetadata.approvedBy": req.user._id,
+          "importMetadata.approvedAt": approvedAt,
+          updatedBy: req.user._id,
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!question) {
+      const currentQuestion = await Question.findOne({
+        ...tenantFilter,
+        _id: req.params.id,
+      }).select("updatedAt externalQuestionKey");
+
+      if (!currentQuestion) {
+        return res.status(404).json({
+          success: false,
+          message: "Question not found or access denied",
+        });
+      }
+
+      return res.status(409).json({
+        success: false,
+        message:
+          "Question changed during approval; reload and review the current revision before retrying",
+        currentUpdatedAt:
+          currentQuestion.updatedAt || null,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Question editorial approval recorded",
+      data: {
+        _id: question._id,
+        externalQuestionKey:
+          question.externalQuestionKey,
+        importMetadata:
+          question.importMetadata,
+        updatedAt:
+          question.updatedAt,
+      },
+    });
+  } catch (error) {
+    logRuntimeError(
+      "questionController editorial approval error:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: getInternalErrorMessage(error),
+    });
+  }
+};
 // Disable Question
 const disableQuestion = async (req, res) => {
   try {
@@ -1986,5 +2189,6 @@ module.exports = {
   executeQuestionBulkImport,
   getAllQuestions,
   updateQuestion,
+  approveQuestionEditorial,
   disableQuestion,
 };
