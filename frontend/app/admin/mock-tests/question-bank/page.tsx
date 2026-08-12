@@ -67,8 +67,20 @@ type QuestionOption = {
     imageUrl?: string;
 };
 
+type QuestionImportMetadata = {
+    sourceQuestionId?: string;
+    sourcePage?: number;
+    sourceTopicCode?: string;
+    contentStatus?: string;
+    answerVerifiedBy?: string;
+    languageVerifiedBy?: string;
+    approvedBy?: string | null;
+    approvedAt?: string | null;
+};
+
 type Question = {
     _id: string;
+    externalQuestionKey?: string;
     categoryId?: CategorySummary | string | null;
     questionGroupId?: QuestionGroupSummary | string | null;
     groupQuestionOrder?: number | null;
@@ -89,7 +101,9 @@ type Question = {
     difficulty?: string;
     tags?: string[];
     isActive?: boolean;
+    importMetadata?: QuestionImportMetadata;
     createdAt?: string;
+    updatedAt?: string;
 };
 
 type QuestionsResponse = {
@@ -943,6 +957,7 @@ const validateBulkImportCsv = (
 export default function AdminQuestionBankPage() {
     const [isReady, setIsReady] = useState(false);
     const [isAllowed, setIsAllowed] = useState(false);
+    const [, setAdminRole] = useState("");
     const [message, setMessage] = useState("");
     const [questions, setQuestions] = useState<Question[]>([]);
     const [categories, setCategories] = useState<CategorySummary[]>([]);
@@ -1032,6 +1047,7 @@ export default function AdminQuestionBankPage() {
             if (response.status === 401 || response.status === 403) {
                 clearAdminSessionStorage();
                 setIsAllowed(false);
+                setAdminRole("");
                 setMessage(
                     result.message ||
                         "Your admin session has expired. Please login again."
@@ -1071,6 +1087,7 @@ export default function AdminQuestionBankPage() {
             if (response.status === 401 || response.status === 403) {
                 clearAdminSessionStorage();
                 setIsAllowed(false);
+                setAdminRole("");
                 setMessage(
                     result.message ||
                         "Your admin session has expired. Please login again."
@@ -1110,6 +1127,7 @@ export default function AdminQuestionBankPage() {
             if (response.status === 401 || response.status === 403) {
                 clearAdminSessionStorage();
                 setIsAllowed(false);
+                setAdminRole("");
                 setMessage(
                     result.message ||
                         "Your admin session has expired. Please login again."
@@ -1329,6 +1347,7 @@ export default function AdminQuestionBankPage() {
         if (!savedToken) {
             clearAdminSessionStorage();
             setIsAllowed(false);
+            setAdminRole("");
             setMessage("Please login with an admin account.");
             return;
         }
@@ -1350,6 +1369,7 @@ export default function AdminQuestionBankPage() {
             if (response.status === 401 || response.status === 403) {
                 clearAdminSessionStorage();
                 setIsAllowed(false);
+                setAdminRole("");
                 setMessage(
                     result.message ||
                         "Your admin session has expired. Please login again."
@@ -1410,6 +1430,7 @@ export default function AdminQuestionBankPage() {
         if (!savedToken) {
             clearAdminSessionStorage();
             setIsAllowed(false);
+            setAdminRole("");
             setMessage("Please login with an admin account.");
             return;
         }
@@ -1434,6 +1455,7 @@ export default function AdminQuestionBankPage() {
             if (response.status === 401 || response.status === 403) {
                 clearAdminSessionStorage();
                 setIsAllowed(false);
+                setAdminRole("");
                 setMessage(
                     result.message ||
                         "Your admin session has expired. Please login again."
@@ -1592,6 +1614,7 @@ export default function AdminQuestionBankPage() {
         if (!savedToken) {
             clearAdminSessionStorage();
             setIsAllowed(false);
+            setAdminRole("");
             setMessage("Admin session not found. Please login again.");
             return;
         }
@@ -1630,6 +1653,7 @@ export default function AdminQuestionBankPage() {
             if (response.status === 401 || response.status === 403) {
                 clearAdminSessionStorage();
                 setIsAllowed(false);
+                setAdminRole("");
                 setMessage(
                     result.message ||
                         "Your admin session has expired. Please login again."
@@ -1734,6 +1758,7 @@ export default function AdminQuestionBankPage() {
         if (!savedToken) {
             clearAdminSessionStorage();
             setIsAllowed(false);
+            setAdminRole("");
             setMessage("Please login with an admin account.");
             return;
         }
@@ -1756,6 +1781,7 @@ export default function AdminQuestionBankPage() {
             if (response.status === 401 || response.status === 403) {
                 clearAdminSessionStorage();
                 setIsAllowed(false);
+                setAdminRole("");
                 setMessage(
                     result.message ||
                         "Your admin session has expired. Please login again."
@@ -1812,6 +1838,7 @@ export default function AdminQuestionBankPage() {
                 clearAdminSessionStorage();
                 setMessage("Please login with an admin account.");
                 setIsAllowed(false);
+                setAdminRole("");
                 setIsReady(true);
                 return;
             }
@@ -1833,6 +1860,8 @@ export default function AdminQuestionBankPage() {
                     throw new Error("Please login with an admin account.");
                 }
 
+                setAdminRole(result.data.role || "");
+
                 window.localStorage.setItem(
                     ADMIN_PROFILE_STORAGE_KEY,
                     JSON.stringify(result.data)
@@ -1846,6 +1875,7 @@ export default function AdminQuestionBankPage() {
             } catch (error) {
                 clearAdminSessionStorage();
                 setIsAllowed(false);
+                setAdminRole("");
                 setMessage(
                     error instanceof Error
                         ? error.message
