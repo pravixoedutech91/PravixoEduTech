@@ -957,7 +957,9 @@ const validateBulkImportCsv = (
 export default function AdminQuestionBankPage() {
     const [isReady, setIsReady] = useState(false);
     const [isAllowed, setIsAllowed] = useState(false);
-    const [, setAdminRole] = useState("");
+    const [adminRole, setAdminRole] = useState("");
+    const [editorialReviewQuestionId, setEditorialReviewQuestionId] =
+        useState("");
     const [message, setMessage] = useState("");
     const [questions, setQuestions] = useState<Question[]>([]);
     const [categories, setCategories] = useState<CategorySummary[]>([]);
@@ -997,6 +999,65 @@ export default function AdminQuestionBankPage() {
     const [createQuestionForm, setCreateQuestionForm] =
         useState<CreateQuestionForm>(initialCreateQuestionForm);
     const [toast, setToast] = useState<ToastState | null>(null);
+
+    const isImportedQuestion = (question: Question) =>
+        Boolean(question.externalQuestionKey?.trim());
+
+    const hasPendingHumanSignoffMarker = (value?: string) => {
+        const normalizedValue = (value || "").trim().toLowerCase();
+
+        return (
+            normalizedValue.includes("final human") ||
+            normalizedValue.includes("sign-off required")
+        );
+    };
+
+    const isQuestionEditoriallyApproved = (question: Question) => {
+        const metadata = question.importMetadata;
+        const answerVerifiedBy = metadata?.answerVerifiedBy?.trim() || "";
+        const languageVerifiedBy = metadata?.languageVerifiedBy?.trim() || "";
+        const approvedAt = metadata?.approvedAt || "";
+        const approvedAtDate = new Date(approvedAt);
+
+        return Boolean(
+            isImportedQuestion(question) &&
+                metadata?.contentStatus?.trim().toLowerCase() === "approved" &&
+                answerVerifiedBy &&
+                languageVerifiedBy &&
+                metadata?.approvedBy &&
+                approvedAt &&
+                !Number.isNaN(approvedAtDate.getTime()) &&
+                !hasPendingHumanSignoffMarker(answerVerifiedBy) &&
+                !hasPendingHumanSignoffMarker(languageVerifiedBy)
+        );
+    };
+
+    const formatEditorialTimestamp = (value?: string | null) => {
+        if (!value) return "Not available";
+
+        const parsed = new Date(value);
+
+        if (Number.isNaN(parsed.getTime())) {
+            return "Not available";
+        }
+
+        return parsed.toLocaleString();
+    };
+
+    const openEditorialReview = (questionId: string) => {
+        setEditorialReviewQuestionId(questionId);
+
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+                document
+                    .getElementById(`editorial-review-${questionId}`)
+                    ?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                    });
+            });
+        });
+    };
 
     const showToast = (nextToast: ToastState) => {
         setToast(nextToast);
@@ -3362,6 +3423,27 @@ export default function AdminQuestionBankPage() {
                                 const category = getCategorySummary(
                                     question.categoryId
                                 );
+                                const importedQuestion =
+                                    isImportedQuestion(question);
+                                const editoriallyApproved =
+                                    isQuestionEditoriallyApproved(question);
+                                const hasRevisionTimestamp = Boolean(
+                                    question.updatedAt &&
+                                        !Number.isNaN(
+                                            new Date(question.updatedAt).getTime()
+                                        )
+                                );
+                                const canApproveEditorial =
+                                    importedQuestion &&
+                                    !editoriallyApproved &&
+                                    hasRevisionTimestamp &&
+                                    (adminRole === "super_admin" ||
+                                        adminRole === "tenant_admin");
+                                const isEditorialReviewOpen =
+                                    editorialReviewQuestionId === question._id;
+                                const editorialStatusLabel = editoriallyApproved
+                                    ? "Editorially Approved"
+                                    : "Editorial Review Required";
 
                                 return (
                                     <article
@@ -3394,6 +3476,24 @@ export default function AdminQuestionBankPage() {
                                                             ? "Inactive"
                                                             : "Active"}
                                                     </span>
+
+                                                    {importedQuestion ? (
+                                                        <span className="rounded-full bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">
+                                                            {question.externalQuestionKey}
+                                                        </span>
+                                                    ) : null}
+
+                                                    {importedQuestion ? (
+                                                        <span
+                                                            className={
+                                                                editoriallyApproved
+                                                                    ? "rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700"
+                                                                    : "rounded-full bg-orange-50 px-3 py-1 text-xs font-semibold text-orange-700"
+                                                            }
+                                                        >
+                                                            {editorialStatusLabel}
+                                                        </span>
+                                                    ) : null}
                                                 </div>
 
                                                 <h3 className="mt-3 text-lg font-bold text-slate-950">
@@ -3434,6 +3534,20 @@ export default function AdminQuestionBankPage() {
                                                 >
                                                     Edit
                                                 </button>
+
+                                                {canApproveEditorial ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            openEditorialReview(
+                                                                question._id
+                                                            )
+                                                        }
+                                                        className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                                                    >
+                                                        Review & Approve
+                                                    </button>
+                                                ) : null}
 
                                                 {question.isActive === false ? (
                                                     <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-center text-sm font-semibold text-slate-500">
@@ -3546,6 +3660,104 @@ export default function AdminQuestionBankPage() {
                                                     {question.explanationEn ||
                                                         question.explanationHi}
                                                 </p>
+                                            </div>
+                                        ) : null}
+
+                                        {importedQuestion ? (
+                                            <div className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
+                                                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                                    <div>
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
+                                                            Editorial QA
+                                                        </p>
+                                                        <p className="mt-1 text-base font-bold text-slate-950">
+                                                            {editorialStatusLabel}
+                                                        </p>
+                                                        <p className="mt-1 break-all text-xs text-slate-600">
+                                                            Import key: {question.externalQuestionKey}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="rounded-xl bg-white px-3 py-2 text-xs text-slate-600 ring-1 ring-violet-100">
+                                                        <span className="font-semibold text-slate-800">
+                                                            Current revision:
+                                                        </span>{" "}
+                                                        {formatEditorialTimestamp(
+                                                            question.updatedAt
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                                                    <div className="rounded-xl bg-white p-3 text-sm ring-1 ring-violet-100">
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                            Answer verification
+                                                        </p>
+                                                        <p className="mt-1 leading-6 text-slate-700">
+                                                            {question.importMetadata
+                                                                ?.answerVerifiedBy ||
+                                                                "Not recorded"}
+                                                        </p>
+                                                    </div>
+
+                                                    <div className="rounded-xl bg-white p-3 text-sm ring-1 ring-violet-100">
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                            Hindi / English verification
+                                                        </p>
+                                                        <p className="mt-1 leading-6 text-slate-700">
+                                                            {question.importMetadata
+                                                                ?.languageVerifiedBy ||
+                                                                "Not recorded"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {editoriallyApproved ? (
+                                                    <div className="mt-3 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-900 ring-1 ring-emerald-100">
+                                                        <span className="font-semibold">
+                                                            Approved:
+                                                        </span>{" "}
+                                                        {formatEditorialTimestamp(
+                                                            question.importMetadata?.approvedAt
+                                                        )}
+                                                    </div>
+                                                ) : !hasRevisionTimestamp ? (
+                                                    <div className="mt-3 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 ring-1 ring-red-100">
+                                                        Revision timestamp is unavailable.
+                                                        Refresh the Question Bank before final
+                                                        approval.
+                                                    </div>
+                                                ) : null}
+
+                                                {isEditorialReviewOpen ? (
+                                                    <div
+                                                        id={`editorial-review-${question._id}`}
+                                                        className="mt-4 rounded-2xl border border-emerald-200 bg-white p-4"
+                                                    >
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                                                            Human editorial review
+                                                        </p>
+                                                        <p className="mt-2 text-sm leading-6 text-slate-700">
+                                                            Review the question wording, all
+                                                            options, correct answer, explanation,
+                                                            and Hindi / English quality shown on
+                                                            this card. No approval is submitted
+                                                            from this panel yet.
+                                                        </p>
+
+                                                        <div className="mt-4 flex flex-wrap gap-3">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    setEditorialReviewQuestionId("")
+                                                                }
+                                                                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                                            >
+                                                                Close Review
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : null}
                                             </div>
                                         ) : null}
                                     </article>
