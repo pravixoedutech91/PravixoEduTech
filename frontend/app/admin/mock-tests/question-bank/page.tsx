@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_URL ||
@@ -960,6 +960,12 @@ export default function AdminQuestionBankPage() {
     const [adminRole, setAdminRole] = useState("");
     const [editorialReviewQuestionId, setEditorialReviewQuestionId] =
         useState("");
+    const [editorialAnswerAttested, setEditorialAnswerAttested] =
+        useState(false);
+    const [editorialLanguageAttested, setEditorialLanguageAttested] =
+        useState(false);
+    const [approvingQuestionId, setApprovingQuestionId] = useState("");
+    const editorialApprovalInFlightRef = useRef(false);
     const [message, setMessage] = useState("");
     const [questions, setQuestions] = useState<Question[]>([]);
     const [categories, setCategories] = useState<CategorySummary[]>([]);
@@ -1045,6 +1051,8 @@ export default function AdminQuestionBankPage() {
     };
 
     const openEditorialReview = (questionId: string) => {
+        setEditorialAnswerAttested(false);
+        setEditorialLanguageAttested(false);
         setEditorialReviewQuestionId(questionId);
 
         window.requestAnimationFrame(() => {
@@ -1057,6 +1065,12 @@ export default function AdminQuestionBankPage() {
                     });
             });
         });
+    };
+
+    const closeEditorialReview = () => {
+        setEditorialReviewQuestionId("");
+        setEditorialAnswerAttested(false);
+        setEditorialLanguageAttested(false);
     };
 
     const showToast = (nextToast: ToastState) => {
@@ -1887,6 +1901,184 @@ export default function AdminQuestionBankPage() {
             });
         } finally {
             setDisablingQuestionId("");
+        }
+    };
+
+    const handleEditorialApproval = async (question: Question) => {
+        if (adminRole !== "super_admin" && adminRole !== "tenant_admin") {
+            showToast({
+                type: "error",
+                message: "Final editorial approval requires a privileged admin account.",
+            });
+            return;
+        }
+
+        if (
+            !isImportedQuestion(question) ||
+            isQuestionEditoriallyApproved(question)
+        ) {
+            showToast({
+                type: "error",
+                message: "This Question is not eligible for final editorial approval.",
+            });
+            return;
+        }
+
+        if (!editorialAnswerAttested || !editorialLanguageAttested) {
+            showToast({
+                type: "error",
+                message: "Verify both editorial attestations before approval.",
+            });
+            return;
+        }
+
+        const expectedUpdatedAt = question.updatedAt?.trim() || "";
+
+        if (
+            !expectedUpdatedAt ||
+            Number.isNaN(new Date(expectedUpdatedAt).getTime())
+        ) {
+            showToast({
+                type: "error",
+                message: "The reviewed Question revision timestamp is unavailable. Refresh and review again.",
+            });
+            return;
+        }
+
+        const savedToken =
+            window.localStorage.getItem(ADMIN_TOKEN_STORAGE_KEY) || "";
+
+        if (!savedToken) {
+            clearAdminSessionStorage();
+            setIsAllowed(false);
+            setAdminRole("");
+            setMessage("Please login with an admin account.");
+            closeEditorialReview();
+            return;
+        }
+
+        if (editorialApprovalInFlightRef.current) {
+            return;
+        }
+
+        editorialApprovalInFlightRef.current = true;
+        setApprovingQuestionId(question._id);
+
+        try {
+            const response = await fetch(
+                API_BASE_URL +
+                    "/api/questions/" +
+                    question._id +
+                    "/editorial-approval",
+                {
+                    method: "PATCH",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: "Bearer " + savedToken,
+                    },
+                    body: JSON.stringify({
+                        action: "approve",
+                        expectedUpdatedAt,
+                        attestAnswerAccuracy: true,
+                        attestBilingualQuality: true,
+                    }),
+                }
+            );
+
+            const result = (await response.json()) as {
+                success: boolean;
+                message?: string;
+                currentUpdatedAt?: string | null;
+                data?: {
+                    _id?: string;
+                    externalQuestionKey?: string;
+                    importMetadata?: QuestionImportMetadata;
+                    updatedAt?: string;
+                };
+            };
+
+            if (response.status === 401 || response.status === 403) {
+                clearAdminSessionStorage();
+                setIsAllowed(false);
+                setAdminRole("");
+                setMessage(
+                    result.message ||
+                        "Your admin session has expired. Please login again."
+                );
+                closeEditorialReview();
+                return;
+            }
+
+            if (response.status === 409) {
+                closeEditorialReview();
+
+                await loadQuestions(
+                    savedToken,
+                    showInactiveQuestions,
+                    questionCategoryFilter,
+                    questionSourceFilter
+                );
+
+                showToast({
+                    type: "error",
+                    message:
+                        result.message ||
+                        "Question revision changed. Reloaded the latest revision; review it again before approval.",
+                });
+                return;
+            }
+
+            const approvalData = result.data;
+
+            if (
+                !response.ok ||
+                !result.success ||
+                !approvalData ||
+                approvalData._id !== question._id ||
+                !approvalData.importMetadata ||
+                !approvalData.updatedAt ||
+                Number.isNaN(new Date(approvalData.updatedAt).getTime())
+            ) {
+                throw new Error(
+                    result.message ||
+                        "Unable to record editorial approval."
+                );
+            }
+
+            setQuestions((current) =>
+                current.map((item) =>
+                    item._id === question._id
+                        ? {
+                              ...item,
+                              externalQuestionKey:
+                                  approvalData.externalQuestionKey ??
+                                  item.externalQuestionKey,
+                              importMetadata: approvalData.importMetadata,
+                              updatedAt: approvalData.updatedAt,
+                          }
+                        : item
+                )
+            );
+
+            closeEditorialReview();
+
+            showToast({
+                type: "success",
+                message:
+                    result.message ||
+                    "Question editorial approval recorded.",
+            });
+        } catch (error) {
+            showToast({
+                type: "error",
+                message:
+                    error instanceof Error
+                        ? error.message
+                        : "Unable to record editorial approval.",
+            });
+        } finally {
+            editorialApprovalInFlightRef.current = false;
+            setApprovingQuestionId("");
         }
     };
 
@@ -3745,15 +3937,99 @@ export default function AdminQuestionBankPage() {
                                                             from this panel yet.
                                                         </p>
 
+                                                        <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm text-slate-700 ring-1 ring-slate-200">
+                                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                                Revision being approved
+                                                            </p>
+                                                            <p className="mt-1 font-semibold text-slate-900">
+                                                                {formatEditorialTimestamp(
+                                                                    question.updatedAt
+                                                                )}
+                                                            </p>
+                                                        </div>
+
+                                                        <div className="mt-4 grid gap-3">
+                                                            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={
+                                                                        editorialAnswerAttested
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        setEditorialAnswerAttested(
+                                                                            event.target.checked
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        approvingQuestionId ===
+                                                                        question._id
+                                                                    }
+                                                                    className="mt-1 h-4 w-4 accent-emerald-600"
+                                                                />
+                                                                <span className="text-sm leading-6 text-slate-700">
+                                                                    I verified the correct answer,
+                                                                    all options, and the explanation
+                                                                    for this exact Question revision.
+                                                                </span>
+                                                            </label>
+
+                                                            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={
+                                                                        editorialLanguageAttested
+                                                                    }
+                                                                    onChange={(event) =>
+                                                                        setEditorialLanguageAttested(
+                                                                            event.target.checked
+                                                                        )
+                                                                    }
+                                                                    disabled={
+                                                                        approvingQuestionId ===
+                                                                        question._id
+                                                                    }
+                                                                    className="mt-1 h-4 w-4 accent-emerald-600"
+                                                                />
+                                                                <span className="text-sm leading-6 text-slate-700">
+                                                                    I verified the Hindi / English
+                                                                    wording, meaning, and bilingual
+                                                                    quality for this exact revision.
+                                                                </span>
+                                                            </label>
+                                                        </div>
+
                                                         <div className="mt-4 flex flex-wrap gap-3">
                                                             <button
                                                                 type="button"
-                                                                onClick={() =>
-                                                                    setEditorialReviewQuestionId("")
+                                                                onClick={closeEditorialReview}
+                                                                disabled={
+                                                                    approvingQuestionId ===
+                                                                    question._id
                                                                 }
-                                                                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                                                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                                                             >
                                                                 Close Review
+                                                            </button>
+
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    void handleEditorialApproval(
+                                                                        question
+                                                                    )
+                                                                }
+                                                                disabled={
+                                                                    !editorialAnswerAttested ||
+                                                                    !editorialLanguageAttested ||
+                                                                    approvingQuestionId ===
+                                                                        question._id
+                                                                }
+                                                                className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                                            >
+                                                                {approvingQuestionId ===
+                                                                question._id
+                                                                    ? "Approving..."
+                                                                    : "Approve Reviewed Revision"}
                                                             </button>
                                                         </div>
                                                     </div>
