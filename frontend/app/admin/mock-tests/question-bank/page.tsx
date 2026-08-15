@@ -16,6 +16,7 @@ const OPTION_IDS = ["A", "B", "C", "D"] as const;
 
 type OptionId = (typeof OPTION_IDS)[number];
 type QuestionSourceFilter = "all" | "original" | "pyq";
+type QuestionEditorialFilter = "all" | "pending" | "approved";
 
 type AdminProfile = {
     id?: string;
@@ -980,6 +981,8 @@ export default function AdminQuestionBankPage() {
     const [questionCategoryFilter, setQuestionCategoryFilter] = useState("");
     const [questionSourceFilter, setQuestionSourceFilter] =
         useState<QuestionSourceFilter>("all");
+    const [questionEditorialFilter, setQuestionEditorialFilter] =
+        useState<QuestionEditorialFilter>("all");
     const [bulkImportFileName, setBulkImportFileName] = useState("");
     const [bulkImportFileSize, setBulkImportFileSize] = useState(0);
     const [bulkImportHeaders, setBulkImportHeaders] = useState<string[]>([]);
@@ -1037,6 +1040,30 @@ export default function AdminQuestionBankPage() {
                 !hasPendingHumanSignoffMarker(languageVerifiedBy)
         );
     };
+
+    const importedQuestionCount = questions.filter(isImportedQuestion).length;
+    const approvedEditorialCount = questions.filter(
+        isQuestionEditoriallyApproved
+    ).length;
+    const pendingEditorialCount =
+        importedQuestionCount - approvedEditorialCount;
+
+    const filteredQuestions = questions.filter((question) => {
+        if (questionEditorialFilter === "all") {
+            return true;
+        }
+
+        if (!isImportedQuestion(question)) {
+            return false;
+        }
+
+        const editoriallyApproved =
+            isQuestionEditoriallyApproved(question);
+
+        return questionEditorialFilter === "approved"
+            ? editoriallyApproved
+            : !editoriallyApproved;
+    });
 
     const formatEditorialTimestamp = (value?: string | null) => {
         if (!value) return "Not available";
@@ -1796,6 +1823,13 @@ export default function AdminQuestionBankPage() {
                 sourceType
             );
         }
+    };
+
+    const handleQuestionEditorialFilterChange = (
+        editorialFilter: QuestionEditorialFilter
+    ) => {
+        closeEditorialReview();
+        setQuestionEditorialFilter(editorialFilter);
     };
 
     const handleShowInactiveQuestionsChange = (checked: boolean) => {
@@ -3514,6 +3548,25 @@ export default function AdminQuestionBankPage() {
                                 </select>
                             </label>
 
+                            <label className="grid min-w-[180px] gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                Editorial QA
+                                <select
+                                    value={questionEditorialFilter}
+                                    onChange={(event) =>
+                                        handleQuestionEditorialFilterChange(
+                                            event.target
+                                                .value as QuestionEditorialFilter
+                                        )
+                                    }
+                                    disabled={isQuestionsLoading}
+                                    className="rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold normal-case tracking-normal text-slate-700 outline-none focus:border-violet-500 disabled:bg-slate-100 disabled:text-slate-400"
+                                >
+                                    <option value="all">All Questions</option>
+                                    <option value="pending">Pending Review</option>
+                                    <option value="approved">Approved</option>
+                                </select>
+                            </label>
+
                             <label className="flex w-fit items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700">
                                 <input
                                     type="checkbox"
@@ -3588,6 +3641,57 @@ export default function AdminQuestionBankPage() {
                         </div>
                     </div>
 
+                    <div className="mt-5 rounded-2xl border border-violet-200 bg-violet-50/60 p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
+                                    Editorial QA Progress
+                                </p>
+                                <p className="mt-1 text-sm leading-6 text-slate-600">
+                                    Imported-question QA counts for the currently loaded Question Bank scope.
+                                </p>
+                            </div>
+
+                            <div className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-600 ring-1 ring-violet-100">
+                                Viewing:{" "}
+                                {questionEditorialFilter === "pending"
+                                    ? "Pending Review"
+                                    : questionEditorialFilter === "approved"
+                                      ? "Approved"
+                                      : "All Questions"}
+                            </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                            <div className="rounded-xl bg-white p-3 ring-1 ring-violet-100">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Imported
+                                </p>
+                                <p className="mt-1 text-2xl font-bold text-slate-950">
+                                    {importedQuestionCount}
+                                </p>
+                            </div>
+
+                            <div className="rounded-xl bg-white p-3 ring-1 ring-orange-100">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">
+                                    Pending Review
+                                </p>
+                                <p className="mt-1 text-2xl font-bold text-slate-950">
+                                    {pendingEditorialCount}
+                                </p>
+                            </div>
+
+                            <div className="rounded-xl bg-white p-3 ring-1 ring-emerald-100">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                                    Approved
+                                </p>
+                                <p className="mt-1 text-2xl font-bold text-slate-950">
+                                    {approvedEditorialCount}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
                     {questionsError ? (
                         <div className="mt-5 rounded-2xl bg-red-50 p-4 text-sm font-semibold text-red-700 ring-1 ring-red-100">
                             {questionsError}
@@ -3602,13 +3706,18 @@ export default function AdminQuestionBankPage() {
                         <div className="mt-5 rounded-2xl bg-blue-50 p-5 text-sm text-blue-900 ring-1 ring-blue-100">
                             {questionCategoryFilter ||
                             questionSourceFilter !== "all" ||
+                            questionEditorialFilter !== "all" ||
                             showInactiveQuestions
                                 ? "No questions match the current filters."
                                 : "No questions found yet. Use Add Question to create your first MCQ."}
                         </div>
+                    ) : filteredQuestions.length === 0 ? (
+                        <div className="mt-5 rounded-2xl bg-violet-50 p-5 text-sm text-violet-900 ring-1 ring-violet-100">
+                            No imported questions match the current Editorial QA filter.
+                        </div>
                     ) : (
                         <div className="mt-5 grid gap-4">
-                            {questions.map((question) => {
+                            {filteredQuestions.map((question) => {
                                 const group = getQuestionGroupSummary(
                                     question.questionGroupId
                                 );
