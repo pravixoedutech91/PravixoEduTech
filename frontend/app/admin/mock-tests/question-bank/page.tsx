@@ -1065,6 +1065,32 @@ export default function AdminQuestionBankPage() {
             : !editoriallyApproved;
     });
 
+    const compareEditorialQuestionKeys = (
+        left: Question,
+        right: Question
+    ) => {
+        const leftKey = left.externalQuestionKey?.trim() || "";
+        const rightKey = right.externalQuestionKey?.trim() || "";
+
+        const keyComparison = leftKey.localeCompare(
+            rightKey,
+            undefined,
+            {
+                numeric: true,
+                sensitivity: "base",
+            }
+        );
+
+        return keyComparison !== 0
+            ? keyComparison
+            : left._id.localeCompare(right._id);
+    };
+
+    const editorialQueueQuestions =
+        questionEditorialFilter === "pending"
+            ? [...filteredQuestions].sort(compareEditorialQuestionKeys)
+            : filteredQuestions;
+
     const formatEditorialTimestamp = (value?: string | null) => {
         if (!value) return "Not available";
 
@@ -1098,6 +1124,23 @@ export default function AdminQuestionBankPage() {
         setEditorialReviewQuestionId("");
         setEditorialAnswerAttested(false);
         setEditorialLanguageAttested(false);
+    };
+
+    const handleReviewNextPending = () => {
+        if (
+            questionEditorialFilter !== "pending" ||
+            (adminRole !== "super_admin" && adminRole !== "tenant_admin")
+        ) {
+            return;
+        }
+
+        const nextPendingQuestion = editorialQueueQuestions[0];
+
+        if (!nextPendingQuestion) {
+            return;
+        }
+
+        openEditorialReview(nextPendingQuestion._id);
     };
 
     const showToast = (nextToast: ToastState) => {
@@ -3690,6 +3733,41 @@ export default function AdminQuestionBankPage() {
                                 </p>
                             </div>
                         </div>
+
+                        {questionEditorialFilter === "pending" &&
+                        (adminRole === "super_admin" ||
+                            adminRole === "tenant_admin") ? (
+                            <div className="mt-4 flex flex-col gap-3 rounded-xl border border-violet-200 bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div>
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">
+                                        Sequential Editorial Review
+                                    </p>
+                                    <p className="mt-1 text-sm leading-6 text-slate-600">
+                                        {editorialQueueQuestions.length > 0
+                                            ? `Next: ${
+                                                  editorialQueueQuestions[0]
+                                                      .externalQuestionKey ||
+                                                  "Imported question"
+                                              }`
+                                            : "No pending imported questions remain in the current scope."}
+                                    </p>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={handleReviewNextPending}
+                                    disabled={
+                                        editorialQueueQuestions.length === 0 ||
+                                        isQuestionsLoading
+                                    }
+                                    className="w-fit rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                >
+                                    {editorialQueueQuestions.length === 0
+                                        ? "No Pending Reviews"
+                                        : "Review Next Pending"}
+                                </button>
+                            </div>
+                        ) : null}
                     </div>
 
                     {questionsError ? (
@@ -3717,7 +3795,7 @@ export default function AdminQuestionBankPage() {
                         </div>
                     ) : (
                         <div className="mt-5 grid gap-4">
-                            {filteredQuestions.map((question) => {
+                            {editorialQueueQuestions.map((question) => {
                                 const group = getQuestionGroupSummary(
                                     question.questionGroupId
                                 );
