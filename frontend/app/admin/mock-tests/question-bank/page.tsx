@@ -4017,12 +4017,34 @@ export default function AdminQuestionBankPage() {
                                                                     ? " - Correct"
                                                                     : ""}
                                                             </p>
-                                                            <p className="mt-2">
-                                                                {option.textEn ||
-                                                                    option.textHi ||
-                                                                    option.imageUrl ||
-                                                                    "-"}
-                                                            </p>
+                                                            {option.textEn ? (
+                                                                <div className="mt-2">
+                                                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                                                        Option English
+                                                                    </p>
+                                                                    <p className="mt-1">
+                                                                        {option.textEn}
+                                                                    </p>
+                                                                </div>
+                                                            ) : null}
+
+                                                            {option.textHi ? (
+                                                                <div className="mt-3 border-t border-slate-200 pt-3">
+                                                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                                                                        Option Hindi
+                                                                    </p>
+                                                                    <p className="mt-1">
+                                                                        {option.textHi}
+                                                                    </p>
+                                                                </div>
+                                                            ) : null}
+
+                                                            {!option.textEn &&
+                                                            !option.textHi ? (
+                                                                <p className="mt-2">
+                                                                    {option.imageUrl || "-"}
+                                                                </p>
+                                                            ) : null}
                                                         </div>
                                                     );
                                                 }
@@ -4035,10 +4057,30 @@ export default function AdminQuestionBankPage() {
                                                 <p className="font-semibold text-slate-900">
                                                     Explanation
                                                 </p>
-                                                <p className="mt-1">
-                                                    {question.explanationEn ||
-                                                        question.explanationHi}
-                                                </p>
+
+                                                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                                                    {question.explanationEn ? (
+                                                        <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
+                                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                                Explanation English
+                                                            </p>
+                                                            <p className="mt-1">
+                                                                {question.explanationEn}
+                                                            </p>
+                                                        </div>
+                                                    ) : null}
+
+                                                    {question.explanationHi ? (
+                                                        <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
+                                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                                Explanation Hindi
+                                                            </p>
+                                                            <p className="mt-1">
+                                                                {question.explanationHi}
+                                                            </p>
+                                                        </div>
+                                                    ) : null}
+                                                </div>
                                             </div>
                                         ) : null}
 
