@@ -281,6 +281,48 @@ const questionSnapshotSchema = new mongoose.Schema(
       default: "original",
     },
 
+    pyqDetails: {
+      examName: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      year: {
+        type: Number,
+      },
+
+      shift: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      paperCode: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+    },
+
+    evaluationStatus: {
+      type: String,
+      enum: ["scored", "officially_cancelled", "source_ambiguous"],
+      default: "scored",
+    },
+
+    evaluationNoteEn: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    evaluationNoteHi: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     subject: {
       type: String,
       default: "",

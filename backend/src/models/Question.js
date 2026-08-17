@@ -91,6 +91,24 @@ const questionSchema = new mongoose.Schema(
       default: "original",
     },
 
+    evaluationStatus: {
+      type: String,
+      enum: ["scored", "officially_cancelled", "source_ambiguous"],
+      default: "scored",
+    },
+
+    evaluationNoteEn: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    evaluationNoteHi: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     questionTextEn: {
       type: String,
       default: "",

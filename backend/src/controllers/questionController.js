@@ -78,12 +78,45 @@ const validateMcqQuestion = (questionData) => {
     }
   }
 
-  if (!questionData.correctOptionId) {
-    return "Correct option is required for MCQ questions";
+  const evaluationStatus =
+    questionData.evaluationStatus || "scored";
+
+  const allowedEvaluationStatuses = [
+    "scored",
+    "officially_cancelled",
+    "source_ambiguous",
+  ];
+
+  if (!allowedEvaluationStatuses.includes(evaluationStatus)) {
+    return "Invalid question evaluation status";
   }
 
-  if (!optionIds.includes(questionData.correctOptionId)) {
-    return "Correct option must match one of the option IDs";
+  if (
+    evaluationStatus !== "scored" &&
+    questionData.sourceType !== "pyq"
+  ) {
+    return "Only PYQ questions can use an unscored evaluation status";
+  }
+
+  if (evaluationStatus === "scored") {
+    if (!questionData.correctOptionId) {
+      return "Correct option is required for scored MCQ questions";
+    }
+
+    if (!optionIds.includes(questionData.correctOptionId)) {
+      return "Correct option must match one of the option IDs";
+    }
+  } else {
+    if (questionData.correctOptionId) {
+      return "Unscored PYQ questions must not define a correct option";
+    }
+
+    if (
+      !hasText(questionData.evaluationNoteEn) &&
+      !hasText(questionData.evaluationNoteHi)
+    ) {
+      return "Evaluation note is required for unscored PYQ questions";
+    }
   }
 
   return null;
@@ -235,9 +268,16 @@ const BULK_IMPORT_QUESTION_FIELDS = [
   "languageVerifiedBy",
 ];
 
-const BULK_IMPORT_QUESTION_FIELD_SET = new Set(
-  BULK_IMPORT_QUESTION_FIELDS
-);
+const BULK_IMPORT_OPTIONAL_QUESTION_FIELDS = [
+  "evaluationStatus",
+  "evaluationNoteEn",
+  "evaluationNoteHi",
+];
+
+const BULK_IMPORT_QUESTION_FIELD_SET = new Set([
+  ...BULK_IMPORT_QUESTION_FIELDS,
+  ...BULK_IMPORT_OPTIONAL_QUESTION_FIELDS,
+]);
 
 const normalizeBulkImportString = (value) => {
   if (value === undefined || value === null) {
@@ -472,6 +512,21 @@ const transformBulkImportQuestionRow = (
       rowData.sourceType
     ).toLowerCase();
 
+  const evaluationStatus =
+    normalizeBulkImportString(
+      rowData.evaluationStatus
+    ).toLowerCase() || "scored";
+
+  const evaluationNoteEn =
+    normalizeBulkImportString(
+      rowData.evaluationNoteEn
+    );
+
+  const evaluationNoteHi =
+    normalizeBulkImportString(
+      rowData.evaluationNoteHi
+    );
+
   const difficulty =
     normalizeBulkImportString(
       rowData.difficulty
@@ -601,6 +656,9 @@ const transformBulkImportQuestionRow = (
 
     questionType,
     sourceType,
+    evaluationStatus,
+    evaluationNoteEn,
+    evaluationNoteHi,
 
     questionTextEn:
       normalizeBulkImportString(
@@ -618,7 +676,7 @@ const transformBulkImportQuestionRow = (
       ),
 
     options,
-    correctOptionId,
+    correctOptionId: correctOptionId || undefined,
 
     explanationEn:
       normalizeBulkImportString(
