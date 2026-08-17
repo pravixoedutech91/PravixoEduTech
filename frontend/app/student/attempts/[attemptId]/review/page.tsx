@@ -254,7 +254,10 @@ const getQuestionStatusLabel = (question: ReviewQuestion) => {
         return "Not visited";
     }
 
-    if (question.studentAnswer.status === "skipped") {
+    if (
+        question.studentAnswer.status === "skipped" ||
+        !question.studentAnswer.selectedOptionId
+    ) {
         return "Skipped";
     }
 
@@ -268,7 +271,11 @@ const getQuestionStatusLabel = (question: ReviewQuestion) => {
 const getQuestionStatusClassName = (question: ReviewQuestion) => {
     const answer = question.studentAnswer;
 
-    if (!answer || answer.status === "skipped") {
+    if (
+        !answer ||
+        answer.status === "skipped" ||
+        !answer.selectedOptionId
+    ) {
         return "bg-slate-100 text-slate-700 ring-slate-200";
     }
 
