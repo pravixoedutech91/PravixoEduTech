@@ -49,6 +49,8 @@ const isInvalidStudentSessionResponse = (
 
 type ScoreSummary = {
     totalQuestions: number;
+    scorableQuestions?: number;
+    unscoredQuestions?: number;
     attempted: number;
     correct: number;
     wrong: number;
@@ -466,16 +468,33 @@ export default function StudentAttemptResultPage() {
                             <h2 className="text-lg font-black text-slate-950">
                                 Attempt Summary
                             </h2>
-                            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
                                 <MiniStat
                                     label="Total Questions"
                                     value={scoreSummary.totalQuestions}
+                                />
+                                <MiniStat
+                                    label="Scorable Questions"
+                                    value={
+                                        scoreSummary.scorableQuestions ??
+                                        scoreSummary.totalQuestions
+                                    }
+                                />
+                                <MiniStat
+                                    label="Unscored Questions"
+                                    value={scoreSummary.unscoredQuestions ?? 0}
                                 />
                                 <MiniStat label="Attempted" value={scoreSummary.attempted} />
                                 <MiniStat label="Correct" value={scoreSummary.correct} />
                                 <MiniStat label="Wrong" value={scoreSummary.wrong} />
                                 <MiniStat label="Skipped" value={scoreSummary.skipped} />
                             </div>
+                            {(scoreSummary.unscoredQuestions ?? 0) > 0 ? (
+                                <p className="mt-3 text-xs leading-5 text-slate-500">
+                                    Unscored questions remain part of the paper but are excluded
+                                    from score, accuracy and maximum-score calculations.
+                                </p>
+                            ) : null}
                             <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                                 <MiniStat
                                     label="Negative Marks"

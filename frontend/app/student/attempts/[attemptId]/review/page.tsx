@@ -134,7 +134,7 @@ type ReviewOption = {
 
 type StudentAnswer = {
     selectedOptionId: string | null;
-    isCorrect: boolean;
+    isCorrect: boolean | null;
     marksAwarded: number;
     negativeMarksApplied: number;
     timeSpentSeconds: number;
@@ -159,6 +159,10 @@ type ReviewQuestion = {
     questionTextHi?: string;
     questionImageUrl?: string;
     options?: ReviewOption[];
+    evaluationStatus?: "scored" | "officially_cancelled" | "source_ambiguous";
+    isScored?: boolean;
+    evaluationNoteEn?: string;
+    evaluationNoteHi?: string;
     correctOptionId?: string | null;
     explanationEn?: string;
     explanationHi?: string;
@@ -250,6 +254,13 @@ const formatSeconds = (seconds?: number | null) => {
 const formatPercent = (value?: number | null) => `${Number(value || 0)}%`;
 
 const getQuestionStatusLabel = (question: ReviewQuestion) => {
+    if (question.evaluationStatus === "officially_cancelled") {
+        return "Officially Cancelled";
+    }
+
+    if (question.evaluationStatus === "source_ambiguous") {
+        return "Source Ambiguous";
+    }
     if (!question.studentAnswer) {
         return "Not visited";
     }
@@ -269,6 +280,13 @@ const getQuestionStatusLabel = (question: ReviewQuestion) => {
 };
 
 const getQuestionStatusClassName = (question: ReviewQuestion) => {
+    if (question.evaluationStatus === "officially_cancelled") {
+        return "bg-amber-50 text-amber-800 ring-amber-200";
+    }
+
+    if (question.evaluationStatus === "source_ambiguous") {
+        return "bg-violet-50 text-violet-800 ring-violet-200";
+    }
     const answer = question.studentAnswer;
 
     if (
@@ -349,10 +367,18 @@ const renderContentBlock = (block: ContentBlock, index: number) => {
 const getOptionClassName = ({
     isCorrectOption,
     isSelectedOption,
+    isScored,
 }: {
     isCorrectOption: boolean;
     isSelectedOption: boolean;
+    isScored: boolean;
 }) => {
+    if (!isScored) {
+        return isSelectedOption
+            ? "border-amber-300 bg-amber-50 text-amber-900"
+            : "border-slate-200 bg-white text-slate-700";
+    }
+
     if (isCorrectOption) {
         return "border-emerald-300 bg-emerald-50 text-emerald-900";
     }
@@ -704,6 +730,9 @@ export default function StudentAttemptReviewPage() {
                                     {(section.questions || []).map((question) => {
                                         const questionNumber = questionNumberMap.get(question._id) || question.order;
                                         const selectedOptionId = question.studentAnswer?.selectedOptionId || null;
+                                        const isScoredQuestion =
+                                            question.isScored !== false &&
+                                            (question.evaluationStatus || "scored") === "scored";
                                         const linkedGroup = (section.questionGroups || []).find(
                                             (group) => group.questionGroupId === question.questionGroupId
                                         );
@@ -724,12 +753,20 @@ export default function StudentAttemptReviewPage() {
                                                     >
                                                         {getQuestionStatusLabel(question)}
                                                     </span>
-                                                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                                                        +{question.marks}
-                                                    </span>
-                                                    <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
-                                                        -{question.negativeMarks}
-                                                    </span>
+                                                    {isScoredQuestion ? (
+                                                        <>
+                                                            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                                                                +{question.marks}
+                                                            </span>
+                                                            <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
+                                                                -{question.negativeMarks}
+                                                            </span>
+                                                        </>
+                                                    ) : (
+                                                        <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
+                                                            Unscored
+                                                        </span>
+                                                    )}
                                                     {linkedGroup ? (
                                                         <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
                                                             {linkedGroup.topic || linkedGroup.title}
@@ -755,6 +792,7 @@ export default function StudentAttemptReviewPage() {
                                                 <div className="mt-5 grid gap-3 md:grid-cols-2">
                                                     {(question.options || []).map((option) => {
                                                         const isCorrectOption =
+                                                            isScoredQuestion &&
                                                             option.optionId === question.correctOptionId;
                                                         const isSelectedOption =
                                                             option.optionId === selectedOptionId;
@@ -765,6 +803,7 @@ export default function StudentAttemptReviewPage() {
                                                                 className={`rounded-2xl border p-4 ${getOptionClassName({
                                                                     isCorrectOption,
                                                                     isSelectedOption,
+                                                                    isScored: isScoredQuestion,
                                                                 })}`}
                                                             >
                                                                 <div className="flex items-start gap-3">
@@ -800,6 +839,19 @@ export default function StudentAttemptReviewPage() {
                                                     })}
                                                 </div>
 
+                                                {!isScoredQuestion &&
+                                                (question.evaluationNoteEn || question.evaluationNoteHi) ? (
+                                                    <div className="mt-5 rounded-2xl bg-amber-50 p-4 text-sm text-amber-950 ring-1 ring-amber-200">
+                                                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-800">
+                                                            Evaluation Note
+                                                        </p>
+                                                        {renderOptionalText(
+                                                            question.evaluationNoteEn,
+                                                            question.evaluationNoteHi
+                                                        )}
+                                                    </div>
+                                                ) : null}
+
                                                 <div className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm md:grid-cols-4">
                                                     <div>
                                                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -809,14 +861,25 @@ export default function StudentAttemptReviewPage() {
                                                             {selectedOptionId || "Skipped"}
                                                         </p>
                                                     </div>
-                                                    <div>
-                                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                                            Correct Answer
-                                                        </p>
-                                                        <p className="mt-1 font-bold text-emerald-700">
-                                                            {question.correctOptionId || "-"}
-                                                        </p>
-                                                    </div>
+                                                    {isScoredQuestion ? (
+                                                        <div>
+                                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                                Correct Answer
+                                                            </p>
+                                                            <p className="mt-1 font-bold text-emerald-700">
+                                                                {question.correctOptionId || "-"}
+                                                            </p>
+                                                        </div>
+                                                    ) : (
+                                                        <div>
+                                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                                                Scoring
+                                                            </p>
+                                                            <p className="mt-1 font-bold text-amber-700">
+                                                                Not Scored
+                                                            </p>
+                                                        </div>
+                                                    )}
                                                     <div>
                                                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                                                             Marks
@@ -835,7 +898,7 @@ export default function StudentAttemptReviewPage() {
                                                     </div>
                                                 </div>
 
-                                                {question.explanationEn || question.explanationHi ? (
+                                                {isScoredQuestion && (question.explanationEn || question.explanationHi) ? (
                                                     <div className="mt-5 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-950 ring-1 ring-emerald-100">
                                                         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
                                                             Explanation
@@ -847,7 +910,7 @@ export default function StudentAttemptReviewPage() {
                                                     </div>
                                                 ) : null}
 
-                                                {question.explanationImageUrl ? (
+                                                {isScoredQuestion && question.explanationImageUrl ? (
                                                     <figure className="mt-4">
                                                         {/* eslint-disable-next-line @next/next/no-img-element */}
                                                         <img

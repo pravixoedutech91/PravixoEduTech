@@ -8,6 +8,18 @@ const scoreSummarySchema = new mongoose.Schema(
       min: 0,
     },
 
+    scorableQuestions: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    unscoredQuestions: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     attempted: {
       type: Number,
       default: 0,
@@ -87,6 +99,18 @@ const sectionSummarySchema = new mongoose.Schema(
     },
 
     totalQuestions: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    scorableQuestions: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    unscoredQuestions: {
       type: Number,
       default: 0,
       min: 0,
@@ -176,6 +200,18 @@ const topicSummarySchema = new mongoose.Schema(
       min: 0,
     },
 
+    scorableQuestions: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    unscoredQuestions: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     attempted: {
       type: Number,
       default: 0,
@@ -243,6 +279,18 @@ const difficultySummarySchema = new mongoose.Schema(
     },
 
     totalQuestions: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    scorableQuestions: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    unscoredQuestions: {
       type: Number,
       default: 0,
       min: 0,

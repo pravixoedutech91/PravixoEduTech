@@ -1963,6 +1963,8 @@ const getSubmittedDetailExpiresAt = (baseDate, reviewRetentionDays) => {
 const createBasePerformanceSummary = () => {
     return {
         totalQuestions: 0,
+        scorableQuestions: 0,
+        unscoredQuestions: 0,
         attempted: 0,
         correct: 0,
         wrong: 0,
@@ -1976,7 +1978,7 @@ const createBasePerformanceSummary = () => {
 };
 
 const finalizePerformanceSummary = (summary) => {
-    summary.skipped = Math.max(summary.totalQuestions - summary.attempted, 0);
+    summary.skipped = Math.max(summary.scorableQuestions - summary.attempted, 0);
     summary.score = roundToTwo(summary.score);
     summary.maxScore = roundToTwo(summary.maxScore);
     summary.percentage = calculatePercentage(summary.score, summary.maxScore);
@@ -2009,6 +2011,8 @@ const buildSubmittedAttemptSummaries = (mockTestVersion, attemptDetail) => {
 
     const scoreSummary = {
         totalQuestions: 0,
+        scorableQuestions: 0,
+        unscoredQuestions: 0,
         attempted: 0,
         correct: 0,
         wrong: 0,
@@ -2073,12 +2077,30 @@ const buildSubmittedAttemptSummaries = (mockTestVersion, attemptDetail) => {
                 difficultySummary,
             ];
 
+            const evaluationStatus =
+                question.evaluationStatus || "scored";
+            const isScoredQuestion =
+                evaluationStatus === "scored";
+
             scoreSummary.totalQuestions += 1;
-            scoreSummary.maxScore += marks;
+
+            if (isScoredQuestion) {
+                scoreSummary.scorableQuestions += 1;
+                scoreSummary.maxScore += marks;
+            } else {
+                scoreSummary.unscoredQuestions += 1;
+            }
 
             for (const summary of summariesToUpdate) {
                 summary.totalQuestions += 1;
-                summary.maxScore += marks;
+
+                if (isScoredQuestion) {
+                    summary.scorableQuestions += 1;
+                    summary.maxScore += marks;
+                } else {
+                    summary.unscoredQuestions += 1;
+                }
+
                 summary.timeSpentSeconds += questionTimeSpentSeconds;
             }
 
@@ -2087,6 +2109,13 @@ const buildSubmittedAttemptSummaries = (mockTestVersion, attemptDetail) => {
             }
 
             answer.timeSpentSeconds = Math.max(questionTimeSpentSeconds, 0);
+
+            if (!isScoredQuestion) {
+                answer.isCorrect = null;
+                answer.marksAwarded = 0;
+                answer.negativeMarksApplied = 0;
+                continue;
+            }
 
             if (!selectedOptionId) {
                 answer.isCorrect = null;
@@ -2127,7 +2156,7 @@ const buildSubmittedAttemptSummaries = (mockTestVersion, attemptDetail) => {
     }
 
     scoreSummary.skipped = Math.max(
-        scoreSummary.totalQuestions - scoreSummary.attempted,
+        scoreSummary.scorableQuestions - scoreSummary.attempted,
         0
     );
     scoreSummary.score = roundToTwo(scoreSummary.score);
@@ -2163,6 +2192,59 @@ const isResultImmediatelyVisible = (mockTestVersion) => {
     );
 };
 
+const normalizePerformanceSummaryForStudent = (summary) => {
+    let source = {};
+
+    if (summary && typeof summary.toObject === "function") {
+        source = summary.toObject();
+    } else if (summary && typeof summary === "object") {
+        source = { ...summary };
+    }
+
+    const toNonNegativeNumber = (value) => {
+        const numberValue = Number(value);
+
+        return Number.isFinite(numberValue)
+            ? Math.max(numberValue, 0)
+            : 0;
+    };
+
+    const totalQuestions = toNonNegativeNumber(
+        source.totalQuestions
+    );
+
+    let scorableQuestions = toNonNegativeNumber(
+        source.scorableQuestions
+    );
+
+    const unscoredQuestions = toNonNegativeNumber(
+        source.unscoredQuestions
+    );
+
+    if (
+        totalQuestions > 0 &&
+        scorableQuestions === 0 &&
+        unscoredQuestions === 0
+    ) {
+        scorableQuestions = totalQuestions;
+    }
+
+    return {
+        ...source,
+        totalQuestions,
+        scorableQuestions,
+        unscoredQuestions,
+    };
+};
+
+const normalizePerformanceSummaryListForStudent = (summaries) => {
+    if (!Array.isArray(summaries)) {
+        return [];
+    }
+
+    return summaries.map(normalizePerformanceSummaryForStudent);
+};
+
 const buildSubmitAttemptPayload = (attempt, resultAvailable) => {
     const attemptPayload = {
         _id: attempt._id,
@@ -2177,10 +2259,14 @@ const buildSubmitAttemptPayload = (attempt, resultAvailable) => {
     };
 
     if (resultAvailable) {
-        attemptPayload.scoreSummary = attempt.scoreSummary;
-        attemptPayload.sectionSummaries = attempt.sectionSummaries;
-        attemptPayload.topicSummaries = attempt.topicSummaries;
-        attemptPayload.difficultySummaries = attempt.difficultySummaries;
+        attemptPayload.scoreSummary =
+            normalizePerformanceSummaryForStudent(attempt.scoreSummary);
+        attemptPayload.sectionSummaries =
+            normalizePerformanceSummaryListForStudent(attempt.sectionSummaries);
+        attemptPayload.topicSummaries =
+            normalizePerformanceSummaryListForStudent(attempt.topicSummaries);
+        attemptPayload.difficultySummaries =
+            normalizePerformanceSummaryListForStudent(attempt.difficultySummaries);
     }
 
     return {
@@ -2218,10 +2304,10 @@ const buildResultPayload = (attempt, mockTestVersion) => {
             expiresAt: attempt.expiresAt,
             totalDurationSeconds: attempt.totalDurationSeconds,
             timeSpentSeconds: attempt.timeSpentSeconds,
-            scoreSummary: attempt.scoreSummary,
-            sectionSummaries: attempt.sectionSummaries,
-            topicSummaries: attempt.topicSummaries,
-            difficultySummaries: attempt.difficultySummaries,
+            scoreSummary: normalizePerformanceSummaryForStudent(attempt.scoreSummary),
+            sectionSummaries: normalizePerformanceSummaryListForStudent(attempt.sectionSummaries),
+            topicSummaries: normalizePerformanceSummaryListForStudent(attempt.topicSummaries),
+            difficultySummaries: normalizePerformanceSummaryListForStudent(attempt.difficultySummaries),
             review: buildReviewMetadataForStudent(attempt),
         },
     };
@@ -2322,6 +2408,8 @@ const buildReviewMetadataForStudent = (attempt, now = new Date()) => {
 };
 
 const buildReviewQuestionPayload = (question, answer) => {
+    const evaluationStatus = question.evaluationStatus || "scored";
+    const isScoredQuestion = evaluationStatus === "scored";
     return {
         _id: question._id,
         questionId: question.questionId,
@@ -2329,6 +2417,12 @@ const buildReviewQuestionPayload = (question, answer) => {
         groupQuestionOrder: question.groupQuestionOrder || null,
         questionType: question.questionType,
         sourceType: question.sourceType,
+        evaluationStatus,
+        isScored: isScoredQuestion,
+        evaluationNoteEn:
+            isScoredQuestion ? "" : question.evaluationNoteEn || "",
+        evaluationNoteHi:
+            isScoredQuestion ? "" : question.evaluationNoteHi || "",
         subject: question.subject,
         topic: question.topic,
         subTopic: question.subTopic,
@@ -2337,10 +2431,13 @@ const buildReviewQuestionPayload = (question, answer) => {
         questionImageUrl: question.questionImageUrl,
         options: (question.options || []).map(sanitizeOptionForStudent),
 
-        correctOptionId: question.correctOptionId,
-        explanationEn: question.explanationEn,
-        explanationHi: question.explanationHi,
-        explanationImageUrl: question.explanationImageUrl,
+        correctOptionId: isScoredQuestion ? question.correctOptionId : null,
+        explanationEn:
+            isScoredQuestion ? question.explanationEn : "",
+        explanationHi:
+            isScoredQuestion ? question.explanationHi : "",
+        explanationImageUrl:
+            isScoredQuestion ? question.explanationImageUrl : null,
 
         marks: question.marks,
         negativeMarks: question.negativeMarks,
@@ -2350,9 +2447,12 @@ const buildReviewQuestionPayload = (question, answer) => {
 
         studentAnswer: {
             selectedOptionId: answer?.selectedOptionId || null,
-            isCorrect: answer?.isCorrect ?? null,
-            marksAwarded: answer?.marksAwarded || 0,
-            negativeMarksApplied: answer?.negativeMarksApplied || 0,
+            isCorrect:
+                isScoredQuestion ? answer?.isCorrect ?? null : null,
+            marksAwarded:
+                isScoredQuestion ? answer?.marksAwarded || 0 : 0,
+            negativeMarksApplied:
+                isScoredQuestion ? answer?.negativeMarksApplied || 0 : 0,
             timeSpentSeconds: answer?.timeSpentSeconds || 0,
             confidenceLevel: answer?.confidenceLevel || "not_marked",
             status: answer?.status || "not_visited",
@@ -2408,10 +2508,10 @@ const buildReviewPayload = (attempt, mockTestVersion, attemptDetail) => {
             expiresAt: attempt.expiresAt,
             totalDurationSeconds: attempt.totalDurationSeconds,
             timeSpentSeconds: attempt.timeSpentSeconds,
-            scoreSummary: attempt.scoreSummary,
-            sectionSummaries: attempt.sectionSummaries,
-            topicSummaries: attempt.topicSummaries,
-            difficultySummaries: attempt.difficultySummaries,
+            scoreSummary: normalizePerformanceSummaryForStudent(attempt.scoreSummary),
+            sectionSummaries: normalizePerformanceSummaryListForStudent(attempt.sectionSummaries),
+            topicSummaries: normalizePerformanceSummaryListForStudent(attempt.topicSummaries),
+            difficultySummaries: normalizePerformanceSummaryListForStudent(attempt.difficultySummaries),
             review: buildReviewMetadataForStudent(attempt),
         },
         sections: (mockTestVersion.sections || [])
@@ -2718,7 +2818,7 @@ const isValidHistoryObjectId = (value) => {
 };
 
 const buildAttemptHistoryItem = (attempt, now = new Date()) => {
-    const scoreSummary = attempt.scoreSummary || {};
+    const scoreSummary = normalizePerformanceSummaryForStudent(attempt.scoreSummary);
     const mockTest = attempt.mockTestId || {};
     const mockTestVersion = attempt.mockTestVersionId || {};
 
@@ -2786,6 +2886,8 @@ const buildAttemptHistoryItem = (attempt, now = new Date()) => {
 
         scoreSummary: {
             totalQuestions: getScoreNumber("totalQuestions"),
+            scorableQuestions: getScoreNumber("scorableQuestions"),
+            unscoredQuestions: getScoreNumber("unscoredQuestions"),
             attemptedQuestions: getScoreNumber(
                 "attemptedQuestions",
                 "answeredQuestions",
