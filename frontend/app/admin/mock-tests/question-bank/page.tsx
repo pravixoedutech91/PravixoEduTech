@@ -436,6 +436,55 @@ const BULK_IMPORT_REQUIRED_HEADERS = [
     "languageVerifiedBy",
 ] as const;
 
+const BULK_IMPORT_FORWARDABLE_HEADERS = [
+    "externalQuestionKey",
+    "categoryExternalKey",
+    "questionGroupExternalKey",
+    "groupQuestionOrder",
+    "questionType",
+    "sourceType",
+    "subject",
+    "topic",
+    "subTopic",
+    "questionTextEn",
+    "questionTextHi",
+    "questionImageUrl",
+    "optionAEn",
+    "optionBEn",
+    "optionCEn",
+    "optionDEn",
+    "optionAHi",
+    "optionBHi",
+    "optionCHi",
+    "optionDHi",
+    "optionAImageUrl",
+    "optionBImageUrl",
+    "optionCImageUrl",
+    "optionDImageUrl",
+    "correctOptionId",
+    "explanationEn",
+    "explanationHi",
+    "explanationImageUrl",
+    "marks",
+    "negativeMarks",
+    "difficulty",
+    "tagsCsv",
+    "pyqExamName",
+    "pyqYear",
+    "pyqShift",
+    "pyqPaperCode",
+    "isActive",
+    "sourceQuestionId",
+    "sourcePage",
+    "sourceTopicCode",
+    "contentStatus",
+    "answerVerifiedBy",
+    "languageVerifiedBy",
+    "evaluationStatus",
+    "evaluationNoteEn",
+    "evaluationNoteHi",
+] as const;
+
 const hasBulkImportText = (value: string) => value.trim().length > 0;
 
 const isNonNegativeBulkImportNumber = (value: string) => {
@@ -955,6 +1004,214 @@ const validateBulkImportCsv = (
         duplicateHeaders: [],
     };
 };
+const BULK_IMPORT_EVALUATION_STATUSES = [
+    "scored",
+    "officially_cancelled",
+    "source_ambiguous",
+] as const;
+
+const buildBulkImportRequestRows = (
+    headers: string[],
+    rows: string[][]
+): Record<string, string>[] =>
+    rows.map((row) => {
+        const rowData: Record<string, string> = {};
+
+        BULK_IMPORT_FORWARDABLE_HEADERS.forEach((header) => {
+            if (!headers.includes(header)) {
+                return;
+            }
+
+            rowData[header] = getBulkImportCsvValue(
+                headers,
+                row,
+                header
+            );
+        });
+
+        return rowData;
+    });
+
+const validateBulkImportCsvWithEvaluation = (
+    headers: string[],
+    rows: string[][]
+): BulkImportValidationResult => {
+    const baseValidation = validateBulkImportCsv(
+        headers,
+        rows
+    );
+
+    const evaluationRows = rows.map((row, rowIndex) => {
+        const externalQuestionKey = getBulkImportCsvValue(
+            headers,
+            row,
+            "externalQuestionKey"
+        ).trim();
+
+        const evaluationStatus =
+            getBulkImportCsvValue(
+                headers,
+                row,
+                "evaluationStatus"
+            )
+                .trim()
+                .toLowerCase() || "scored";
+
+        const sourceType = getBulkImportCsvValue(
+            headers,
+            row,
+            "sourceType"
+        )
+            .trim()
+            .toLowerCase();
+
+        const correctOptionId = getBulkImportCsvValue(
+            headers,
+            row,
+            "correctOptionId"
+        )
+            .trim()
+            .toUpperCase();
+
+        const evaluationNoteEn = getBulkImportCsvValue(
+            headers,
+            row,
+            "evaluationNoteEn"
+        ).trim();
+
+        const evaluationNoteHi = getBulkImportCsvValue(
+            headers,
+            row,
+            "evaluationNoteHi"
+        ).trim();
+
+        const isUnscored =
+            evaluationStatus === "officially_cancelled" ||
+            evaluationStatus === "source_ambiguous";
+
+        return {
+            rowNumber: rowIndex + 1,
+            externalQuestionKey,
+            evaluationStatus,
+            sourceType,
+            correctOptionId,
+            evaluationNoteEn,
+            evaluationNoteHi,
+            isUnscored,
+        };
+    });
+
+    const unscoredRowNumbers = new Set(
+        evaluationRows
+            .filter((row) => row.isUnscored)
+            .map((row) => row.rowNumber)
+    );
+
+    const issues = baseValidation.issues.filter((issue) => {
+        if (
+            issue.field === "correctOptionId" &&
+            issue.rowNumber !== null &&
+            unscoredRowNumbers.has(issue.rowNumber)
+        ) {
+            return false;
+        }
+
+        return true;
+    });
+
+    const addEvaluationError = (
+        rowNumber: number,
+        externalQuestionKey: string,
+        field: string,
+        message: string
+    ) => {
+        issues.push({
+            severity: "error",
+            rowNumber,
+            externalQuestionKey,
+            field,
+            message,
+        });
+    };
+
+    evaluationRows.forEach((row) => {
+        const evaluationStatusAllowed =
+            BULK_IMPORT_EVALUATION_STATUSES.some(
+                (status) => status === row.evaluationStatus
+            );
+
+        if (!evaluationStatusAllowed) {
+            addEvaluationError(
+                row.rowNumber,
+                row.externalQuestionKey,
+                "evaluationStatus",
+                "evaluationStatus must be scored, officially_cancelled or source_ambiguous."
+            );
+
+            return;
+        }
+
+        if (!row.isUnscored) {
+            return;
+        }
+
+        if (row.sourceType !== "pyq") {
+            addEvaluationError(
+                row.rowNumber,
+                row.externalQuestionKey,
+                "evaluationStatus",
+                "Only PYQ questions can use an unscored evaluation status."
+            );
+        }
+
+        if (row.correctOptionId) {
+            addEvaluationError(
+                row.rowNumber,
+                row.externalQuestionKey,
+                "correctOptionId",
+                "Unscored PYQ questions must leave correctOptionId blank."
+            );
+        }
+
+        if (!row.evaluationNoteEn && !row.evaluationNoteHi) {
+            addEvaluationError(
+                row.rowNumber,
+                row.externalQuestionKey,
+                "evaluationNoteEn",
+                "At least one evaluation note is required for an unscored PYQ question."
+            );
+        }
+    });
+
+    const errorCount = issues.filter(
+        (issue) => issue.severity === "error"
+    ).length;
+
+    const warningCount = issues.filter(
+        (issue) => issue.severity === "warning"
+    ).length;
+
+    const invalidRowNumbers = new Set<number>();
+
+    issues.forEach((issue) => {
+        if (
+            issue.severity === "error" &&
+            typeof issue.rowNumber === "number"
+        ) {
+            invalidRowNumbers.add(issue.rowNumber);
+        }
+    });
+
+    return {
+        ...baseValidation,
+        issues,
+        errorCount,
+        warningCount,
+        invalidRowCount: invalidRowNumbers.size,
+        validRowCount: rows.length - invalidRowNumbers.size,
+    };
+};
+
 export default function AdminQuestionBankPage() {
     const [isReady, setIsReady] = useState(false);
     const [isAllowed, setIsAllowed] = useState(false);
@@ -1730,7 +1987,7 @@ export default function AdminQuestionBankPage() {
         }
 
         setBulkImportValidation(
-            validateBulkImportCsv(
+            validateBulkImportCsvWithEvaluation(
                 bulkImportHeaders,
                 bulkImportRows
             )
@@ -1764,18 +2021,10 @@ export default function AdminQuestionBankPage() {
             return;
         }
 
-        const rows = bulkImportRows.map((row) => ({
-            externalQuestionKey: getBulkImportCsvValue(
-                bulkImportHeaders,
-                row,
-                "externalQuestionKey"
-            ).trim(),
-            categoryExternalKey: getBulkImportCsvValue(
-                bulkImportHeaders,
-                row,
-                "categoryExternalKey"
-            ).trim(),
-        }));
+        const rows = buildBulkImportRequestRows(
+            bulkImportHeaders,
+            bulkImportRows
+        );
 
         setIsBulkImportDryRunning(true);
 
@@ -2914,7 +3163,7 @@ export default function AdminQuestionBankPage() {
                         </button>
 
                         <p className="text-xs leading-5 text-slate-500">
-                            Local validation runs first — backend dry run sends only external keys and must perform zero
+                            Local validation runs first — backend dry run sends the validated question rows and must perform zero
                             writes.
                         </p>
                     </div>
@@ -2928,9 +3177,7 @@ export default function AdminQuestionBankPage() {
                                     </p>
 
                                     <p className="mt-1 text-xs leading-5 text-slate-600">
-                                        Sends only the external question key and category
-                                        external key. This step must perform zero Question
-                                        writes.
+                                        Sends the complete validated question rows. This step must perform zero Question writes.
                                     </p>
                                 </div>
 
