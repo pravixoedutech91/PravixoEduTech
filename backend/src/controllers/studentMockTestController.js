@@ -225,6 +225,12 @@ const calculateMaxScore = (mockTestVersion) => {
     return (mockTestVersion.sections || []).reduce((testTotal, section) => {
         const sectionScore = (section.questions || []).reduce(
             (sectionTotal, question) => {
+                const evaluationStatus = question.evaluationStatus || "scored";
+
+                if (evaluationStatus !== "scored") {
+                    return sectionTotal;
+                }
+
                 return sectionTotal + toNumber(question.marks, 0);
             },
             0
