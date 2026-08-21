@@ -53,6 +53,13 @@ const buildStudentMockTestListItem = (
         price: mockTest.price,
         salePrice: mockTest.salePrice,
         isPurchasable: mockTest.isPurchasable,
+        category: mockTest.categoryId
+            ? {
+                _id: mockTest.categoryId._id,
+                name: mockTest.categoryId.name,
+                slug: mockTest.categoryId.slug,
+            }
+            : null,
         examPattern: mockTest.examPatternId
             ? {
                 _id: mockTest.examPatternId._id,
@@ -1378,8 +1385,9 @@ const getPublishedMockTestsForStudent = async (req, res) => {
 
         const mockTests = await MockTest.find(filter)
             .select(
-                "title slug description testType accessType price salePrice isPurchasable examPatternId activeVersionId settings.maxAttempts settings.interfaceMode settings.showResultImmediately settings.solutionVisibility publishedAt createdAt"
+                "title slug description testType accessType price salePrice isPurchasable categoryId examPatternId activeVersionId settings.maxAttempts settings.interfaceMode settings.showResultImmediately settings.solutionVisibility publishedAt createdAt"
             )
+            .populate("categoryId", "name slug")
             .populate("examPatternId", "name examType totalDurationMinutes")
             .populate("activeVersionId", "versionNumber publishedAt settings.maxAttempts settings.interfaceMode settings.showResultImmediately settings.solutionVisibility")
             .sort({ publishedAt: -1, createdAt: -1 });

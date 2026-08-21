@@ -15,6 +15,8 @@ type PrimaryAction =
     | "purchase_required"
     | "assignment_required";
 
+type StudentTestType = "mock" | "pyq";
+
 type MockTest = {
     _id: string;
     title: string;
@@ -22,6 +24,11 @@ type MockTest = {
     description?: string;
     testType: string;
     accessType: string;
+    category: {
+        _id: string;
+        name: string;
+        slug: string;
+    } | null;
     examPattern: {
         name: string;
         examType: string;
@@ -396,6 +403,7 @@ export default function StudentMockTestsPage() {
     const [token, setToken] = useState("");
     const [isClientReady, setIsClientReady] = useState(false);
     const [mockTests, setMockTests] = useState<MockTest[]>([]);
+    const [activeTestType, setActiveTestType] = useState<StudentTestType>("mock");
     const [paymentPackages, setPaymentPackages] = useState<StudentPaymentPackage[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isLoadingPackages, setIsLoadingPackages] = useState(false);
@@ -405,6 +413,20 @@ export default function StudentMockTestsPage() {
     >(null);
     const [errorMessage, setErrorMessage] = useState("");
     const [actionMessage, setActionMessage] = useState("");
+
+    const mockTestCount = mockTests.filter(
+        (mockTest) => mockTest.testType === "mock"
+    ).length;
+
+    const pyqTestCount = mockTests.filter(
+        (mockTest) => mockTest.testType === "pyq"
+    ).length;
+
+    const studentCatalogTestCount = mockTestCount + pyqTestCount;
+
+    const visibleTests = mockTests.filter(
+        (mockTest) => mockTest.testType === activeTestType
+    );
 
     useEffect(() => {
         if (!actionMessage) {
@@ -1176,23 +1198,81 @@ export default function StudentMockTestsPage() {
                 </section>
 
                 <section>
-                    <div className="mb-4 flex items-center justify-between">
-                        <h2 className="text-xl font-bold">
-                            Available Tests
-                        </h2>
+                    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                        <div>
+                            <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-700">
+                                Test Series
+                            </p>
+                            <h2 className="mt-1 text-2xl font-bold">
+                                {activeTestType === "mock" ? "Mock Tests" : "PYQ Tests"}
+                            </h2>
+                            <p className="mt-1 text-sm text-slate-600">
+                                Tests are organised by exam category, written-test pattern and test type.
+                            </p>
+                        </div>
 
                         <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold">
-                            {mockTests.length} test(s)
+                            {studentCatalogTestCount} total test(s)
                         </span>
                     </div>
 
-                    {mockTests.length === 0 ? (
+                    <div
+                        role="tablist"
+                        aria-label="Test type"
+                        className="mb-5 grid grid-cols-2 gap-3 rounded-3xl bg-slate-100 p-2"
+                    >
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTestType === "mock"}
+                            onClick={() => setActiveTestType("mock")}
+                            className={
+                                "rounded-2xl px-4 py-3 text-sm font-bold transition " +
+                                (activeTestType === "mock"
+                                    ? "bg-blue-700 text-white shadow-sm"
+                                    : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50")
+                            }
+                        >
+                            Mock Tests ({mockTestCount})
+                        </button>
+
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTestType === "pyq"}
+                            onClick={() => setActiveTestType("pyq")}
+                            className={
+                                "rounded-2xl px-4 py-3 text-sm font-bold transition " +
+                                (activeTestType === "pyq"
+                                    ? "bg-blue-700 text-white shadow-sm"
+                                    : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50")
+                            }
+                        >
+                            PYQ Tests ({pyqTestCount})
+                        </button>
+                    </div>
+
+                    <div className="mb-4 flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
+                        <span className="text-sm font-semibold text-slate-700">
+                            {activeTestType === "mock" ? "Mock Tests" : "Previous Year Question Tests"}
+                        </span>
+
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
+                            {visibleTests.length} available
+                        </span>
+                    </div>
+
+                    {studentCatalogTestCount === 0 ? (
                         <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-                            No mock tests loaded yet.
+                            No published Mock or PYQ tests are available yet.
+                        </div>
+                    ) : visibleTests.length === 0 ? (
+                        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
+                            No {activeTestType === "mock" ? "Mock Tests" : "PYQ Tests"} are available yet.
                         </div>
                     ) : (
                         <div className="grid gap-5">
-                            {mockTests.map((mockTest) => {
+                            {visibleTests.map((mockTest) => {
                                 const summary = mockTest.studentAttemptSummary;
                                 const action = summary.primaryAction;
                                 const isActionLoading =
@@ -1204,8 +1284,12 @@ export default function StudentMockTestsPage() {
                                         className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
                                     >
                                         <div className="mb-3 flex flex-wrap gap-2">
+                                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                                                {mockTest.category?.name || "Other Exam"}
+                                            </span>
+
                                             <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                                                {mockTest.testType}
+                                                {mockTest.testType === "pyq" ? "PYQ Test" : "Mock Test"}
                                             </span>
 
                                             <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
