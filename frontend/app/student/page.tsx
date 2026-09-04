@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import StudentPortalShell from "@/components/student/StudentPortalShell";
 import StudentPromotionSlot from "@/components/student/StudentPromotionSlot";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -294,11 +295,6 @@ function getFirstName(name?: string) {
     return cleanName ? cleanName.split(/\s+/)[0] : "Student";
 }
 
-function getInitial(name?: string) {
-    const cleanName = (name || "").trim();
-
-    return cleanName ? cleanName.charAt(0).toUpperCase() : "S";
-}
 
 function getNumericValue(value?: number | null) {
     const numericValue = Number(value);
@@ -374,18 +370,6 @@ const learnLinks = [
     },
 ];
 
-const practiceLinks = [
-    {
-        href: "/student/mock-tests",
-        label: "Mock Tests & PYQs",
-        icon: "test" as IconName,
-    },
-    {
-        href: "/student/attempts",
-        label: "My Attempts",
-        icon: "clock" as IconName,
-    },
-];
 
 const exploreLinks = [
     {
@@ -774,209 +758,11 @@ export default function StudentDashboardPage() {
     }
 
     return (
-        <div className="min-h-[100dvh] bg-[#f5f7fb] text-slate-950">
-            <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] flex-col bg-[#060b1d] text-white lg:flex">
-                <div className="flex h-[82px] items-center border-b border-white/8 px-5">
-                    <Link
-                        href="/student"
-                        className="flex min-w-0 items-center gap-3"
-                    >
-                        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 font-black shadow-lg shadow-blue-950/40">
-                            P
-                        </span>
-
-                        <span className="min-w-0">
-                            <span className="block truncate text-[17px] font-black tracking-tight">
-                                PravixoEduTech
-                            </span>
-
-                            <span className="block text-[9px] font-bold uppercase tracking-[0.2em] text-blue-300">
-                                Student
-                            </span>
-                        </span>
-                    </Link>
-                </div>
-
-                <div className="flex-1 overflow-y-auto px-3 py-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    <p className="px-3 text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">
-                        Workspace
-                    </p>
-
-                    <nav className="mt-2">
-                        <Link
-                            href="/student"
-                            className="flex min-h-11 items-center gap-3 rounded-xl bg-white/10 px-3.5 text-sm font-bold text-white ring-1 ring-white/8"
-                        >
-                            <Icon name="home" />
-                            Dashboard
-                        </Link>
-                    </nav>
-
-                    <p className="mt-6 px-3 text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">
-                        Learn
-                    </p>
-
-                    <nav className="mt-2 space-y-0.5">
-                        <div className="flex min-h-11 items-center justify-between rounded-xl px-3.5 text-sm font-semibold text-slate-400">
-                            <span className="flex items-center gap-3">
-                                <Icon name="course" />
-                                Courses
-                            </span>
-
-                            <span className="rounded-full bg-blue-500/15 px-2 py-1 text-[8px] font-black uppercase tracking-wide text-blue-300">
-                                Soon
-                            </span>
-                        </div>
-
-                        {learnLinks.map((item) => (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className="flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white"
-                            >
-                                <Icon name={item.icon} />
-                                {item.label}
-                            </Link>
-                        ))}
-                    </nav>
-
-                    <p className="mt-6 px-3 text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">
-                        Practice
-                    </p>
-
-                    <nav className="mt-2 space-y-0.5">
-                        {practiceLinks.map((item) => (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className="flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white"
-                            >
-                                <Icon name={item.icon} />
-                                {item.label}
-                            </Link>
-                        ))}
-                    </nav>
-
-                    <p className="mt-6 px-3 text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">
-                        Explore
-                    </p>
-
-                    <nav className="mt-2 space-y-0.5">
-                        {exploreLinks.map((item) => (
-                            <Link
-                                key={item.href}
-                                href={item.href}
-                                className="flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white"
-                            >
-                                <Icon name={item.icon} />
-                                {item.label}
-                            </Link>
-                        ))}
-
-                        <Link
-                            href="/search"
-                            className="flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white"
-                        >
-                            <Icon name="search" />
-                            Search
-                        </Link>
-                    </nav>
-                </div>
-
-                <div className="border-t border-white/8 p-3">
-                    <div className="flex items-center gap-3 rounded-xl px-2 py-2">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-sm font-black">
-                            {getInitial(profile?.name)}
-                        </span>
-
-                        <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-bold">
-                                {profile?.name || "Student"}
-                            </p>
-
-                            <p className="truncate text-[10px] text-slate-500">
-                                {profile?.email ||
-                                    profile?.mobile ||
-                                    "Pravixo learner"}
-                            </p>
-                        </div>
-
-                        <button
-                            type="button"
-                            onClick={handleLogout}
-                            title="Logout"
-                            aria-label="Logout"
-                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-red-500/10 hover:text-red-300"
-                        >
-                            <span className="text-lg">↗</span>
-                        </button>
-                    </div>
-                </div>
-            </aside>
-
-            <div className="lg:pl-[248px]">
-                <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/92 backdrop-blur-xl">
-                    <div className="mx-auto flex h-[72px] max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
-                        <Link
-                            href="/student"
-                            className="flex items-center gap-2.5 lg:hidden"
-                        >
-                            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 text-sm font-black text-white">
-                                P
-                            </span>
-
-                            <span className="font-black tracking-tight">
-                                Pravixo
-                            </span>
-                        </Link>
-
-                        <Link
-                            href="/search"
-                            className="hidden min-h-11 w-full max-w-[560px] items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-500 transition hover:border-blue-300 hover:bg-white sm:flex"
-                        >
-                            <Icon
-                                name="search"
-                                className="h-4 w-4"
-                            />
-                            Search exams, notes, vacancies, current affairs...
-                        </Link>
-
-                        <div className="flex items-center gap-2">
-                            {isSyncing ? (
-                                <span className="hidden items-center gap-2 text-xs font-semibold text-slate-400 sm:flex">
-                                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
-                                    Syncing
-                                </span>
-                            ) : null}
-
-                            <Link
-                                href="/search"
-                                aria-label="Search"
-                                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-600 sm:hidden"
-                            >
-                                <Icon name="search" />
-                            </Link>
-
-                            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5 pr-3">
-                                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-950 text-xs font-black text-white">
-                                    {getInitial(profile?.name)}
-                                </span>
-
-                                <div className="hidden min-w-0 sm:block">
-                                    <p className="max-w-[130px] truncate text-xs font-bold">
-                                        {profile?.name || "Student"}
-                                    </p>
-
-                                    <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
-                                        Learner
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </header>
-
-                <main className="mx-auto max-w-[1440px] px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-10 lg:pt-7">
+        <StudentPortalShell
+            profile={profile}
+            isSyncing={isSyncing}
+            onLogout={handleLogout}
+        >
                     {errorMessage ? (
                         <section className="mb-5 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                             <p className="text-sm font-semibold text-amber-800">
@@ -1477,79 +1263,7 @@ export default function StudentDashboardPage() {
                             </div>
                         )}
                     </section>
-                </main>
 
-                <nav
-                    aria-label="Student mobile navigation"
-                    className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-[1.35rem] border border-slate-200 bg-white/95 p-1.5 shadow-2xl shadow-slate-950/20 backdrop-blur-xl lg:hidden"
-                >
-                    <Link
-                        href="/student"
-                        className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl bg-slate-950 text-white"
-                    >
-                        <Icon
-                            name="home"
-                            className="h-4 w-4"
-                        />
-                        <span className="text-[9px] font-black">
-                            Home
-                        </span>
-                    </Link>
-
-                    <Link
-                        href="/study-notes"
-                        className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-slate-500"
-                    >
-                        <Icon
-                            name="book"
-                            className="h-4 w-4"
-                        />
-                        <span className="text-[9px] font-bold">
-                            Learn
-                        </span>
-                    </Link>
-
-                    <Link
-                        href="/student/mock-tests"
-                        className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-slate-500"
-                    >
-                        <Icon
-                            name="test"
-                            className="h-4 w-4"
-                        />
-                        <span className="text-[9px] font-bold">
-                            Tests
-                        </span>
-                    </Link>
-
-                    <Link
-                        href="/exams"
-                        className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-slate-500"
-                    >
-                        <Icon
-                            name="compass"
-                            className="h-4 w-4"
-                        />
-                        <span className="text-[9px] font-bold">
-                            Explore
-                        </span>
-                    </Link>
-
-                    <button
-                        type="button"
-                        onClick={handleLogout}
-                        className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-slate-500"
-                    >
-                        <Icon
-                            name="user"
-                            className="h-4 w-4"
-                        />
-                        <span className="text-[9px] font-bold">
-                            Account
-                        </span>
-                    </button>
-                </nav>
-            </div>
-        </div>
+        </StudentPortalShell>
     );
 }
