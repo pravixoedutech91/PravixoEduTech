@@ -9,13 +9,23 @@ const {
 const PUBLIC_TENANT_ID =
   process.env.PUBLIC_TENANT_ID || "pravixoedutech";
 
-const ALLOWED_PLACEMENTS = [
+const PUBLIC_PROMOTION_PLACEMENTS = [
   "home_hero",
   "exams_hero",
   "study_notes_hero",
   "current_affairs_hero",
   "jobs_hero",
   "mock_tests_hero",
+];
+
+const STUDENT_PROMOTION_PLACEMENTS = [
+  "student_dashboard_primary",
+  "student_dashboard_secondary",
+];
+
+const ALLOWED_PLACEMENTS = [
+  ...PUBLIC_PROMOTION_PLACEMENTS,
+  ...STUDENT_PROMOTION_PLACEMENTS,
 ];
 
 const ALLOWED_STATUSES = [
@@ -512,10 +522,10 @@ const getActivePromotion = async (req, res) => {
         ? req.query.placement.trim()
         : "";
 
-    if (!ALLOWED_PLACEMENTS.includes(placement)) {
+    if (!PUBLIC_PROMOTION_PLACEMENTS.includes(placement)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid promotion placement",
+        message: "Invalid public promotion placement",
       });
     }
 
@@ -558,6 +568,70 @@ const getActivePromotion = async (req, res) => {
   }
 };
 
+const getActiveStudentPromotion = async (req, res) => {
+  try {
+    const placement =
+      hasText(req.query?.placement)
+        ? req.query.placement.trim()
+        : "";
+
+    if (!STUDENT_PROMOTION_PLACEMENTS.includes(placement)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid student promotion placement",
+      });
+    }
+
+    const tenantId = String(
+      req.user?.tenantId || ""
+    ).trim();
+
+    if (!tenantId) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "Student organization context is unavailable",
+      });
+    }
+
+    const now = new Date();
+
+    const promotion = await SitePromotion.findOne({
+      tenantId,
+      placement,
+      status: "active",
+      $and: [
+        {
+          $or: [
+            { startAt: null },
+            { startAt: { $lte: now } },
+          ],
+        },
+        {
+          $or: [
+            { endAt: null },
+            { endAt: { $gte: now } },
+          ],
+        },
+      ],
+    })
+      .sort({
+        priority: -1,
+        updatedAt: -1,
+      })
+      .select(
+        "placement title subtitle badgeText imageUrl " +
+          "ctaLabel ctaUrl priority startAt endAt updatedAt"
+      );
+
+    return res.status(200).json({
+      success: true,
+      data: promotion || null,
+    });
+  } catch (error) {
+    return sendControllerError(res, error);
+  }
+};
 const getAdminPromotions = async (req, res) => {
   try {
     const filter = {
@@ -716,6 +790,7 @@ const updatePromotion = async (req, res) => {
 
 module.exports = {
   getActivePromotion,
+  getActiveStudentPromotion,
   getAdminPromotions,
   getAdminPromotionById,
   createPromotion,
