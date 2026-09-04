@@ -1,8 +1,9 @@
-﻿"use client";
+"use client";
 
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
+import StudentPortalShell, { type StudentPortalProfile } from "@/components/student/StudentPortalShell";
 import { useRouter } from "next/navigation";
 
 type PrimaryAction =
@@ -244,6 +245,32 @@ const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
 const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
+const getStoredStudentPortalProfile = (): StudentPortalProfile | null => {
+    if (typeof window === "undefined") {
+        return null;
+    }
+
+    const rawProfile = window.localStorage.getItem(
+        STUDENT_PROFILE_STORAGE_KEY
+    );
+
+    if (!rawProfile) {
+        return null;
+    }
+
+    try {
+        const parsedProfile = JSON.parse(
+            rawProfile
+        ) as StudentPortalProfile;
+
+        return parsedProfile &&
+            typeof parsedProfile === "object"
+            ? parsedProfile
+            : null;
+    } catch {
+        return null;
+    }
+};
 
 const INVALID_STUDENT_SESSION_MESSAGE =
     "Your student session has expired or was invalidated. Please login again.";
@@ -988,7 +1015,16 @@ export default function StudentMockTestsPage() {
         showPendingActionMessage(mockTest);
     };
     return (
-        <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950">
+        <StudentPortalShell
+            profile={
+                isClientReady && token.trim()
+                    ? getStoredStudentPortalProfile()
+                    : null
+            }
+            isSyncing={isLoading || isLoadingPackages}
+            onLogout={handleLogout}
+        >
+            <div className="text-slate-950">
             <div className="mx-auto max-w-5xl">
                 <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
                     <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
@@ -1467,6 +1503,7 @@ export default function StudentMockTestsPage() {
                     )}
                 </section>
             </div>
-        </main>
+        </div>
+        </StudentPortalShell>
     );
 }
