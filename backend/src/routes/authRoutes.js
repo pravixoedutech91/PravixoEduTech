@@ -3,6 +3,10 @@ const {
   loginRateLimiter,
 } = require("../middleware/loginRateLimitMiddleware");
 
+const {
+  registrationRateLimiter,
+} = require("../middleware/registrationRateLimitMiddleware");
+
 const router = express.Router();
 
 
@@ -20,6 +24,14 @@ const {
 } = require("../middleware/publicRegistrationMiddleware");
 
 const {
+  resolvePublicRegistrationTenant,
+} = require("../middleware/registrationTenantMiddleware");
+
+const {
+  validatePublicStudentRegistration,
+} = require("../middleware/registrationValidationMiddleware");
+
+const {
   checkStudentLimit,
 } = require("../middleware/tenantLimitMiddleware");
 
@@ -27,6 +39,9 @@ const {
 router.post(
   "/register",
   requirePublicRegistrationAvailable,
+  registrationRateLimiter,
+  validatePublicStudentRegistration,
+  resolvePublicRegistrationTenant,
   checkStudentLimit,
   registerUser
 );

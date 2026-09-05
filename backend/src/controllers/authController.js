@@ -11,8 +11,6 @@ const ReferralPartner = require("../models/ReferralPartner");
 const ReferralAttribution = require("../models/ReferralAttribution");
 const ReferralSettings = require("../models/ReferralSettings");
 
-const DEFAULT_TENANT_ID = "pravixoedutech";
-
 const generateToken = (user, sessionId) => {
   return jwt.sign(
     {
@@ -170,9 +168,51 @@ const createReferralAttributionForStudent = async ({
 // Register User
 const registerUser = async (req, res) => {
   try {
-    const { name, mobile, email, password, tenantId, referralCode } = req.body;
+    const registrationInput = req.registrationInput;
 
-    const resolvedTenantId = String(tenantId || DEFAULT_TENANT_ID).trim();
+    if (!registrationInput) {
+      return res.status(500).json({
+        success: false,
+        message: "Registration is currently unavailable",
+      });
+    }
+
+    const registrationSessionContext =
+      req.registrationSessionContext;
+
+    if (
+      !registrationSessionContext ||
+      typeof registrationSessionContext.deviceInfo !==
+        "string" ||
+      registrationSessionContext.deviceInfo.length > 200
+    ) {
+      return res.status(500).json({
+        success: false,
+        message: "Registration is currently unavailable",
+      });
+    }
+
+    const { deviceInfo } =
+      registrationSessionContext;
+
+    const {
+      name,
+      mobile,
+      email,
+      password,
+      referralCode,
+    } = registrationInput;
+
+    const resolvedTenantId = String(
+      req.registrationTenantId || ""
+    ).trim();
+
+    if (!resolvedTenantId) {
+      return res.status(503).json({
+        success: false,
+        message: "Registration is currently unavailable",
+      });
+    }
     const cleanMobile = normalizeMobile(mobile);
     const cleanEmail = normalizeEmail(email);
 
@@ -195,11 +235,14 @@ const registerUser = async (req, res) => {
     });
 
     if (existingUser) {
-      return res.status(400).json({
+      return res.status(409).json({
         success: false,
         message: "User already exists with this mobile or email",
       });
     }
+
+    const sessionId = crypto.randomUUID();
+    const initialLoginAt = new Date();
 
     const user = await User.create({
       name,
@@ -208,6 +251,9 @@ const registerUser = async (req, res) => {
       password,
       tenantId: resolvedTenantId,
       role: "student",
+      activeSessionId: sessionId,
+      lastLoginAt: initialLoginAt,
+      lastLoginDevice: deviceInfo,
     });
 
     const referralAttribution = await createReferralAttributionForStudent({
@@ -217,9 +263,13 @@ const registerUser = async (req, res) => {
       referralCode: referralValidation.code,
     });
 
+    const token =
+      generateToken(user, sessionId);
+
     res.status(201).json({
       success: true,
       message: "User registered successfully",
+      token,
       data: {
         id: user._id,
         name: user.name,
@@ -237,6 +287,13 @@ const registerUser = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error?.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "User already exists with this mobile or email",
+      });
+    }
+
     logRuntimeError("authController error:", error);
 
     res.status(500).json({
@@ -251,8 +308,36 @@ const loginUser = async (req, res) => {
   try {
     const { login, password, deviceInfo } = req.body;
 
+    const rawLogin =
+      typeof login === "string"
+        ? login.trim()
+        : "";
+
+    const normalizedLogin =
+      rawLogin.includes("@")
+        ? normalizeEmail(rawLogin)
+        : normalizeMobile(rawLogin);
+
+    const cleanDeviceInfo =
+      typeof deviceInfo === "string"
+        ? deviceInfo.trim().slice(0, 200)
+        : "";
+
+    if (
+      !normalizedLogin ||
+      !hasText(password)
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid login credentials",
+      });
+    }
+
     const user = await User.findOne({
-      $or: [{ mobile: login }, { email: login }],
+      $or: [
+        { mobile: normalizedLogin },
+        { email: normalizedLogin },
+      ],
     }).select("+password");
 
     if (!user) {
@@ -282,7 +367,7 @@ const loginUser = async (req, res) => {
 
     user.activeSessionId = sessionId;
     user.lastLoginAt = new Date();
-    user.lastLoginDevice = deviceInfo || "";
+    user.lastLoginDevice = cleanDeviceInfo;
     await user.save();
 
     const token = generateToken(user, sessionId);
