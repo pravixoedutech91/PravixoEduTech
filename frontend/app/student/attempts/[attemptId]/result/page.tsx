@@ -526,7 +526,7 @@ export default function StudentAttemptResultPage() {
                                 </div>
                             </div>
 
-                            <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-4">
+                            <div className="grid grid-cols-2 gap-3 p-4 sm:p-5 lg:grid-cols-4">
                                 <SummaryStat
                                     label="Score"
                                     value={`${formatScore(
@@ -749,7 +749,7 @@ export default function StudentAttemptResultPage() {
                                                         : ""}
                                                 </p>
 
-                                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                                <div className="mt-3 grid grid-cols-3 gap-2">
                                                     <MiniStat
                                                         label="Score"
                                                         value={`${formatScore(
@@ -804,7 +804,7 @@ export default function StudentAttemptResultPage() {
                                                         "Not marked"}
                                                 </h3>
 
-                                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                                <div className="mt-3 grid grid-cols-3 gap-2">
                                                     <MiniStat
                                                         label="Score"
                                                         value={`${formatScore(
