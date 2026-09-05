@@ -186,7 +186,7 @@ const requestStudentPasswordReset = async ({
         },
         {
           upsert: true,
-          new: true,
+          returnDocument: "after",
           runValidators: true,
           setDefaultsOnInsert: true,
         }
@@ -320,7 +320,7 @@ const resetStudentPassword = async ({
                 },
               },
               {
-                new: true,
+                returnDocument: "after",
                 session,
               }
             );
