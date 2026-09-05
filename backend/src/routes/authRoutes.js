@@ -7,12 +7,19 @@ const {
   registrationRateLimiter,
 } = require("../middleware/registrationRateLimitMiddleware");
 
+const {
+  forgotPasswordRateLimiter,
+  resetPasswordRateLimiter,
+} = require("../middleware/passwordResetRateLimitMiddleware");
+
 const router = express.Router();
 
 
 const {
   registerUser,
   loginUser,
+  forgotPassword,
+  resetPassword,
   getMe,
   createTenantAdmin,
 } = require("../controllers/authController");
@@ -52,6 +59,20 @@ router.post(
   "/login",
   loginRateLimiter,
   loginUser
+);
+
+// Forgot Password
+router.post(
+  "/forgot-password",
+  forgotPasswordRateLimiter,
+  forgotPassword
+);
+
+// Reset Password
+router.post(
+  "/reset-password",
+  resetPasswordRateLimiter,
+  resetPassword
 );
 
 router.get("/me", protect, getMe);

@@ -11,6 +11,28 @@ const ReferralPartner = require("../models/ReferralPartner");
 const ReferralAttribution = require("../models/ReferralAttribution");
 const ReferralSettings = require("../models/ReferralSettings");
 
+const {
+  RESET_PASSWORD_RESULT_CODES,
+  requestStudentPasswordReset,
+  resetStudentPassword,
+} = require("../services/passwordResetService");
+
+const {
+  buildStudentPasswordResetUrl,
+} = require("../services/passwordResetLinkService");
+
+const {
+  sendPasswordResetEmail,
+} = require("../services/passwordResetEmailService");
+
+const PASSWORD_RESET_REQUEST_GENERIC_MESSAGE =
+  "If an eligible account exists, password reset instructions have been sent.";
+
+const PASSWORD_RESET_INVALID_OR_EXPIRED_MESSAGE =
+  "This password reset link is invalid or has expired. Please request a new one.";
+
+const PASSWORD_RESET_SUCCESS_MESSAGE =
+  "Password reset successfully. Please sign in again.";
 const generateToken = (user, sessionId) => {
   return jwt.sign(
     {
@@ -395,6 +417,125 @@ const loginUser = async (req, res) => {
   }
 };
 
+// Forgot Student Password
+const forgotPassword = async (req, res) => {
+  try {
+    const login =
+      req &&
+      req.body &&
+      typeof req.body === "object"
+        ? req.body.login
+        : undefined;
+
+    await requestStudentPasswordReset({
+      login,
+
+      deliverReset: async ({
+        toEmail,
+        rawToken,
+        expiresAt,
+      }) => {
+        const resetUrl =
+          buildStudentPasswordResetUrl({
+            rawToken,
+          });
+
+        await sendPasswordResetEmail({
+          toEmail,
+          resetUrl,
+          expiresAt,
+        });
+      },
+    });
+  } catch (error) {
+    /*
+     * Always expose the same public response for
+     * unknown/ineligible accounts, cooldown, DB
+     * failure, reset-link failure and mail failure.
+     */
+    logRuntimeError("Password reset request failed:", error);
+  }
+
+  return res.status(200).json({
+    success: true,
+    message:
+      PASSWORD_RESET_REQUEST_GENERIC_MESSAGE,
+  });
+};
+
+// Reset Student Password
+const resetPassword = async (req, res) => {
+  try {
+    const body =
+      req &&
+      req.body &&
+      typeof req.body === "object"
+        ? req.body
+        : {};
+
+    const result =
+      await resetStudentPassword({
+        rawToken:
+          body.token,
+
+        newPassword:
+          body.password,
+      });
+
+    if (
+      result &&
+      result.success === true &&
+      result.code ===
+        RESET_PASSWORD_RESULT_CODES.SUCCESS
+    ) {
+      return res.status(200).json({
+        success: true,
+        message:
+          PASSWORD_RESET_SUCCESS_MESSAGE,
+      });
+    }
+
+    if (
+      result &&
+      result.code ===
+        RESET_PASSWORD_RESULT_CODES.INVALID_PASSWORD
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          typeof result.message === "string" &&
+          result.message
+            ? result.message
+            : "Invalid password",
+      });
+    }
+
+    if (
+      result &&
+      result.code ===
+        RESET_PASSWORD_RESULT_CODES
+          .INVALID_OR_EXPIRED_TOKEN
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          PASSWORD_RESET_INVALID_OR_EXPIRED_MESSAGE,
+      });
+    }
+
+    throw new Error(
+      "Unexpected password reset result"
+    );
+  } catch (error) {
+    logRuntimeError("Password reset failed:", error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        getInternalErrorMessage(error),
+    });
+  }
+};
 // Get Logged In User Profile
 const getMe = async (req, res) => {
   res.status(200).json({
@@ -468,6 +609,8 @@ const createTenantAdmin = async (req, res) => {
 module.exports = {
   registerUser,
   loginUser,
+  forgotPassword,
+  resetPassword,
   getMe,
   createTenantAdmin,
 };
