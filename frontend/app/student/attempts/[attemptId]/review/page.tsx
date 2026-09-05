@@ -1,5 +1,7 @@
 "use client";
 
+import StudentPortalShell, { type StudentPortalProfile } from "@/components/student/StudentPortalShell";
+
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -18,6 +20,33 @@ const API_BASE_URL =
 
 const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
 const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
+
+const getStoredStudentPortalProfile = (): StudentPortalProfile | null => {
+    if (typeof window === "undefined") {
+        return null;
+    }
+
+    const rawProfile = window.localStorage.getItem(
+        STUDENT_PROFILE_STORAGE_KEY
+    );
+
+    if (!rawProfile) {
+        return null;
+    }
+
+    try {
+        const parsedProfile = JSON.parse(
+            rawProfile
+        ) as StudentPortalProfile;
+
+        return parsedProfile &&
+            typeof parsedProfile === "object"
+            ? parsedProfile
+            : null;
+    } catch {
+        return null;
+    }
+};
 const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 const ACTIVE_ATTEMPT_POSITION_STORAGE_KEY = "pravixoActiveAttemptPosition";
@@ -537,8 +566,17 @@ export default function StudentAttemptReviewPage() {
     };
 
     return (
-        <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950">
-            <div className="mx-auto max-w-6xl space-y-6">
+        <StudentPortalShell
+            profile={
+                effectiveStudentToken
+                    ? getStoredStudentPortalProfile()
+                    : null
+            }
+            isSyncing={isLoading}
+            onLogout={handleLogout}
+        >
+            <div className="text-slate-950">
+                <div className="mx-auto max-w-6xl space-y-6">
                 <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div>
@@ -935,7 +973,8 @@ export default function StudentAttemptReviewPage() {
                         </p>
                     </section>
                 )}
+                </div>
             </div>
-        </main>
+        </StudentPortalShell>
     );
 }
