@@ -575,33 +575,53 @@ export default function StudentAttemptReviewPage() {
             isSyncing={isLoading}
             onLogout={handleLogout}
         >
-            <div className="text-slate-950">
-                <div className="mx-auto max-w-6xl space-y-6">
-                <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div>
-                            <p className="text-sm font-semibold uppercase tracking-[0.35em] text-emerald-700">
+            <div className="mx-auto max-w-6xl space-y-5 pb-24 text-slate-950 lg:pb-8">
+                <section className="border-b border-slate-200 pb-6">
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                        <div className="min-w-0 max-w-3xl">
+                            <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-600">
+                                Learning Review
+                            </p>
+
+                            <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
                                 Detailed Review
-                            </p>
-                            <h1 className="mt-3 text-3xl font-bold">
-                                {review?.test.title || "Student Attempt Review"}
                             </h1>
-                            <p className="mt-2 text-sm text-slate-600">
-                                Attempt #{review?.attempt.attemptNumber || "-"} | Version {review?.test.versionNumber || "-"} | {review?.attempt.status || "-"}
+
+                            <p className="mt-2 text-lg font-bold leading-snug text-slate-800 sm:text-xl">
+                                {review?.test.title ||
+                                    "Review your test attempt"}
                             </p>
+
+                            {review ? (
+                                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
+                                    <span>
+                                        Attempt #
+                                        {review.attempt.attemptNumber || "—"}
+                                    </span>
+
+                                    <span aria-hidden="true">•</span>
+
+                                    <span>
+                                        Submitted{" "}
+                                        {formatDateTime(
+                                            review.attempt.submittedAt
+                                        )}
+                                    </span>
+                                </div>
+                            ) : null}
                         </div>
 
                         <div className="flex flex-wrap gap-3">
                             <Link
-                                href="/student/mock-tests"
-                                className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                                href="/student/attempts"
+                                className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
                             >
-                                Back to Mock Tests
+                                Back to Attempts
                             </Link>
 
                             <Link
                                 href={`/student/attempts/${attemptId}/result`}
-                                className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-800"
+                                className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-slate-950 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800"
                             >
                                 Back to Result
                             </Link>
@@ -609,112 +629,114 @@ export default function StudentAttemptReviewPage() {
                     </div>
                 </section>
 
-                <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">
-                                Student Session
-                            </p>
-
-                            <h2 className="mt-2 text-xl font-bold text-slate-950">
-                                Review Access
-                            </h2>
-
-                            <p className="mt-2 text-sm text-slate-600">
-                                {effectiveStudentToken
-                                    ? "You are logged in. Review loads using your saved student session."
-                                    : "Please login first to view this detailed review."}
-                            </p>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                            {effectiveStudentToken && !isReviewUnavailable ? (
-                                <button
-                                    type="button"
-                                    onClick={() => void fetchReview()}
-                                    disabled={isLoading}
-                                    className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-400"
-                                >
-                                    {isLoading ? "Loading..." : "Refresh Review"}
-                                </button>
-                            ) : !effectiveStudentToken ? (
-                                <Link
-                                    href="/student/login"
-                                    className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-700"
-                                >
-                                    Login
-                                </Link>
-                            ) : null}
-
-                            {effectiveStudentToken ? (
-                                <button
-                                    type="button"
-                                    onClick={handleLogout}
-                                    className="rounded-2xl border border-red-200 bg-red-50 px-6 py-3 text-sm font-semibold text-red-700 hover:bg-red-100"
-                                >
-                                    Logout
-                                </button>
-                            ) : null}
-                        </div>
-                    </div>
-
-                    {message ? (
-                        <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700 ring-1 ring-rose-100">
-                            {message}
-                        </p>
-                    ) : null}
-                </section>
+                {message && review ? (
+                    <section
+                        role="alert"
+                        className="rounded-3xl border border-amber-200 bg-amber-50 p-5 text-sm font-semibold text-amber-800"
+                    >
+                        {message}
+                    </section>
+                ) : null}
 
                 {review && summary ? (
                     <>
-                        <section className="grid gap-4 md:grid-cols-4">
-                            <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-                                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                    Score
+                        <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+                            <div className="border-b border-slate-100 px-5 py-5 sm:px-6">
+                                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                                    Review Summary
                                 </p>
-                                <p className="mt-3 text-2xl font-bold">
-                                    {summary.score} / {summary.maxScore}
-                                </p>
+
+                                <h2 className="mt-1 text-xl font-black text-slate-950">
+                                    Your attempt at a glance
+                                </h2>
                             </div>
 
-                            <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-                                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                    Correct
-                                </p>
-                                <p className="mt-3 text-2xl font-bold text-emerald-700">
-                                    {summary.correct}
-                                </p>
-                            </div>
+                            <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 sm:p-5 lg:grid-cols-6">
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Score
+                                    </p>
+                                    <p className="mt-2 text-lg font-black text-slate-950">
+                                        {summary.score} / {summary.maxScore}
+                                    </p>
+                                </div>
 
-                            <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-                                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                    Wrong
-                                </p>
-                                <p className="mt-3 text-2xl font-bold text-rose-700">
-                                    {summary.wrong}
-                                </p>
-                            </div>
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Accuracy
+                                    </p>
+                                    <p className="mt-2 text-lg font-black text-blue-700">
+                                        {formatPercent(summary.accuracy)}
+                                    </p>
+                                </div>
 
-                            <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-                                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                                    Time Spent
-                                </p>
-                                <p className="mt-3 text-2xl font-bold">
-                                    {formatSeconds(review.attempt.timeSpentSeconds)}
-                                </p>
+                                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">
+                                        Correct
+                                    </p>
+                                    <p className="mt-2 text-lg font-black text-emerald-700">
+                                        {summary.correct}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl border border-rose-100 bg-rose-50 p-4">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-rose-700">
+                                        Wrong
+                                    </p>
+                                    <p className="mt-2 text-lg font-black text-rose-700">
+                                        {summary.wrong}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Skipped
+                                    </p>
+                                    <p className="mt-2 text-lg font-black text-slate-700">
+                                        {summary.skipped}
+                                    </p>
+                                </div>
+
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                        Time
+                                    </p>
+                                    <p className="mt-2 text-lg font-black text-slate-950">
+                                        {formatSeconds(
+                                            review.attempt.timeSpentSeconds
+                                        )}
+                                    </p>
+                                </div>
                             </div>
                         </section>
 
-                        <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                                 <div>
-                                    <h2 className="text-2xl font-bold">Question Review</h2>
-                                    <p className="mt-1 text-sm text-slate-600">
-                                        {totalReviewQuestions} question(s) | Submitted at {formatDateTime(review.attempt.submittedAt)}
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-blue-600">
+                                        Question-by-Question
+                                    </p>
+
+                                    <h2 className="mt-1 text-xl font-black text-slate-950 sm:text-2xl">
+                                        Question Review
+                                    </h2>
+
+                                    <p className="mt-2 text-sm text-slate-500">
+                                        {totalReviewQuestions}{" "}
+                                        {totalReviewQuestions === 1
+                                            ? "question"
+                                            : "questions"}{" "}
+                                        reviewed
                                     </p>
                                 </div>
-                                <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700 ring-1 ring-slate-100">
-                                    Accuracy: <span className="font-semibold">{formatPercent(summary.accuracy)}</span>
+
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600">
+                                    Submitted{" "}
+                                    <span className="font-bold text-slate-900">
+                                        {formatDateTime(
+                                            review.attempt.submittedAt
+                                        )}
+                                    </span>
                                 </div>
                             </div>
                         </section>
@@ -722,258 +744,451 @@ export default function StudentAttemptReviewPage() {
                         {review.sections.map((section) => (
                             <section
                                 key={section.sectionSlug}
-                                className="space-y-5 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
+                                className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
                             >
-                                <div>
-                                    <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
-                                        Section
-                                    </p>
-                                    <h2 className="mt-2 text-2xl font-bold">{section.name}</h2>
-                                    <p className="mt-1 text-sm text-slate-500">
-                                        {section.sectionType.toUpperCase()} | {section.durationMinutes} minutes
-                                    </p>
+                                <div className="border-b border-slate-100 pb-5">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                                        <div>
+                                            <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-blue-600">
+                                                Section
+                                            </p>
+
+                                            <h2 className="mt-1 text-xl font-black text-slate-950 sm:text-2xl">
+                                                {section.name}
+                                            </h2>
+                                        </div>
+
+                                        <div className="flex flex-wrap gap-2">
+                                            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600">
+                                                {section.sectionType.toUpperCase()}
+                                            </span>
+
+                                            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600">
+                                                {section.durationMinutes} min
+                                            </span>
+
+                                            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-600">
+                                                {section.questionCount}{" "}
+                                                questions
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                {(section.questionGroups || []).length > 0 ? (
-                                    <div className="space-y-4">
-                                        {(section.questionGroups || []).map((group) => (
-                                            <article
-                                                key={group.questionGroupId}
-                                                className="rounded-3xl border border-blue-100 bg-blue-50/40 p-5"
-                                            >
-                                                <div className="mb-4 flex flex-wrap gap-2">
-                                                    <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
-                                                        {group.groupType}
-                                                    </span>
-                                                    {group.topic ? (
-                                                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-700 ring-1 ring-blue-100">
-                                                            {group.topic}
+                                {(section.questionGroups || []).length >
+                                0 ? (
+                                    <div className="mt-5 space-y-4">
+                                        {(section.questionGroups || []).map(
+                                            (group) => (
+                                                <article
+                                                    key={
+                                                        group.questionGroupId
+                                                    }
+                                                    className="rounded-3xl border border-blue-100 bg-blue-50/50 p-4 sm:p-5"
+                                                >
+                                                    <div className="flex flex-wrap gap-2">
+                                                        <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-blue-700">
+                                                            {group.groupType}
                                                         </span>
-                                                    ) : null}
-                                                </div>
 
-                                                <h3 className="text-lg font-bold">{group.title}</h3>
-                                                <div className="mt-3 text-sm text-slate-700">
-                                                    {renderOptionalText(group.instructionEn, group.instructionHi)}
-                                                </div>
-                                                <div className="mt-4 space-y-3">
-                                                    {(group.contentBlocks || []).map(renderContentBlock)}
-                                                </div>
-                                            </article>
-                                        ))}
+                                                        {group.topic ? (
+                                                            <span className="rounded-full border border-blue-100 bg-white px-3 py-1 text-xs font-bold text-slate-600">
+                                                                {group.topic}
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
+
+                                                    <h3 className="mt-4 text-lg font-black text-slate-950">
+                                                        {group.title}
+                                                    </h3>
+
+                                                    <div className="mt-3 text-sm leading-6 text-slate-700">
+                                                        {renderOptionalText(
+                                                            group.instructionEn,
+                                                            group.instructionHi
+                                                        )}
+                                                    </div>
+
+                                                    <div className="mt-4 space-y-3">
+                                                        {(
+                                                            group.contentBlocks ||
+                                                            []
+                                                        ).map(
+                                                            renderContentBlock
+                                                        )}
+                                                    </div>
+                                                </article>
+                                            )
+                                        )}
                                     </div>
                                 ) : null}
 
-                                <div className="space-y-5">
-                                    {(section.questions || []).map((question) => {
-                                        const questionNumber = questionNumberMap.get(question._id) || question.order;
-                                        const selectedOptionId = question.studentAnswer?.selectedOptionId || null;
-                                        const isScoredQuestion =
-                                            question.isScored !== false &&
-                                            (question.evaluationStatus || "scored") === "scored";
-                                        const linkedGroup = (section.questionGroups || []).find(
-                                            (group) => group.questionGroupId === question.questionGroupId
-                                        );
+                                <div className="mt-5 space-y-5">
+                                    {(section.questions || []).map(
+                                        (question) => {
+                                            const questionNumber =
+                                                questionNumberMap.get(
+                                                    question._id
+                                                ) || question.order;
 
-                                        return (
-                                            <article
-                                                key={question._id}
-                                                className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm"
-                                            >
-                                                <div className="mb-4 flex flex-wrap items-center gap-2">
-                                                    <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white">
-                                                        Question {questionNumber}
-                                                    </span>
-                                                    <span
-                                                        className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${getQuestionStatusClassName(
-                                                            question
-                                                        )}`}
-                                                    >
-                                                        {getQuestionStatusLabel(question)}
-                                                    </span>
-                                                    {isScoredQuestion ? (
-                                                        <>
-                                                            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                                                                +{question.marks}
+                                            const selectedOptionId =
+                                                question.studentAnswer
+                                                    ?.selectedOptionId ||
+                                                null;
+
+                                            const isScoredQuestion =
+                                                question.isScored !== false &&
+                                                (question.evaluationStatus ||
+                                                    "scored") === "scored";
+
+                                            const linkedGroup = (
+                                                section.questionGroups || []
+                                            ).find(
+                                                (group) =>
+                                                    group.questionGroupId ===
+                                                    question.questionGroupId
+                                            );
+
+                                            return (
+                                                <article
+                                                    key={question._id}
+                                                    className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm"
+                                                >
+                                                    <div className="p-4 sm:p-5">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-white">
+                                                                Question{" "}
+                                                                {questionNumber}
                                                             </span>
-                                                            <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-700">
-                                                                -{question.negativeMarks}
-                                                            </span>
-                                                        </>
-                                                    ) : (
-                                                        <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-200">
-                                                            Unscored
-                                                        </span>
-                                                    )}
-                                                    {linkedGroup ? (
-                                                        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                                                            {linkedGroup.topic || linkedGroup.title}
-                                                        </span>
-                                                    ) : null}
-                                                </div>
 
-                                                <div className="space-y-2 text-lg font-semibold">
-                                                    {renderOptionalText(question.questionTextEn, question.questionTextHi)}
-                                                </div>
-
-                                                {question.questionImageUrl ? (
-                                                    <figure className="mt-4">
-                                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                        <img
-                                                            src={question.questionImageUrl}
-                                                            alt="Question image"
-                                                            className="max-h-80 rounded-xl object-contain ring-1 ring-slate-200"
-                                                        />
-                                                    </figure>
-                                                ) : null}
-
-                                                <div className="mt-5 grid gap-3 md:grid-cols-2">
-                                                    {(question.options || []).map((option) => {
-                                                        const isCorrectOption =
-                                                            isScoredQuestion &&
-                                                            option.optionId === question.correctOptionId;
-                                                        const isSelectedOption =
-                                                            option.optionId === selectedOptionId;
-
-                                                        return (
-                                                            <div
-                                                                key={option.optionId}
-                                                                className={`rounded-2xl border p-4 ${getOptionClassName({
-                                                                    isCorrectOption,
-                                                                    isSelectedOption,
-                                                                    isScored: isScoredQuestion,
-                                                                })}`}
+                                                            <span
+                                                                className={`rounded-full px-3 py-1 text-xs font-bold ring-1 ${getQuestionStatusClassName(
+                                                                    question
+                                                                )}`}
                                                             >
-                                                                <div className="flex items-start gap-3">
-                                                                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-sm font-bold ring-1 ring-current">
-                                                                        {option.optionId}
+                                                                {getQuestionStatusLabel(
+                                                                    question
+                                                                )}
+                                                            </span>
+
+                                                            {isScoredQuestion ? (
+                                                                <>
+                                                                    <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
+                                                                        +
+                                                                        {
+                                                                            question.marks
+                                                                        }{" "}
+                                                                        marks
                                                                     </span>
-                                                                    <div className="min-w-0 flex-1">
-                                                                        <p className="font-semibold">
-                                                                            {option.textEn || option.textHi || "-"}
-                                                                        </p>
-                                                                        {option.textHi && option.textHi !== option.textEn ? (
-                                                                            <p className="mt-1 text-sm opacity-80">
-                                                                                {option.textHi}
-                                                                            </p>
-                                                                        ) : null}
 
-                                                                        <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                                                                            {isCorrectOption ? (
-                                                                                <span className="rounded-full bg-emerald-600 px-2 py-1 text-white">
-                                                                                    Correct Answer
+                                                                    <span className="rounded-full border border-rose-100 bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700">
+                                                                        −
+                                                                        {
+                                                                            question.negativeMarks
+                                                                        }
+                                                                    </span>
+                                                                </>
+                                                            ) : (
+                                                                <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">
+                                                                    Unscored
+                                                                </span>
+                                                            )}
+
+                                                            {linkedGroup ? (
+                                                                <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                                                                    {linkedGroup.topic ||
+                                                                        linkedGroup.title}
+                                                                </span>
+                                                            ) : null}
+                                                        </div>
+
+                                                        <div className="mt-5 space-y-2 text-base font-semibold leading-7 text-slate-950 sm:text-lg">
+                                                            {renderOptionalText(
+                                                                question.questionTextEn,
+                                                                question.questionTextHi
+                                                            )}
+                                                        </div>
+
+                                                        {question.questionImageUrl ? (
+                                                            <figure className="mt-4">
+                                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                                <img
+                                                                    src={
+                                                                        question.questionImageUrl
+                                                                    }
+                                                                    alt="Question image"
+                                                                    className="max-h-80 rounded-2xl object-contain ring-1 ring-slate-200"
+                                                                />
+                                                            </figure>
+                                                        ) : null}
+
+                                                        <div className="mt-5 grid gap-3 md:grid-cols-2">
+                                                            {(
+                                                                question.options ||
+                                                                []
+                                                            ).map(
+                                                                (option) => {
+                                                                    const isCorrectOption =
+                                                                        isScoredQuestion &&
+                                                                        option.optionId ===
+                                                                            question.correctOptionId;
+
+                                                                    const isSelectedOption =
+                                                                        option.optionId ===
+                                                                        selectedOptionId;
+
+                                                                    return (
+                                                                        <div
+                                                                            key={
+                                                                                option.optionId
+                                                                            }
+                                                                            className={`rounded-2xl border p-4 ${getOptionClassName(
+                                                                                {
+                                                                                    isCorrectOption,
+                                                                                    isSelectedOption,
+                                                                                    isScored:
+                                                                                        isScoredQuestion,
+                                                                                }
+                                                                            )}`}
+                                                                        >
+                                                                            <div className="flex items-start gap-3">
+                                                                                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-sm font-black ring-1 ring-current">
+                                                                                    {
+                                                                                        option.optionId
+                                                                                    }
                                                                                 </span>
-                                                                            ) : null}
-                                                                            {isSelectedOption ? (
-                                                                                <span className="rounded-full bg-slate-900 px-2 py-1 text-white">
-                                                                                    Your Answer
-                                                                                </span>
-                                                                            ) : null}
+
+                                                                                <div className="min-w-0 flex-1">
+                                                                                    <p className="font-semibold leading-6">
+                                                                                        {option.textEn ||
+                                                                                            option.textHi ||
+                                                                                            "—"}
+                                                                                    </p>
+
+                                                                                    {option.textHi &&
+                                                                                    option.textHi !==
+                                                                                        option.textEn ? (
+                                                                                        <p className="mt-1 text-sm leading-6 opacity-80">
+                                                                                            {
+                                                                                                option.textHi
+                                                                                            }
+                                                                                        </p>
+                                                                                    ) : null}
+
+                                                                                    <div className="mt-3 flex flex-wrap gap-2 text-xs font-bold">
+                                                                                        {isCorrectOption ? (
+                                                                                            <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-white">
+                                                                                                Correct
+                                                                                                Answer
+                                                                                            </span>
+                                                                                        ) : null}
+
+                                                                                        {isSelectedOption ? (
+                                                                                            <span className="rounded-full bg-slate-950 px-2.5 py-1 text-white">
+                                                                                                Your
+                                                                                                Answer
+                                                                                            </span>
+                                                                                        ) : null}
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
                                                                         </div>
-                                                                    </div>
-                                                                </div>
+                                                                    );
+                                                                }
+                                                            )}
+                                                        </div>
+
+                                                        {!isScoredQuestion &&
+                                                        (question.evaluationNoteEn ||
+                                                            question.evaluationNoteHi) ? (
+                                                            <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-950">
+                                                                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-amber-800">
+                                                                    Evaluation
+                                                                    Note
+                                                                </p>
+
+                                                                {renderOptionalText(
+                                                                    question.evaluationNoteEn,
+                                                                    question.evaluationNoteHi
+                                                                )}
                                                             </div>
-                                                        );
-                                                    })}
-                                                </div>
+                                                        ) : null}
 
-                                                {!isScoredQuestion &&
-                                                (question.evaluationNoteEn || question.evaluationNoteHi) ? (
-                                                    <div className="mt-5 rounded-2xl bg-amber-50 p-4 text-sm text-amber-950 ring-1 ring-amber-200">
-                                                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber-800">
-                                                            Evaluation Note
-                                                        </p>
-                                                        {renderOptionalText(
-                                                            question.evaluationNoteEn,
-                                                            question.evaluationNoteHi
-                                                        )}
-                                                    </div>
-                                                ) : null}
+                                                        <div className="mt-5 grid grid-cols-2 gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm sm:grid-cols-4">
+                                                            <div>
+                                                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                                                    Your Answer
+                                                                </p>
 
-                                                <div className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm md:grid-cols-4">
-                                                    <div>
-                                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                                            Your Answer
-                                                        </p>
-                                                        <p className="mt-1 font-bold">
-                                                            {selectedOptionId || "Skipped"}
-                                                        </p>
-                                                    </div>
-                                                    {isScoredQuestion ? (
-                                                        <div>
-                                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                                                Correct Answer
-                                                            </p>
-                                                            <p className="mt-1 font-bold text-emerald-700">
-                                                                {question.correctOptionId || "-"}
-                                                            </p>
+                                                                <p className="mt-1 font-black text-slate-950">
+                                                                    {selectedOptionId ||
+                                                                        "Skipped"}
+                                                                </p>
+                                                            </div>
+
+                                                            {isScoredQuestion ? (
+                                                                <div>
+                                                                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                                                        Correct
+                                                                        Answer
+                                                                    </p>
+
+                                                                    <p className="mt-1 font-black text-emerald-700">
+                                                                        {question.correctOptionId ||
+                                                                            "—"}
+                                                                    </p>
+                                                                </div>
+                                                            ) : (
+                                                                <div>
+                                                                    <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                                                        Scoring
+                                                                    </p>
+
+                                                                    <p className="mt-1 font-black text-amber-700">
+                                                                        Not
+                                                                        Scored
+                                                                    </p>
+                                                                </div>
+                                                            )}
+
+                                                            <div>
+                                                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                                                    Marks
+                                                                </p>
+
+                                                                <p className="mt-1 font-black text-slate-950">
+                                                                    {question
+                                                                        .studentAnswer
+                                                                        ?.marksAwarded ??
+                                                                        0}
+                                                                </p>
+                                                            </div>
+
+                                                            <div>
+                                                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                                                                    Time
+                                                                </p>
+
+                                                                <p className="mt-1 font-black text-slate-950">
+                                                                    {formatSeconds(
+                                                                        question
+                                                                            .studentAnswer
+                                                                            ?.timeSpentSeconds ||
+                                                                            0
+                                                                    )}
+                                                                </p>
+                                                            </div>
                                                         </div>
-                                                    ) : (
-                                                        <div>
-                                                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                                                Scoring
-                                                            </p>
-                                                            <p className="mt-1 font-bold text-amber-700">
-                                                                Not Scored
-                                                            </p>
-                                                        </div>
-                                                    )}
-                                                    <div>
-                                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                                            Marks
-                                                        </p>
-                                                        <p className="mt-1 font-bold">
-                                                            {question.studentAnswer?.marksAwarded ?? 0}
-                                                        </p>
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                                                            Time
-                                                        </p>
-                                                        <p className="mt-1 font-bold">
-                                                            {formatSeconds(question.studentAnswer?.timeSpentSeconds || 0)}
-                                                        </p>
-                                                    </div>
-                                                </div>
 
-                                                {isScoredQuestion && (question.explanationEn || question.explanationHi) ? (
-                                                    <div className="mt-5 rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-950 ring-1 ring-emerald-100">
-                                                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700">
-                                                            Explanation
-                                                        </p>
-                                                        {renderOptionalText(
-                                                            question.explanationEn,
-                                                            question.explanationHi
-                                                        )}
-                                                    </div>
-                                                ) : null}
+                                                        {isScoredQuestion &&
+                                                        (question.explanationEn ||
+                                                            question.explanationHi) ? (
+                                                            <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-sm leading-6 text-emerald-950">
+                                                                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">
+                                                                    Explanation
+                                                                </p>
 
-                                                {isScoredQuestion && question.explanationImageUrl ? (
-                                                    <figure className="mt-4">
-                                                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                                                        <img
-                                                            src={question.explanationImageUrl}
-                                                            alt="Explanation image"
-                                                            className="max-h-80 rounded-xl object-contain ring-1 ring-slate-200"
-                                                        />
-                                                    </figure>
-                                                ) : null}
-                                            </article>
-                                        );
-                                    })}
+                                                                {renderOptionalText(
+                                                                    question.explanationEn,
+                                                                    question.explanationHi
+                                                                )}
+                                                            </div>
+                                                        ) : null}
+
+                                                        {isScoredQuestion &&
+                                                        question.explanationImageUrl ? (
+                                                            <figure className="mt-4">
+                                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                                <img
+                                                                    src={
+                                                                        question.explanationImageUrl
+                                                                    }
+                                                                    alt="Explanation image"
+                                                                    className="max-h-80 rounded-2xl object-contain ring-1 ring-slate-200"
+                                                                />
+                                                            </figure>
+                                                        ) : null}
+                                                    </div>
+                                                </article>
+                                            );
+                                        }
+                                    )}
                                 </div>
                             </section>
                         ))}
                     </>
+                ) : isLoading ? (
+                    <section
+                        aria-live="polite"
+                        className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm"
+                    >
+                        <div className="animate-pulse">
+                            <div className="h-4 w-32 rounded bg-slate-100" />
+                            <div className="mt-4 h-8 w-64 max-w-full rounded bg-slate-100" />
+
+                            <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                <div className="h-20 rounded-2xl bg-slate-100" />
+                                <div className="h-20 rounded-2xl bg-slate-100" />
+                                <div className="h-20 rounded-2xl bg-slate-100" />
+                                <div className="h-20 rounded-2xl bg-slate-100" />
+                            </div>
+                        </div>
+                    </section>
                 ) : (
-                    <section className="rounded-3xl bg-white p-8 text-center shadow-sm ring-1 ring-slate-200">
-                        <h2 className="text-xl font-bold">{emptyReviewTitle}</h2>
-                        <p className="mt-2 text-sm text-slate-600">
-                            {emptyReviewDescription}
+                    <section className="rounded-3xl border border-slate-200 bg-white px-5 py-10 text-center shadow-sm sm:px-8">
+                        <div
+                            className={`mx-auto flex h-12 w-12 items-center justify-center rounded-2xl text-sm font-black ${
+                                isExpiredReview
+                                    ? "bg-amber-50 text-amber-700"
+                                    : isReviewUnavailable
+                                      ? "bg-slate-100 text-slate-600"
+                                      : "bg-blue-50 text-blue-700"
+                            }`}
+                        >
+                            {isExpiredReview
+                                ? "!"
+                                : isReviewUnavailable
+                                  ? "—"
+                                  : "?"}
+                        </div>
+
+                        <h2 className="mt-4 text-xl font-black text-slate-950">
+                            {emptyReviewTitle}
+                        </h2>
+
+                        {message ? (
+                            <p className="mx-auto mt-2 max-w-2xl text-sm font-semibold text-slate-700">
+                                {message}
+                            </p>
+                        ) : null}
+
+                        <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                            {isExpiredReview ||
+                            isReviewUnavailable ||
+                            !effectiveStudentToken
+                                ? emptyReviewDescription
+                                : "Detailed review could not be loaded. Reload this page to try again."}
                         </p>
+
+                        <div className="mt-6 flex flex-wrap justify-center gap-3">
+                            <Link
+                                href={`/student/attempts/${attemptId}/result`}
+                                className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                            >
+                                Back to Result
+                            </Link>
+
+                            {!effectiveStudentToken ? (
+                                <Link
+                                    href="/student/login"
+                                    className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700"
+                                >
+                                    Login
+                                </Link>
+                            ) : null}
+                        </div>
                     </section>
                 )}
-                </div>
             </div>
         </StudentPortalShell>
     );
