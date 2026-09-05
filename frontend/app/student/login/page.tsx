@@ -31,6 +31,7 @@ export default function StudentLoginPage() {
 
     const [login, setLogin] = useState("");
     const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
@@ -157,17 +158,32 @@ export default function StudentLoginPage() {
                                     >
                                         Password
                                     </label>
-                                    <input
-                                        id="student-password"
-                                        type="password"
-                                        value={password}
-                                        onChange={(event) =>
-                                            setPassword(event.target.value)
-                                        }
-                                        placeholder="Enter password"
-                                        autoComplete="current-password"
-                                        className="mt-2 min-h-12 w-full rounded-2xl border border-slate-300 px-4 text-sm outline-none focus:border-blue-500"
-                                    />
+                                    <div className="relative mt-2">
+                                        <input
+                                            id="student-password"
+                                            type={showPassword ? "text" : "password"}
+                                            value={password}
+                                            onChange={(event) =>
+                                                setPassword(event.target.value)
+                                            }
+                                            placeholder="Enter password"
+                                            autoComplete="current-password"
+                                            className="min-h-12 w-full rounded-2xl border border-slate-300 px-4 pr-16 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                                        />
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setShowPassword(
+                                                    (current) => !current
+                                                )
+                                            }
+                                            aria-label={showPassword ? "Hide password" : "Show password"}
+                                            className="absolute inset-y-0 right-0 flex items-center px-4 text-xs font-semibold text-blue-700 hover:text-blue-900 focus:outline-none"
+                                        >
+                                            {showPassword ? "Hide" : "Show"}
+                                        </button>
+                                    </div>
                                 </div>
 
                                 {errorMessage ? (
@@ -191,17 +207,14 @@ export default function StudentLoginPage() {
                                 </button>
                             </form>
 
-                            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-sm">
+                            <div className="mt-6 border-t border-slate-200 pt-5 text-center text-sm text-slate-600">
+                                New to Pravixo?{" "}
                                 <Link
-                                    href="/student/mock-tests"
-                                    className="font-semibold text-slate-600 hover:text-blue-700"
+                                    href="/student/register"
+                                    className="font-semibold text-blue-700 hover:text-blue-800"
                                 >
-                                    Back to Mock Tests
+                                    Create Account
                                 </Link>
-
-                                <span className="text-slate-500">
-                                    Use your registered mobile number or email to sign in.
-                                </span>
                             </div>
                         </div>
                     </div>
