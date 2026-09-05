@@ -42,6 +42,8 @@ const getStoredStudentPortalProfile = (): StudentPortalProfile | null => {
 const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 
+const ATTEMPTS_PAGE_SIZE = 20;
+
 const INVALID_STUDENT_SESSION_MESSAGE =
     "Your student session has expired or was invalidated. Please login again.";
 
@@ -202,6 +204,8 @@ export default function StudentAttemptsPage() {
     const [errorMessage, setErrorMessage] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
     const [total, setTotal] = useState(0);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [totalPages, setTotalPages] = useState(0);
     const [activeStatusFilter, setActiveStatusFilter] =
         useState<AttemptStatusFilter>("all");
 
@@ -226,6 +230,7 @@ export default function StudentAttemptsPage() {
         if (!cleanToken) {
             setAttempts([]);
             setTotal(0);
+            setTotalPages(0);
             setErrorMessage(
                 "Student token not found. Please login as a student first."
             );
@@ -235,7 +240,10 @@ export default function StudentAttemptsPage() {
         setIsLoading(true);
 
         try {
-            const queryParams = new URLSearchParams({ limit: "20" });
+            const queryParams = new URLSearchParams({
+                limit: String(ATTEMPTS_PAGE_SIZE),
+                page: String(currentPage),
+            });
 
             if (activeStatusFilter !== "all") {
                 queryParams.set("status", activeStatusFilter);
@@ -258,6 +266,7 @@ export default function StudentAttemptsPage() {
                 setToken("");
                 setAttempts([]);
                 setTotal(0);
+                setTotalPages(0);
                 setSuccessMessage("");
                 setErrorMessage(INVALID_STUDENT_SESSION_MESSAGE);
                 router.push("/student/login");
@@ -270,12 +279,21 @@ export default function StudentAttemptsPage() {
                 );
             }
 
+            const resolvedTotal = result.total ?? result.count ?? 0;
+            const resolvedTotalPages =
+                result.totalPages ??
+                (resolvedTotal > 0
+                    ? Math.ceil(resolvedTotal / ATTEMPTS_PAGE_SIZE)
+                    : 0);
+
             setAttempts(result.attempts || []);
-            setTotal(result.total || result.count || 0);
+            setTotal(resolvedTotal);
+            setTotalPages(resolvedTotalPages);
             setSuccessMessage("Attempt history loaded successfully.");
         } catch (error) {
             setAttempts([]);
             setTotal(0);
+            setTotalPages(0);
             setErrorMessage(
                 error instanceof Error
                     ? error.message
@@ -284,7 +302,7 @@ export default function StudentAttemptsPage() {
         } finally {
             setIsLoading(false);
         }
-    }, [activeStatusFilter, cleanToken, router]);
+    }, [activeStatusFilter, cleanToken, currentPage, router]);
 
     useEffect(() => {
         if (!isClientReady || !cleanToken) {
@@ -312,6 +330,7 @@ export default function StudentAttemptsPage() {
         setToken("");
         setAttempts([]);
         setTotal(0);
+        setTotalPages(0);
         setSuccessMessage("");
         setErrorMessage("You have been logged out. Please login again.");
 
@@ -425,7 +444,14 @@ export default function StudentAttemptsPage() {
                                     <button
                                         key={option.value}
                                         type="button"
-                                        onClick={() => setActiveStatusFilter(option.value)}
+                                        onClick={() => {
+                                            if (activeStatusFilter === option.value) {
+                                                return;
+                                            }
+
+                                            setCurrentPage(1);
+                                            setActiveStatusFilter(option.value);
+                                        }}
                                         disabled={isLoading}
                                         className={`rounded-full border px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 ${
                                             isActive
@@ -656,6 +682,46 @@ export default function StudentAttemptsPage() {
                             );
                         })}
                     </section>
+                ) : null}
+                {!isLoading && totalPages > 1 ? (
+                    <nav
+                        aria-label="Attempt history pagination"
+                        className="flex flex-col gap-3 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+                    >
+                        <p className="text-center text-sm font-semibold text-slate-600 sm:text-left">
+                            Page {currentPage} of {totalPages}
+                        </p>
+
+                        <div className="grid grid-cols-2 gap-3 sm:flex">
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setCurrentPage((page) =>
+                                        Math.max(page - 1, 1)
+                                    )
+                                }
+                                disabled={currentPage <= 1 || isLoading}
+                                className="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Previous
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setCurrentPage((page) =>
+                                        Math.min(page + 1, totalPages)
+                                    )
+                                }
+                                disabled={
+                                    currentPage >= totalPages || isLoading
+                                }
+                                className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                                Next
+                            </button>
+                        </div>
+                    </nav>
                 ) : null}
             </div>
         </div>
