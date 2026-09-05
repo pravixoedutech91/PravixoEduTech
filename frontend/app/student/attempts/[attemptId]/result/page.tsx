@@ -1,5 +1,7 @@
 "use client";
 
+import StudentPortalShell, { type StudentPortalProfile } from "@/components/student/StudentPortalShell";
+
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -17,6 +19,33 @@ const API_BASE_URL =
     "http://localhost:5000";
 const STUDENT_TOKEN_KEY = "pravixoStudentToken";
 const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
+
+const getStoredStudentPortalProfile = (): StudentPortalProfile | null => {
+    if (typeof window === "undefined") {
+        return null;
+    }
+
+    const rawProfile = window.localStorage.getItem(
+        STUDENT_PROFILE_STORAGE_KEY
+    );
+
+    if (!rawProfile) {
+        return null;
+    }
+
+    try {
+        const parsedProfile = JSON.parse(
+            rawProfile
+        ) as StudentPortalProfile;
+
+        return parsedProfile &&
+            typeof parsedProfile === "object"
+            ? parsedProfile
+            : null;
+    } catch {
+        return null;
+    }
+};
 const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 const ACTIVE_ATTEMPT_POSITION_STORAGE_KEY = "pravixoActiveAttemptPosition";
@@ -341,8 +370,17 @@ export default function StudentAttemptResultPage() {
     }, [result]);
 
     return (
-        <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-950 sm:px-6 lg:px-8">
-            <div className="mx-auto flex max-w-6xl flex-col gap-6">
+        <StudentPortalShell
+            profile={
+                effectiveStudentToken
+                    ? getStoredStudentPortalProfile()
+                    : null
+            }
+            isSyncing={isLoading}
+            onLogout={handleLogout}
+        >
+            <div className="text-slate-950">
+                <div className="mx-auto flex max-w-6xl flex-col gap-6">
                 <header className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div>
@@ -652,7 +690,8 @@ export default function StudentAttemptResultPage() {
                         </section>
                     </>
                 ) : null}
+                </div>
             </div>
-        </main>
+        </StudentPortalShell>
     );
 }
