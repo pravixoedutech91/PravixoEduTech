@@ -1024,238 +1024,382 @@ export default function StudentMockTestsPage() {
             isSyncing={isLoading || isLoadingPackages}
             onLogout={handleLogout}
         >
-            <div className="text-slate-950">
-            <div className="mx-auto max-w-5xl">
-                <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                    <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
-                        PravixoEduTech Student Panel
-                    </p>
+            <div className="space-y-7 text-slate-950">
+                {actionMessage ? (
+                    <div
+                        role="status"
+                        aria-live="polite"
+                        aria-atomic="true"
+                        className="fixed left-1/2 top-20 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 rounded-2xl border border-blue-200 bg-white px-4 py-3 text-sm font-semibold text-blue-800 shadow-xl shadow-slate-950/10"
+                    >
+                        {actionMessage}
+                    </div>
+                ) : null}
 
-                    <h1 className="mt-2 text-3xl font-bold">
-                        Mock Tests
-                    </h1>
+                {errorMessage ? (
+                    <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+                        {errorMessage}
+                    </div>
+                ) : null}
 
-                    <p className="mt-2 text-sm text-slate-600">
-                        Student mock test listing page using backend dashboard
-                        action summary.
-                    </p>
-                </section>
+                <section className="flex flex-col gap-5 border-b border-slate-200 pb-6 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">
+                            Pravixo Practice
+                        </p>
 
-                <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div>
-                            <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
-                                Student Session
-                            </p>
+                        <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+                            Mock Tests &amp; PYQs
+                        </h1>
 
-                            <h2 className="mt-2 text-2xl font-bold">
-                                Mock Test Access
-                            </h2>
-
-                            <p className="mt-2 max-w-2xl text-sm text-slate-600">
-                                {token.trim()
-                                    ? "You are logged in. Your mock tests load automatically from your saved student session."
-                                    : "Please login first to access your assigned mock tests."}
-                            </p>
-                        </div>
-
-                        <div className="flex flex-wrap gap-3">
-                            {token.trim() ? (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        void loadMockTests();
-                                        void loadPaymentPackages();
-                                    }}
-                                    disabled={isLoading || isLoadingPackages || !isClientReady}
-                                    className="min-h-12 rounded-2xl bg-blue-700 px-6 text-sm font-semibold text-white disabled:bg-slate-400"
-                                >
-                                    {isLoading || isLoadingPackages ? "Loading..." : "Refresh"}
-                                </button>
-                            ) : (
-                                <Link
-                                    href="/student/login"
-                                    className="flex min-h-12 items-center justify-center rounded-2xl bg-blue-700 px-6 text-sm font-semibold text-white hover:bg-blue-800"
-                                >
-                                    Login
-                                </Link>
-                            )}
-
-                            <Link
-                                href="/student/attempts"
-                                className="flex min-h-12 items-center justify-center rounded-2xl border border-slate-300 bg-white px-6 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                                My Attempts
-                            </Link>
-
-                            {token.trim() ? (
-                                <button
-                                    type="button"
-                                    onClick={handleLogout}
-                                    className="min-h-12 rounded-2xl border border-red-200 bg-red-50 px-6 text-sm font-semibold text-red-700 hover:bg-red-100"
-                                >
-                                    Logout
-                                </button>
-                            ) : null}
-                        </div>
+                        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                            Practice like the real exam with structured mock tests,
+                            previous year papers and performance-focused attempts.
+                        </p>
                     </div>
 
-                    {errorMessage ? (
-                        <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                            {errorMessage}
+                    <div className="grid grid-cols-3 gap-2 sm:min-w-[280px]">
+                        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-center">
+                            <p className="text-lg font-black text-slate-950">
+                                {studentCatalogTestCount}
+                            </p>
+                            <p className="mt-0.5 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                                Tests
+                            </p>
                         </div>
-                    ) : null}
 
-                    {actionMessage ? (
-                        <div
-                            role="status"
-                            aria-live="polite"
-                            aria-atomic="true"
-                            className="fixed inset-x-4 top-4 z-50 mx-auto max-w-md rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-medium text-blue-700 shadow-lg"
-                        >
-                            {actionMessage}
+                        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-center">
+                            <p className="text-lg font-black text-blue-700">
+                                {mockTestCount}
+                            </p>
+                            <p className="mt-0.5 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                                Mock
+                            </p>
                         </div>
-                    ) : null}
+
+                        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-center">
+                            <p className="text-lg font-black text-indigo-700">
+                                {pyqTestCount}
+                            </p>
+                            <p className="mt-0.5 text-[9px] font-black uppercase tracking-wider text-slate-400">
+                                PYQ
+                            </p>
+                        </div>
+                    </div>
                 </section>
 
-                <section className="mb-8">
-                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                {!token.trim() ? (
+                    <section className="flex flex-col gap-4 rounded-3xl border border-blue-200 bg-blue-50 p-5 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
-                                Payments
+                            <p className="text-sm font-black text-blue-950">
+                                Sign in to access your practice workspace
                             </p>
-                            <h2 className="text-xl font-bold">
-                                Paid Mock Test Packs
-                            </h2>
-                            <p className="mt-1 text-sm text-slate-600">
-                                Buy a test pack using Razorpay Test Mode. Access unlocks only after backend payment verification.
+                            <p className="mt-1 text-sm text-blue-800">
+                                Your assigned tests, purchases and attempt history are
+                                available after student login.
                             </p>
                         </div>
 
-                        <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
-                            {paymentPackages.length} pack(s)
-                        </span>
+                        <Link
+                            href="/student/login"
+                            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-blue-700 px-5 text-sm font-bold text-white transition hover:bg-blue-800"
+                        >
+                            Student Login
+                        </Link>
+                    </section>
+                ) : null}
+
+                {(() => {
+                    const resumeCandidate = mockTests.find(
+                        (mockTest) =>
+                            mockTest.studentAttemptSummary.primaryAction ===
+                            "resume"
+                    );
+
+                    if (!resumeCandidate) {
+                        return null;
+                    }
+
+                    const resumeSummary =
+                        resumeCandidate.studentAttemptSummary;
+                    const isResumeLoading =
+                        actionLoadingMockTestId === resumeCandidate._id;
+
+                    return (
+                        <section className="overflow-hidden rounded-[28px] bg-[#06132f] text-white shadow-sm">
+                            <div className="grid gap-5 p-5 sm:p-6 lg:grid-cols-[1fr_auto] lg:items-center">
+                                <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                        <span className="rounded-full bg-blue-500/15 px-3 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-blue-200 ring-1 ring-blue-300/20">
+                                            Continue Practice
+                                        </span>
+
+                                        <span className="text-[10px] font-bold text-slate-400">
+                                            {resumeCandidate.testType === "pyq"
+                                                ? "Previous Year Paper"
+                                                : "Mock Test"}
+                                        </span>
+                                    </div>
+
+                                    <h2 className="mt-3 text-xl font-black tracking-tight sm:text-2xl">
+                                        {resumeCandidate.title}
+                                    </h2>
+
+                                    <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs font-semibold text-slate-300">
+                                        <span>
+                                            {resumeCandidate.examPattern
+                                                ?.totalDurationMinutes || "-"}{" "}
+                                            min
+                                        </span>
+
+                                        <span>
+                                            Attempt #
+                                            {resumeSummary.latestAttemptNumber ||
+                                                resumeSummary.attemptsUsed ||
+                                                1}
+                                        </span>
+
+                                        <span>
+                                            {resumeSummary.attemptsRemaining} attempt
+                                            {resumeSummary.attemptsRemaining === 1
+                                                ? ""
+                                                : "s"}{" "}
+                                            remaining
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        handlePrimaryAction(resumeCandidate)
+                                    }
+                                    disabled={isResumeLoading}
+                                    className="min-h-12 rounded-2xl bg-blue-500 px-6 text-sm font-black text-white transition hover:bg-blue-400 disabled:cursor-not-allowed disabled:bg-slate-600"
+                                >
+                                    {isResumeLoading
+                                        ? "Opening..."
+                                        : "Resume Test →"}
+                                </button>
+                            </div>
+                        </section>
+                    );
+                })()}
+
+                <section>
+                    <div className="mb-4 flex items-end justify-between gap-4">
+                        <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-teal-700">
+                                Premium Access
+                            </p>
+
+                            <h2 className="mt-1 text-2xl font-black tracking-tight">
+                                Premium Test Packs
+                            </h2>
+
+                            <p className="mt-1 max-w-2xl text-sm text-slate-600">
+                                Unlock curated test collections with verified access
+                                linked to your student account.
+                            </p>
+                        </div>
+
+                        {paymentPackages.length > 0 ? (
+                            <span className="hidden rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-600 sm:inline-flex">
+                                {paymentPackages.length}{" "}
+                                {paymentPackages.length === 1 ? "pack" : "packs"}
+                            </span>
+                        ) : null}
                     </div>
 
                     {!token.trim() ? (
-                        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-                            Login as a student to view paid packages.
+                        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+                            Sign in to view test packs available for your account.
                         </div>
                     ) : isLoadingPackages ? (
-                        <div className="rounded-3xl bg-white p-6 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200">
-                            Loading payment packages...
+                        <div className="grid gap-4 lg:grid-cols-2">
+                            {[0, 1].map((item) => (
+                                <div
+                                    key={item}
+                                    className="h-56 animate-pulse rounded-3xl border border-slate-200 bg-white"
+                                />
+                            ))}
                         </div>
                     ) : paymentPackages.length === 0 ? (
-                        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-                            No active paid mock test pack is available right now.
+                        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
+                            No premium test pack is available right now.
                         </div>
                     ) : (
-                        <div className="grid gap-5 md:grid-cols-2">
-                            {paymentPackages.map((paymentPackage) => (
-                                <article
-                                    key={paymentPackage._id}
-                                    className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
-                                >
-                                    <div className="flex flex-wrap gap-2">
-                                        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
-                                            {formatPrice(paymentPackage.priceInPaise)}
-                                        </span>
-                                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-                                            {paymentPackage.validityDays} days
-                                        </span>
-                                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
-                                            {paymentPackage.includedMockTestCount} test(s)
-                                        </span>
-                                        {isPaymentPackageAccessActive(paymentPackage) ? (
-                                            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-                                                Access Active
-                                            </span>
-                                        ) : null}
-                                    </div>
+                        <div className="grid gap-4 lg:grid-cols-2">
+                            {paymentPackages.map((paymentPackage) => {
+                                const hasActiveAccess =
+                                    isPaymentPackageAccessActive(
+                                        paymentPackage
+                                    );
 
-                                    <h3 className="mt-4 text-xl font-bold">
-                                        {paymentPackage.title}
-                                    </h3>
-
-                                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                                        {paymentPackage.description || "Paid mock test package for exam preparation."}
-                                    </p>
-
-                                    <div className="mt-4 rounded-2xl bg-slate-50 p-4">
-                                        <p className="text-xs font-semibold uppercase text-slate-500">
-                                            Included tests
-                                        </p>
-
-                                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-                                            {paymentPackage.includedMockTests.map((mockTest) => (
-                                                <li key={mockTest._id}>
-                                                    {mockTest.title || mockTest.slug || "Mock Test"}
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleBuyPaymentPackage(paymentPackage)}
-                                        disabled={
-                                            checkoutPackageId === paymentPackage._id ||
-                                            isPaymentPackageAccessActive(paymentPackage)
-                                        }
-                                        className={
-                                            "mt-5 w-full rounded-2xl px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed " +
-                                            (isPaymentPackageAccessActive(paymentPackage)
-                                                ? "bg-emerald-600 disabled:bg-emerald-600"
-                                                : "bg-slate-950 hover:bg-slate-800 disabled:bg-slate-400")
-                                        }
+                                return (
+                                    <article
+                                        key={paymentPackage._id}
+                                        className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
                                     >
-                                        {isPaymentPackageAccessActive(paymentPackage)
-                                            ? "Purchased - Access Active"
-                                            : checkoutPackageId === paymentPackage._id
-                                              ? "Opening Checkout..."
-                                              : "Buy Now"}
-                                    </button>
-                                    {paymentPackage.entitlement?.validUntil ? (
-                                        <p className="mt-2 text-center text-xs font-medium text-emerald-700">
-                                            Access valid until{" "}
-                                            {new Date(
-                                                paymentPackage.entitlement.validUntil
-                                            ).toLocaleDateString("en-IN", {
-                                                day: "2-digit",
-                                                month: "short",
-                                                year: "numeric",
-                                            })}
+                                        <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-teal-600 via-teal-500 to-amber-400" />
+
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="min-w-0">
+                                                <div className="flex flex-wrap gap-2">
+                                                    <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black text-amber-800 ring-1 ring-amber-200">
+                                                        {formatPrice(
+                                                            paymentPackage.priceInPaise
+                                                        )}
+                                                    </span>
+
+                                                    <span className="rounded-full bg-teal-50 px-3 py-1 text-[10px] font-black text-teal-800 ring-1 ring-teal-200">
+                                                        {
+                                                            paymentPackage.validityDays
+                                                        }{" "}
+                                                        days
+                                                    </span>
+
+                                                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black text-slate-600">
+                                                        {
+                                                            paymentPackage.includedMockTestCount
+                                                        }{" "}
+                                                        test
+                                                        {paymentPackage.includedMockTestCount ===
+                                                        1
+                                                            ? ""
+                                                            : "s"}
+                                                    </span>
+                                                </div>
+
+                                                <h3 className="mt-4 text-lg font-black leading-6 text-slate-950">
+                                                    {paymentPackage.title}
+                                                </h3>
+                                            </div>
+
+                                            {hasActiveAccess ? (
+                                                <span className="shrink-0 rounded-full bg-emerald-50 px-3 py-1 text-[9px] font-black uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200">
+                                                    Active
+                                                </span>
+                                            ) : null}
+                                        </div>
+
+                                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">
+                                            {paymentPackage.description ||
+                                                "Premium mock test package for focused exam preparation."}
                                         </p>
-                                    ) : null}
-                                </article>
-                            ))}
+
+                                        {paymentPackage.includedMockTests.length >
+                                        0 ? (
+                                            <div className="mt-4 rounded-2xl bg-slate-50 p-4">
+                                                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-slate-400">
+                                                    Included
+                                                </p>
+
+                                                <div className="mt-2 space-y-1.5">
+                                                    {paymentPackage.includedMockTests
+                                                        .slice(0, 3)
+                                                        .map((includedTest) => (
+                                                            <p
+                                                                key={
+                                                                    includedTest._id
+                                                                }
+                                                                className="truncate text-xs font-semibold text-slate-700"
+                                                            >
+                                                                •{" "}
+                                                                {includedTest.title ||
+                                                                    includedTest.slug ||
+                                                                    "Mock Test"}
+                                                            </p>
+                                                        ))}
+
+                                                    {paymentPackage
+                                                        .includedMockTests
+                                                        .length > 3 ? (
+                                                        <p className="text-xs font-bold text-teal-700">
+                                                            +
+                                                            {paymentPackage
+                                                                .includedMockTests
+                                                                .length - 3}{" "}
+                                                            more tests
+                                                        </p>
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        ) : null}
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                void handleBuyPaymentPackage(
+                                                    paymentPackage
+                                                )
+                                            }
+                                            disabled={
+                                                checkoutPackageId ===
+                                                    paymentPackage._id ||
+                                                hasActiveAccess
+                                            }
+                                            className={
+                                                "mt-5 min-h-11 w-full rounded-xl px-5 text-sm font-black transition disabled:cursor-not-allowed " +
+                                                (hasActiveAccess
+                                                    ? "bg-emerald-600 text-white disabled:bg-emerald-600"
+                                                    : "bg-slate-950 text-white hover:bg-slate-800 disabled:bg-slate-400")
+                                            }
+                                        >
+                                            {hasActiveAccess
+                                                ? "Access Active"
+                                                : checkoutPackageId ===
+                                                    paymentPackage._id
+                                                  ? "Opening Checkout..."
+                                                  : "Unlock Pack"}
+                                        </button>
+
+                                        {paymentPackage.entitlement
+                                            ?.validUntil ? (
+                                            <p className="mt-2 text-center text-[11px] font-semibold text-emerald-700">
+                                                Access valid until{" "}
+                                                {new Date(
+                                                    paymentPackage.entitlement.validUntil
+                                                ).toLocaleDateString("en-IN", {
+                                                    day: "2-digit",
+                                                    month: "short",
+                                                    year: "numeric",
+                                                })}
+                                            </p>
+                                        ) : null}
+                                    </article>
+                                );
+                            })}
                         </div>
                     )}
                 </section>
 
-                <section>
-                    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <section className="border-t border-slate-200 pt-7">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                         <div>
-                            <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-700">
-                                Test Series
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-600">
+                                Test Library
                             </p>
-                            <h2 className="mt-1 text-2xl font-bold">
-                                {activeTestType === "mock" ? "Mock Tests" : "PYQ Tests"}
+
+                            <h2 className="mt-1 text-2xl font-black tracking-tight">
+                                Choose your next practice
                             </h2>
+
                             <p className="mt-1 text-sm text-slate-600">
-                                Tests are organised by exam category, written-test pattern and test type.
+                                Exam-ready tests with clear access, attempt and review
+                                status.
                             </p>
                         </div>
 
-                        <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold">
-                            {studentCatalogTestCount} total test(s)
+                        <span className="text-xs font-bold text-slate-400">
+                            {studentCatalogTestCount} total
                         </span>
                     </div>
 
                     <div
                         role="tablist"
                         aria-label="Test type"
-                        className="mb-5 grid grid-cols-2 gap-3 rounded-3xl bg-slate-100 p-2"
+                        className="mt-5 inline-grid w-full grid-cols-2 gap-1 rounded-2xl border border-slate-200 bg-white p-1 sm:w-auto sm:min-w-[360px]"
                     >
                         <button
                             type="button"
@@ -1263,13 +1407,16 @@ export default function StudentMockTestsPage() {
                             aria-selected={activeTestType === "mock"}
                             onClick={() => setActiveTestType("mock")}
                             className={
-                                "rounded-2xl px-4 py-3 text-sm font-bold transition " +
+                                "min-h-11 rounded-xl px-5 text-sm font-black transition " +
                                 (activeTestType === "mock"
-                                    ? "bg-blue-700 text-white shadow-sm"
-                                    : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50")
+                                    ? "bg-slate-950 text-white shadow-sm"
+                                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-950")
                             }
                         >
-                            Mock Tests ({mockTestCount})
+                            Mock Tests
+                            <span className="ml-2 text-xs opacity-70">
+                                {mockTestCount}
+                            </span>
                         </button>
 
                         <button
@@ -1278,223 +1425,322 @@ export default function StudentMockTestsPage() {
                             aria-selected={activeTestType === "pyq"}
                             onClick={() => setActiveTestType("pyq")}
                             className={
-                                "rounded-2xl px-4 py-3 text-sm font-bold transition " +
+                                "min-h-11 rounded-xl px-5 text-sm font-black transition " +
                                 (activeTestType === "pyq"
-                                    ? "bg-blue-700 text-white shadow-sm"
-                                    : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50")
+                                    ? "bg-indigo-950 text-white shadow-sm"
+                                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-950")
                             }
                         >
-                            PYQ Tests ({pyqTestCount})
+                            PYQs
+                            <span className="ml-2 text-xs opacity-70">
+                                {pyqTestCount}
+                            </span>
                         </button>
                     </div>
 
-                    <div className="mb-4 flex items-center justify-between rounded-2xl bg-white px-4 py-3 shadow-sm ring-1 ring-slate-200">
-                        <span className="text-sm font-semibold text-slate-700">
-                            {activeTestType === "mock" ? "Mock Tests" : "Previous Year Question Tests"}
-                        </span>
+                    <div className="mt-5 flex items-center justify-between">
+                        <div>
+                            <h3 className="text-sm font-black text-slate-950">
+                                {activeTestType === "mock"
+                                    ? "Available Mock Tests"
+                                    : "Previous Year Question Papers"}
+                            </h3>
 
-                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
-                            {visibleTests.length} available
-                        </span>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                                {visibleTests.length} available
+                            </p>
+                        </div>
                     </div>
 
                     {studentCatalogTestCount === 0 ? (
-                        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-                            No published Mock or PYQ tests are available yet.
+                        <div className="mt-4 rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center">
+                            <p className="font-bold text-slate-700">
+                                No tests available yet
+                            </p>
+                            <p className="mt-1 text-sm text-slate-500">
+                                Published Mock Tests and PYQs will appear here.
+                            </p>
                         </div>
                     ) : visibleTests.length === 0 ? (
-                        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-                            No {activeTestType === "mock" ? "Mock Tests" : "PYQ Tests"} are available yet.
+                        <div className="mt-4 rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center">
+                            <p className="font-bold text-slate-700">
+                                Nothing in this section yet
+                            </p>
+                            <p className="mt-1 text-sm text-slate-500">
+                                Try the other test type.
+                            </p>
                         </div>
                     ) : (
-                        <div className="grid gap-5">
+                        <div className="mt-4 grid gap-4 xl:grid-cols-2">
                             {visibleTests.map((mockTest) => {
-                                const summary = mockTest.studentAttemptSummary;
+                                const summary =
+                                    mockTest.studentAttemptSummary;
                                 const action = summary.primaryAction;
                                 const isActionLoading =
-                                    actionLoadingMockTestId === mockTest._id;
+                                    actionLoadingMockTestId ===
+                                    mockTest._id;
+
+                                const hasLatestAttempt =
+                                    Boolean(
+                                        summary.latestAttemptNumber
+                                    );
 
                                 return (
                                     <article
                                         key={mockTest._id}
-                                        className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
+                                        className="flex flex-col rounded-3xl border border-slate-200 bg-white p-5 shadow-sm transition hover:border-slate-300 hover:shadow-md sm:p-6"
                                     >
-                                        <div className="mb-3 flex flex-wrap gap-2">
-                                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                                                {mockTest.category?.name || "Other Exam"}
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black text-slate-600">
+                                                {mockTest.category?.name ||
+                                                    "Other Exam"}
                                             </span>
 
-                                            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                                                {mockTest.testType === "pyq" ? "PYQ Test" : "Mock Test"}
+                                            <span
+                                                className={
+                                                    "rounded-full px-3 py-1 text-[10px] font-black " +
+                                                    (mockTest.testType ===
+                                                    "pyq"
+                                                        ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200"
+                                                        : "bg-blue-50 text-blue-700 ring-1 ring-blue-200")
+                                                }
+                                            >
+                                                {mockTest.testType ===
+                                                "pyq"
+                                                    ? "PYQ"
+                                                    : "Mock Test"}
                                             </span>
 
-                                            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                                                {mockTest.accessType}
-                                            </span>
-
-                                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                                                Version {mockTest.activeVersion?.versionNumber || "-"}
+                                            <span
+                                                className={
+                                                    "rounded-full px-3 py-1 text-[10px] font-black " +
+                                                    (mockTest.accessType ===
+                                                    "paid"
+                                                        ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200"
+                                                        : "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200")
+                                                }
+                                            >
+                                                {mockTest.accessType ===
+                                                "paid"
+                                                    ? "Premium"
+                                                    : mockTest.accessType}
                                             </span>
                                         </div>
 
-                                        <h3 className="text-xl font-bold">
+                                        <h3 className="mt-4 text-lg font-black leading-6 tracking-tight text-slate-950 sm:text-xl">
                                             {mockTest.title}
                                         </h3>
 
-                                        <p className="mt-2 text-sm text-slate-600">
-                                            {mockTest.description || "No description available."}
+                                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">
+                                            {mockTest.description ||
+                                                "Practice this test under exam-like conditions."}
                                         </p>
 
-                                        <div className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm md:grid-cols-4">
+                                        <div className="mt-5 grid grid-cols-2 gap-x-4 gap-y-4 border-y border-slate-100 py-4 sm:grid-cols-4">
                                             <div>
-                                                <p className="text-xs font-semibold uppercase text-slate-500">
+                                                <p className="text-[9px] font-black uppercase tracking-wide text-slate-400">
                                                     Pattern
                                                 </p>
-                                                <p className="mt-1 font-semibold">
-                                                    {mockTest.examPattern?.name || "Not assigned"}
+                                                <p className="mt-1 truncate text-xs font-bold text-slate-700">
+                                                    {mockTest.examPattern
+                                                        ?.name ||
+                                                        "Standard"}
                                                 </p>
                                             </div>
 
                                             <div>
-                                                <p className="text-xs font-semibold uppercase text-slate-500">
+                                                <p className="text-[9px] font-black uppercase tracking-wide text-slate-400">
                                                     Duration
                                                 </p>
-                                                <p className="mt-1 font-semibold">
-                                                    {mockTest.examPattern?.totalDurationMinutes || "-"} min
+                                                <p className="mt-1 text-xs font-bold text-slate-700">
+                                                    {mockTest.examPattern
+                                                        ?.totalDurationMinutes ||
+                                                        "-"}{" "}
+                                                    min
                                                 </p>
                                             </div>
 
                                             <div>
-                                                <p className="text-xs font-semibold uppercase text-slate-500">
+                                                <p className="text-[9px] font-black uppercase tracking-wide text-slate-400">
                                                     Attempts
                                                 </p>
-                                                <p className="mt-1 font-semibold">
-                                                    {summary.attemptsUsed}/{summary.maxAttempts}
+                                                <p className="mt-1 text-xs font-bold text-slate-700">
+                                                    {summary.attemptsUsed}/
+                                                    {summary.maxAttempts}
                                                 </p>
                                             </div>
 
                                             <div>
-                                                <p className="text-xs font-semibold uppercase text-slate-500">
+                                                <p className="text-[9px] font-black uppercase tracking-wide text-slate-400">
                                                     Remaining
                                                 </p>
-                                                <p className="mt-1 font-semibold">
-                                                    {summary.attemptsRemaining}
+                                                <p className="mt-1 text-xs font-bold text-slate-700">
+                                                    {
+                                                        summary.attemptsRemaining
+                                                    }
                                                 </p>
                                             </div>
                                         </div>
 
-                                        <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-slate-200 p-4 md:flex-row md:items-center md:justify-between">
-                                            <div>
-                                                <p className="text-xs font-semibold uppercase text-slate-500">
-                                                    Current Action
-                                                </p>
+                                        <div className="mt-4 flex flex-wrap items-center gap-2">
+                                            {action === "resume" ? (
+                                                <span className="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-black text-amber-700">
+                                                    In progress
+                                                </span>
+                                            ) : null}
 
-                                                <p className="mt-1 font-semibold">
-                                                    {actionLabels[action]}
-                                                </p>
+                                            {summary.result
+                                                .isResultVisible ? (
+                                                <span className="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-black text-blue-700">
+                                                    Result ready
+                                                </span>
+                                            ) : null}
 
-                                                <p className="mt-1 text-xs text-slate-500">
-                                                    Latest attempt:{" "}
-                                                    {summary.latestAttemptNumber
-                                                        ? `#${summary.latestAttemptNumber} - ${summary.latestAttemptStatus}`
-                                                        : "No attempt yet"}
-                                                </p>
+                                            {summary.review
+                                                .isDetailedReviewAvailable ? (
+                                                <span className="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-black text-emerald-700">
+                                                    Detailed review available
+                                                </span>
+                                            ) : null}
 
-                                                <p className="mt-1 text-xs text-slate-500">
-                                                    Result:{" "}
-                                                    {summary.result.isResultVisible
-                                                        ? "Visible"
-                                                        : "Hidden"}{" "}
-                                                    | Review:{" "}
-                                                    {summary.review.isDetailedReviewAvailable
-                                                        ? "Available"
-                                                        : "Not available"}{" "}
-                                                    | Limit:{" "}
-                                                    {summary.isAttemptLimitReached
-                                                        ? "Reached"
-                                                        : "Available"}
-                                                </p>
-                                            </div>
+                                            {summary
+                                                .isAttemptLimitReached ? (
+                                                <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-black text-slate-600">
+                                                    Attempt limit reached
+                                                </span>
+                                            ) : null}
+                                        </div>
 
-                                            <div className="flex flex-col gap-2 sm:flex-row">
+                                        <div className="mt-3 min-h-5 text-xs text-slate-500">
+                                            {hasLatestAttempt ? (
+                                                <span>
+                                                    Latest attempt #
+                                                    {
+                                                        summary.latestAttemptNumber
+                                                    }
+                                                    {summary.latestAttemptStatus
+                                                        ? ` • ${String(
+                                                              summary.latestAttemptStatus
+                                                          ).replace(
+                                                              /_/g,
+                                                              " "
+                                                          )}`
+                                                        : ""}
+                                                </span>
+                                            ) : (
+                                                <span>
+                                                    Ready for your first attempt
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        <div className="mt-auto flex flex-wrap gap-2 pt-5">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    handlePrimaryAction(
+                                                        mockTest
+                                                    )
+                                                }
+                                                disabled={
+                                                    action ===
+                                                        "limit_reached" ||
+                                                    isActionLoading
+                                                }
+                                                className={`min-h-11 rounded-xl px-5 text-sm font-black text-white transition disabled:cursor-not-allowed disabled:bg-slate-400 ${getActionClassName(
+                                                    action
+                                                )}`}
+                                            >
+                                                {isActionLoading
+                                                    ? "Please wait..."
+                                                    : actionLabels[action]}
+                                            </button>
+
+                                            {summary.result
+                                                .isResultVisible &&
+                                            action !== "view_result" ? (
                                                 <button
                                                     type="button"
-                                                    onClick={() => handlePrimaryAction(mockTest)}
+                                                    onClick={() =>
+                                                        openAttemptResult(
+                                                            mockTest
+                                                        )
+                                                    }
                                                     disabled={
-                                                        action === "limit_reached" ||
                                                         isActionLoading
                                                     }
-                                                    className={`rounded-2xl px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400 ${getActionClassName(
-                                                        action
-                                                    )}`}
+                                                    className="min-h-11 rounded-xl border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
                                                 >
-                                                    {isActionLoading
-                                                        ? "Please wait..."
-                                                        : actionLabels[action]}
+                                                    Result
                                                 </button>
+                                            ) : null}
 
-                                                {summary.result.isResultVisible && action !== "view_result" ? (
+                                            {summary.review
+                                                .isDetailedReviewAvailable &&
+                                            action !== "view_review" ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        openAttemptReview(
+                                                            mockTest
+                                                        )
+                                                    }
+                                                    disabled={
+                                                        isActionLoading
+                                                    }
+                                                    className="min-h-11 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-bold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                                >
+                                                    Review
+                                                </button>
+                                            ) : null}
+
+                                            {summary.canRetake &&
+                                            action !== "retake" ? (
+                                                summary.access
+                                                    ?.canAttempt !==
+                                                false ? (
                                                     <button
                                                         type="button"
-                                                        onClick={() => openAttemptResult(mockTest)}
-                                                        disabled={isActionLoading}
-                                                        className="rounded-2xl border border-blue-200 bg-blue-50 px-5 py-3 text-sm font-semibold text-blue-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                        onClick={() =>
+                                                            void startOrResumeAttempt(
+                                                                mockTest,
+                                                                "retake"
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            isActionLoading
+                                                        }
+                                                        className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                                                     >
-                                                        View Result
+                                                        Retake
                                                     </button>
-                                                ) : null}
-
-                                                {summary.review.isDetailedReviewAvailable && action !== "view_review" ? (
+                                                ) : (
                                                     <button
                                                         type="button"
-                                                        onClick={() => openAttemptReview(mockTest)}
-                                                        disabled={isActionLoading}
-                                                        className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                                                    >
-                                                        View Review
-                                                    </button>
-                                                ) : null}
-
-                                                {summary.canRetake &&
-                                                    action !== "retake" ? (
-                                                    summary.access?.canAttempt !== false ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                void startOrResumeAttempt(
-                                                                    mockTest,
-                                                                    "retake"
-                                                                )
-                                                            }
-                                                            disabled={isActionLoading}
-                                                            className="rounded-2xl border border-purple-200 bg-purple-50 px-5 py-3 text-sm font-semibold text-purple-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                                                        >
-                                                            Retake Test
-                                                        </button>
-                                                    ) : (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                showAccessRequiredMessage(
-                                                                    mockTest
-                                                                )
-                                                            }
-                                                            disabled={isActionLoading}
-                                                            className={
-                                                                summary.access?.reason ===
-                                                                "purchase_required"
-                                                                    ? "rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                                                                    : "rounded-2xl border border-slate-300 bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                                                            }
-                                                        >
-                                                            {summary.access?.reason ===
+                                                        onClick={() =>
+                                                            showAccessRequiredMessage(
+                                                                mockTest
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            isActionLoading
+                                                        }
+                                                        className={
+                                                            summary.access
+                                                                ?.reason ===
                                                             "purchase_required"
-                                                                ? "Purchase Required"
-                                                                : "Assignment Required"}
-                                                        </button>
-                                                    )
-                                                ) : null}
-                                            </div>
+                                                                ? "min-h-11 rounded-xl border border-amber-200 bg-amber-50 px-4 text-sm font-bold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                                                : "min-h-11 rounded-xl border border-slate-300 bg-slate-100 px-4 text-sm font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                                        }
+                                                    >
+                                                        {summary.access
+                                                            ?.reason ===
+                                                        "purchase_required"
+                                                            ? "Unlock Access"
+                                                            : "Assignment Required"}
+                                                    </button>
+                                                )
+                                            ) : null}
                                         </div>
                                     </article>
                                 );
@@ -1503,7 +1749,6 @@ export default function StudentMockTestsPage() {
                     )}
                 </section>
             </div>
-        </div>
         </StudentPortalShell>
     );
 }
