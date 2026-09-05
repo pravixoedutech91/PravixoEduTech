@@ -379,138 +379,225 @@ export default function StudentAttemptResultPage() {
             isSyncing={isLoading}
             onLogout={handleLogout}
         >
-            <div className="text-slate-950">
-                <div className="mx-auto flex max-w-6xl flex-col gap-6">
-                <header className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                        <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
-                                {resultStatusLabel}
-                            </p>
-                            <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">
-                                {result?.test.title || "Mock Test Result"}
+            <div className="mx-auto max-w-6xl space-y-5 pb-24 text-slate-950 lg:pb-8">
+                <section className="border-b border-slate-200 pb-6">
+                    <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                        <div className="min-w-0 max-w-3xl">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-xs font-bold uppercase tracking-[0.24em] text-blue-600">
+                                    Performance
+                                </p>
+
+                                {result ? (
+                                    <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-bold text-blue-700">
+                                        {resultStatusLabel}
+                                    </span>
+                                ) : null}
+                            </div>
+
+                            <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">
+                                Test Result
                             </h1>
-                            <p className="mt-2 text-sm text-slate-600">
-                                Attempt #{result?.attempt.attemptNumber || "--"} | Version{" "}
-                                {result?.test.versionNumber || "--"} |{" "}
-                                {result?.attempt.status || "loading"}
+
+                            <p className="mt-2 text-lg font-bold leading-snug text-slate-800 sm:text-xl">
+                                {result?.test.title || "Your test performance"}
                             </p>
-                        </div>
 
-                        <div className="flex flex-wrap gap-2">
-                            <Link
-                                href="/student/mock-tests"
-                                className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
-                            >
-                                Back to Mock Tests
-                            </Link>
+                            {result ? (
+                                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
+                                    <span>
+                                        Attempt #
+                                        {result.attempt.attemptNumber || "—"}
+                                    </span>
 
-                            {attemptId && result?.attempt.review?.isDetailedReviewAvailable ? (
-                                <Link
-                                    href={`/student/attempts/${attemptId}/review`}
-                                    className="rounded-2xl bg-slate-950 px-4 py-2 text-sm font-semibold text-white"
-                                >
-                                    View Detailed Review
-                                </Link>
+                                    <span aria-hidden="true">•</span>
+
+                                    <span>
+                                        Completed{" "}
+                                        {formatDateTime(
+                                            result.attempt.submittedAt
+                                        )}
+                                    </span>
+                                </div>
                             ) : null}
                         </div>
-                    </div>
-                </header>
 
-                <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600">
-                                Student Session
-                            </p>
+                        <div className="flex flex-wrap gap-3">
+                            <Link
+                                href="/student/attempts"
+                                className="inline-flex min-h-11 items-center justify-center rounded-2xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 shadow-sm transition hover:bg-slate-50"
+                            >
+                                Back to Attempts
+                            </Link>
 
-                            <h2 className="mt-2 text-xl font-bold text-slate-950">
-                                Result Access
-                            </h2>
-
-                            <p className="mt-2 text-sm text-slate-600">
-                                {effectiveStudentToken
-                                    ? "You are logged in. Result loads using your saved student session."
-                                    : "Please login first to view this result."}
-                            </p>
-                        </div>
-
-                        <div className="flex flex-wrap gap-2">
-                            {effectiveStudentToken ? (
-                                <button
-                                    type="button"
-                                    onClick={() => void fetchResult()}
-                                    disabled={isLoading}
-                                    className="rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-                                >
-                                    {isLoading ? "Loading..." : "Refresh Result"}
-                                </button>
-                            ) : (
+                            {attemptId &&
+                            result?.attempt.review
+                                ?.isDetailedReviewAvailable ? (
                                 <Link
-                                    href="/student/login"
-                                    className="rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700"
+                                    href={`/student/attempts/${attemptId}/review`}
+                                    className="inline-flex min-h-11 items-center justify-center rounded-2xl bg-slate-950 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-slate-800"
                                 >
-                                    Login
+                                    Detailed Review
                                 </Link>
-                            )}
-
-                            {effectiveStudentToken ? (
-                                <button
-                                    type="button"
-                                    onClick={handleLogout}
-                                    className="rounded-2xl border border-red-200 bg-red-50 px-5 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100"
-                                >
-                                    Logout
-                                </button>
                             ) : null}
                         </div>
                     </div>
                 </section>
 
                 {errorMessage ? (
-                    <section className="rounded-3xl border border-red-200 bg-red-50 p-5 text-sm font-semibold text-red-700">
-                        {errorMessage}
+                    <section
+                        role="alert"
+                        className="rounded-3xl border border-red-200 bg-red-50 p-5 text-sm font-semibold text-red-700"
+                    >
+                        <p>{errorMessage}</p>
+
+                        {!effectiveStudentToken ? (
+                            <Link
+                                href="/student/login"
+                                className="mt-4 inline-flex min-h-11 items-center justify-center rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700"
+                            >
+                                Login
+                            </Link>
+                        ) : null}
                     </section>
                 ) : null}
 
                 {!result && !errorMessage ? (
-                    <section className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-600 shadow-sm">
-                        {isLoading ? "Loading result..." : "Result will appear here."}
+                    <section
+                        aria-live="polite"
+                        className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm"
+                    >
+                        {isLoading ? (
+                            <div className="animate-pulse">
+                                <div className="h-4 w-28 rounded bg-slate-100" />
+                                <div className="mt-4 h-8 w-64 max-w-full rounded bg-slate-100" />
+
+                                <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                    <div className="h-24 rounded-2xl bg-slate-100" />
+                                    <div className="h-24 rounded-2xl bg-slate-100" />
+                                    <div className="h-24 rounded-2xl bg-slate-100" />
+                                    <div className="h-24 rounded-2xl bg-slate-100" />
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center">
+                                <h2 className="text-xl font-black text-slate-950">
+                                    Result not loaded
+                                </h2>
+
+                                <p className="mt-2 text-sm text-slate-600">
+                                    {effectiveStudentToken
+                                        ? "Your result will appear here when it is available."
+                                        : "Login as a student to view this result."}
+                                </p>
+
+                                {!effectiveStudentToken ? (
+                                    <Link
+                                        href="/student/login"
+                                        className="mt-5 inline-flex min-h-11 items-center justify-center rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white transition hover:bg-blue-700"
+                                    >
+                                        Login
+                                    </Link>
+                                ) : null}
+                            </div>
+                        )}
                     </section>
                 ) : null}
 
                 {result && scoreSummary ? (
                     <>
-                        <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                            <SummaryStat
-                                label="Score"
-                                value={`${formatScore(scoreSummary.score)} / ${formatScore(
-                                    scoreSummary.maxScore
-                                )}`}
-                            />
-                            <SummaryStat
-                                label="Percentage"
-                                value={formatPercent(scoreSummary.percentage)}
-                            />
-                            <SummaryStat
-                                label="Accuracy"
-                                value={formatPercent(scoreSummary.accuracy)}
-                            />
-                            <SummaryStat
-                                label="Time Spent"
-                                value={formatDuration(result.attempt.timeSpentSeconds)}
-                            />
+                        <section className="overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-sm">
+                            <div className="border-b border-blue-100 bg-gradient-to-r from-blue-50 via-white to-slate-50 px-5 py-5 sm:px-6">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                                    <div>
+                                        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-blue-600">
+                                            Performance Summary
+                                        </p>
+
+                                        <h2 className="mt-1 text-xl font-black text-slate-950">
+                                            Your result at a glance
+                                        </h2>
+                                    </div>
+
+                                    <p className="text-sm font-semibold text-slate-500">
+                                        Attempt #
+                                        {result.attempt.attemptNumber || "—"}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="grid gap-3 p-4 sm:grid-cols-2 sm:p-5 lg:grid-cols-4">
+                                <SummaryStat
+                                    label="Score"
+                                    value={`${formatScore(
+                                        scoreSummary.score
+                                    )} / ${formatScore(
+                                        scoreSummary.maxScore
+                                    )}`}
+                                />
+
+                                <SummaryStat
+                                    label="Percentage"
+                                    value={formatPercent(
+                                        scoreSummary.percentage
+                                    )}
+                                />
+
+                                <SummaryStat
+                                    label="Accuracy"
+                                    value={formatPercent(
+                                        scoreSummary.accuracy
+                                    )}
+                                />
+
+                                <SummaryStat
+                                    label="Time Spent"
+                                    value={formatDuration(
+                                        result.attempt.timeSpentSeconds
+                                    )}
+                                />
+                            </div>
                         </section>
 
-                        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                            <h2 className="text-lg font-black text-slate-950">
-                                Attempt Summary
-                            </h2>
-                            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
+                        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                            <div>
+                                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                                    Attempt Snapshot
+                                </p>
+
+                                <h2 className="mt-1 text-xl font-black text-slate-950">
+                                    Question breakdown
+                                </h2>
+                            </div>
+
+                            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                <MiniStat
+                                    label="Attempted"
+                                    value={scoreSummary.attempted}
+                                />
+
+                                <MiniStat
+                                    label="Correct"
+                                    value={scoreSummary.correct}
+                                />
+
+                                <MiniStat
+                                    label="Wrong"
+                                    value={scoreSummary.wrong}
+                                />
+
+                                <MiniStat
+                                    label="Skipped"
+                                    value={scoreSummary.skipped}
+                                />
+                            </div>
+
+                            <div className="mt-3 grid gap-3 sm:grid-cols-3">
                                 <MiniStat
                                     label="Total Questions"
                                     value={scoreSummary.totalQuestions}
                                 />
+
                                 <MiniStat
                                     label="Scorable Questions"
                                     value={
@@ -518,179 +605,302 @@ export default function StudentAttemptResultPage() {
                                         scoreSummary.totalQuestions
                                     }
                                 />
+
                                 <MiniStat
                                     label="Unscored Questions"
-                                    value={scoreSummary.unscoredQuestions ?? 0}
+                                    value={
+                                        scoreSummary.unscoredQuestions ?? 0
+                                    }
                                 />
-                                <MiniStat label="Attempted" value={scoreSummary.attempted} />
-                                <MiniStat label="Correct" value={scoreSummary.correct} />
-                                <MiniStat label="Wrong" value={scoreSummary.wrong} />
-                                <MiniStat label="Skipped" value={scoreSummary.skipped} />
                             </div>
+
                             {(scoreSummary.unscoredQuestions ?? 0) > 0 ? (
-                                <p className="mt-3 text-xs leading-5 text-slate-500">
-                                    Unscored questions remain part of the paper but are excluded
-                                    from score, accuracy and maximum-score calculations.
+                                <p className="mt-4 rounded-2xl bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800 ring-1 ring-amber-100">
+                                    Unscored questions remain part of the
+                                    paper but are excluded from score,
+                                    accuracy and maximum-score calculations.
                                 </p>
                             ) : null}
-                            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+
+                            <div className="mt-3 grid gap-3 sm:grid-cols-3">
                                 <MiniStat
                                     label="Negative Marks"
-                                    value={formatScore(scoreSummary.negativeMarks)}
+                                    value={formatScore(
+                                        scoreSummary.negativeMarks
+                                    )}
                                 />
+
                                 <MiniStat
-                                    label="Started At"
-                                    value={formatDateTime(result.attempt.startedAt)}
+                                    label="Started"
+                                    value={formatDateTime(
+                                        result.attempt.startedAt
+                                    )}
                                 />
+
                                 <MiniStat
-                                    label="Submitted At"
-                                    value={formatDateTime(result.attempt.submittedAt)}
+                                    label="Submitted"
+                                    value={formatDateTime(
+                                        result.attempt.submittedAt
+                                    )}
                                 />
                             </div>
                         </section>
 
-                        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                            <h2 className="text-lg font-black text-slate-950">
-                                Section Analysis
-                            </h2>
-                            <div className="mt-4 grid gap-3">
-                                {result.attempt.sectionSummaries.map((section) => (
-                                    <div
-                                        key={section.sectionSlug || section.name}
-                                        className="rounded-2xl border border-slate-200 p-4"
-                                    >
-                                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                                            <div>
-                                                <p className="text-base font-bold text-slate-950">
-                                                    {section.name}
-                                                </p>
-                                                <p className="text-xs uppercase tracking-wide text-slate-500">
-                                                    {section.sectionType || "section"}
-                                                </p>
+                        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                            <div>
+                                <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                                    Section Performance
+                                </p>
+
+                                <h2 className="mt-1 text-xl font-black text-slate-950">
+                                    Section Analysis
+                                </h2>
+                            </div>
+
+                            <div className="mt-5 grid gap-3">
+                                {result.attempt.sectionSummaries.map(
+                                    (section) => (
+                                        <article
+                                            key={
+                                                section.sectionSlug ||
+                                                section.name
+                                            }
+                                            className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5"
+                                        >
+                                            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                                <div className="min-w-0">
+                                                    <h3 className="font-black text-slate-950">
+                                                        {section.name}
+                                                    </h3>
+
+                                                    <p className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                                                        {section.sectionType ||
+                                                            "Section"}
+                                                    </p>
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:min-w-[520px]">
+                                                    <MiniStat
+                                                        label="Score"
+                                                        value={`${formatScore(
+                                                            section.score
+                                                        )} / ${formatScore(
+                                                            section.maxScore
+                                                        )}`}
+                                                    />
+
+                                                    <MiniStat
+                                                        label="Percentage"
+                                                        value={formatPercent(
+                                                            section.percentage
+                                                        )}
+                                                    />
+
+                                                    <MiniStat
+                                                        label="Accuracy"
+                                                        value={formatPercent(
+                                                            section.accuracy
+                                                        )}
+                                                    />
+
+                                                    <MiniStat
+                                                        label="Time"
+                                                        value={formatDuration(
+                                                            section.timeSpentSeconds
+                                                        )}
+                                                    />
+                                                </div>
                                             </div>
-                                            <div className="grid gap-2 sm:grid-cols-4 lg:min-w-[520px]">
-                                                <MiniStat
-                                                    label="Score"
-                                                    value={`${formatScore(section.score)} / ${formatScore(
-                                                        section.maxScore
-                                                    )}`}
-                                                />
-                                                <MiniStat
-                                                    label="Percentage"
-                                                    value={formatPercent(section.percentage)}
-                                                />
-                                                <MiniStat
-                                                    label="Accuracy"
-                                                    value={formatPercent(section.accuracy)}
-                                                />
-                                                <MiniStat
-                                                    label="Time"
-                                                    value={formatDuration(section.timeSpentSeconds)}
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
+                                        </article>
+                                    )
+                                )}
                             </div>
                         </section>
 
                         <section className="grid gap-4 lg:grid-cols-2">
-                            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <h2 className="text-lg font-black text-slate-950">
-                                    Topic Analysis
-                                </h2>
-                                <div className="mt-4 space-y-3">
-                                    {result.attempt.topicSummaries.map((topic, index) => (
-                                        <div
-                                            key={`${topic.subject}-${topic.topic}-${index}`}
-                                            className="rounded-2xl bg-slate-50 p-4"
-                                        >
-                                            <p className="font-bold text-slate-950">
-                                                {topic.topic || "General"}
-                                            </p>
-                                            <p className="text-xs text-slate-500">
-                                                {topic.subject || "Subject"}
-                                                {topic.subTopic ? ` | ${topic.subTopic}` : ""}
-                                            </p>
-                                            <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                                                <MiniStat
-                                                    label="Score"
-                                                    value={`${formatScore(topic.score)} / ${formatScore(
-                                                        topic.maxScore
-                                                    )}`}
-                                                />
-                                                <MiniStat
-                                                    label="Accuracy"
-                                                    value={formatPercent(topic.accuracy)}
-                                                />
-                                                <MiniStat
-                                                    label="Time"
-                                                    value={formatDuration(topic.timeSpentSeconds)}
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
+                            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                                <div>
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                                        By Topic
+                                    </p>
+
+                                    <h2 className="mt-1 text-xl font-black text-slate-950">
+                                        Topic Analysis
+                                    </h2>
+                                </div>
+
+                                <div className="mt-5 space-y-3">
+                                    {result.attempt.topicSummaries.map(
+                                        (topic, index) => (
+                                            <article
+                                                key={`${topic.subject}-${topic.topic}-${index}`}
+                                                className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+                                            >
+                                                <h3 className="font-black text-slate-950">
+                                                    {topic.topic ||
+                                                        "General"}
+                                                </h3>
+
+                                                <p className="mt-1 text-xs text-slate-500">
+                                                    {topic.subject ||
+                                                        "Subject"}
+                                                    {topic.subTopic
+                                                        ? ` • ${topic.subTopic}`
+                                                        : ""}
+                                                </p>
+
+                                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                                    <MiniStat
+                                                        label="Score"
+                                                        value={`${formatScore(
+                                                            topic.score
+                                                        )} / ${formatScore(
+                                                            topic.maxScore
+                                                        )}`}
+                                                    />
+
+                                                    <MiniStat
+                                                        label="Accuracy"
+                                                        value={formatPercent(
+                                                            topic.accuracy
+                                                        )}
+                                                    />
+
+                                                    <MiniStat
+                                                        label="Time"
+                                                        value={formatDuration(
+                                                            topic.timeSpentSeconds
+                                                        )}
+                                                    />
+                                                </div>
+                                            </article>
+                                        )
+                                    )}
                                 </div>
                             </div>
 
-                            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                                <h2 className="text-lg font-black text-slate-950">
-                                    Difficulty Analysis
-                                </h2>
-                                <div className="mt-4 space-y-3">
-                                    {result.attempt.difficultySummaries.map((difficulty) => (
-                                        <div
-                                            key={difficulty.difficulty}
-                                            className="rounded-2xl bg-slate-50 p-4"
-                                        >
-                                            <p className="font-bold capitalize text-slate-950">
-                                                {difficulty.difficulty || "Not marked"}
-                                            </p>
-                                            <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                                                <MiniStat
-                                                    label="Score"
-                                                    value={`${formatScore(difficulty.score)} / ${formatScore(
-                                                        difficulty.maxScore
-                                                    )}`}
-                                                />
-                                                <MiniStat
-                                                    label="Accuracy"
-                                                    value={formatPercent(difficulty.accuracy)}
-                                                />
-                                                <MiniStat
-                                                    label="Time"
-                                                    value={formatDuration(difficulty.timeSpentSeconds)}
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
+                            <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+                                <div>
+                                    <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                                        By Difficulty
+                                    </p>
+
+                                    <h2 className="mt-1 text-xl font-black text-slate-950">
+                                        Difficulty Analysis
+                                    </h2>
+                                </div>
+
+                                <div className="mt-5 space-y-3">
+                                    {result.attempt.difficultySummaries.map(
+                                        (difficulty) => (
+                                            <article
+                                                key={
+                                                    difficulty.difficulty
+                                                }
+                                                className="rounded-2xl border border-slate-100 bg-slate-50 p-4"
+                                            >
+                                                <h3 className="font-black capitalize text-slate-950">
+                                                    {difficulty.difficulty ||
+                                                        "Not marked"}
+                                                </h3>
+
+                                                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                                    <MiniStat
+                                                        label="Score"
+                                                        value={`${formatScore(
+                                                            difficulty.score
+                                                        )} / ${formatScore(
+                                                            difficulty.maxScore
+                                                        )}`}
+                                                    />
+
+                                                    <MiniStat
+                                                        label="Accuracy"
+                                                        value={formatPercent(
+                                                            difficulty.accuracy
+                                                        )}
+                                                    />
+
+                                                    <MiniStat
+                                                        label="Time"
+                                                        value={formatDuration(
+                                                            difficulty.timeSpentSeconds
+                                                        )}
+                                                    />
+                                                </div>
+                                            </article>
+                                        )
+                                    )}
                                 </div>
                             </div>
                         </section>
 
-                        <section className="rounded-3xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
-                            <h2 className="text-lg font-black text-emerald-950">
-                                Detailed Review
-                            </h2>
-                            <p className="mt-2 text-sm text-emerald-800">
-                                {result.attempt.review?.isDetailedReviewAvailable
-                                    ? `Detailed review is available until ${formatDateTime(
-                                          result.attempt.review.detailedReviewExpiresAt
-                                      )}.`
-                                    : getDetailedReviewUnavailableMessage(result.attempt.review)}
-                            </p>
-                            {attemptId && result.attempt.review?.isDetailedReviewAvailable ? (
-                                <Link
-                                    href={`/student/attempts/${attemptId}/review`}
-                                    className="mt-4 inline-flex rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
-                                >
-                                    Open Review
-                                </Link>
-                            ) : null}
+                        <section
+                            className={`rounded-3xl border p-5 shadow-sm sm:p-6 ${
+                                result.attempt.review
+                                    ?.isDetailedReviewAvailable
+                                    ? "border-emerald-200 bg-emerald-50"
+                                    : "border-slate-200 bg-white"
+                            }`}
+                        >
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="max-w-3xl">
+                                    <p
+                                        className={`text-[11px] font-bold uppercase tracking-[0.2em] ${
+                                            result.attempt.review
+                                                ?.isDetailedReviewAvailable
+                                                ? "text-emerald-700"
+                                                : "text-slate-400"
+                                        }`}
+                                    >
+                                        Learn From Your Attempt
+                                    </p>
+
+                                    <h2
+                                        className={`mt-1 text-xl font-black ${
+                                            result.attempt.review
+                                                ?.isDetailedReviewAvailable
+                                                ? "text-emerald-950"
+                                                : "text-slate-950"
+                                        }`}
+                                    >
+                                        Detailed Review
+                                    </h2>
+
+                                    <p
+                                        className={`mt-2 text-sm leading-6 ${
+                                            result.attempt.review
+                                                ?.isDetailedReviewAvailable
+                                                ? "text-emerald-800"
+                                                : "text-slate-600"
+                                        }`}
+                                    >
+                                        {result.attempt.review
+                                            ?.isDetailedReviewAvailable
+                                            ? `Review your answers and solutions until ${formatDateTime(
+                                                  result.attempt.review
+                                                      .detailedReviewExpiresAt
+                                              )}.`
+                                            : getDetailedReviewUnavailableMessage(
+                                                  result.attempt.review
+                                              )}
+                                    </p>
+                                </div>
+
+                                {attemptId &&
+                                result.attempt.review
+                                    ?.isDetailedReviewAvailable ? (
+                                    <Link
+                                        href={`/student/attempts/${attemptId}/review`}
+                                        className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-700"
+                                    >
+                                        Open Detailed Review
+                                    </Link>
+                                ) : null}
+                            </div>
                         </section>
                     </>
                 ) : null}
-                </div>
             </div>
         </StudentPortalShell>
     );
