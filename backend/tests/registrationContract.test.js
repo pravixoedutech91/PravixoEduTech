@@ -6,6 +6,7 @@ const jwt = require("jsonwebtoken");
 
 const User = require("../src/models/User");
 const Tenant = require("../src/models/Tenant");
+const EmailVerificationToken = require("../src/models/EmailVerificationToken");
 
 const {
   validatePublicStudentRegistration,
@@ -559,17 +560,70 @@ test("register route preserves hardened middleware order", () => {
   }
 });
 
-test("registerUser creates trusted student session and returns matching JWT", async () => {
+test("registerUser creates pending unverified student and sends verification without JWT", async () => {
   const originalFindOne = User.findOne;
   const originalCreate = User.create;
-  const originalJwtSecret =
-    process.env.JWT_SECRET;
+
+  const originalVerificationFindOneAndUpdate =
+    EmailVerificationToken.findOneAndUpdate;
+
+  const originalVerificationDeleteOne =
+    EmailVerificationToken.deleteOne;
+
+  const originalFetch = globalThis.fetch;
+
+  const originalNodeEnv =
+    process.env.NODE_ENV;
+
+  const originalRailwayEnvironmentName =
+    process.env.RAILWAY_ENVIRONMENT_NAME;
+
+  const originalRailwayDeploymentId =
+    process.env.RAILWAY_DEPLOYMENT_ID;
+
+  const originalVerificationOrigin =
+    process.env.EMAIL_VERIFICATION_FRONTEND_ORIGIN;
+
+  const originalPostmarkToken =
+    process.env.POSTMARK_SERVER_TOKEN;
+
+  const originalPostmarkFrom =
+    process.env.POSTMARK_FROM_EMAIL;
+
+  const originalPostmarkStream =
+    process.env.POSTMARK_MESSAGE_STREAM;
+
+  const restoreEnv = (key, value) => {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  };
 
   let createPayload;
+  let verificationWrite;
+  let verificationDeleteCalls = 0;
+  let fetchCalls = 0;
+  let postmarkMessage;
 
   try {
-    process.env.JWT_SECRET =
-      "pravixo-registration-test-secret";
+    process.env.NODE_ENV = "production";
+
+    delete process.env.RAILWAY_ENVIRONMENT_NAME;
+    delete process.env.RAILWAY_DEPLOYMENT_ID;
+
+    process.env.EMAIL_VERIFICATION_FRONTEND_ORIGIN =
+      "https://student.example.com";
+
+    process.env.POSTMARK_SERVER_TOKEN =
+      "postmark-registration-contract-token";
+
+    process.env.POSTMARK_FROM_EMAIL =
+      "security@pravixo.example";
+
+    process.env.POSTMARK_MESSAGE_STREAM =
+      "outbound";
 
     User.findOne = async () => null;
 
@@ -577,8 +631,66 @@ test("registerUser creates trusted student session and returns matching JWT", as
       createPayload = payload;
 
       return {
-        _id: "student-id-1",
+        _id: "507f1f77bcf86cd799439011",
         ...payload,
+      };
+    };
+
+    EmailVerificationToken.findOneAndUpdate =
+      async (filter, update) => {
+        verificationWrite = {
+          filter,
+          update,
+        };
+
+        return {
+          _id: "507f1f77bcf86cd799439012",
+        };
+      };
+
+    EmailVerificationToken.deleteOne =
+      async () => {
+        verificationDeleteCalls += 1;
+
+        return {
+          deletedCount: 1,
+        };
+      };
+
+    globalThis.fetch = async (url, options) => {
+      fetchCalls += 1;
+
+      assert.equal(
+        url,
+        "https://api.postmarkapp.com/email"
+      );
+
+      assert.equal(
+        options.method,
+        "POST"
+      );
+
+      assert.equal(
+        options.redirect,
+        "error"
+      );
+
+      assert.equal(
+        options.headers["X-Postmark-Server-Token"],
+        "postmark-registration-contract-token"
+      );
+
+      postmarkMessage =
+        JSON.parse(options.body);
+
+      return {
+        ok: true,
+        status: 200,
+
+        json: async () => ({
+          ErrorCode: 0,
+          MessageID: "registration-contract-message-id",
+        }),
       };
     };
 
@@ -591,15 +703,14 @@ test("registerUser creates trusted student session and returns matching JWT", as
           referralCode: "",
         }),
 
-      registrationSessionContext: {
-        deviceInfo:
-          "PravixoEduTech Student Web",
-      },
-
       body: {
         tenantId:
           "malicious-other-tenant",
+
         role: "super_admin",
+
+        deviceInfo:
+          "must-not-create-registration-session",
       },
     };
 
@@ -609,6 +720,19 @@ test("registerUser creates trusted student session and returns matching JWT", as
 
     assert.equal(res.statusCode, 201);
     assert.equal(res.body.success, true);
+
+    assert.equal(
+      res.body.code,
+      "EMAIL_VERIFICATION_REQUIRED"
+    );
+
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        res.body,
+        "token"
+      ),
+      false
+    );
 
     assert.equal(
       createPayload.tenantId,
@@ -621,57 +745,36 @@ test("registerUser creates trusted student session and returns matching JWT", as
     );
 
     assert.equal(
-      typeof createPayload.activeSessionId,
-      "string"
+      createPayload.isActive,
+      true
     );
 
-    assert.match(
+    assert.equal(
+      createPayload.isEmailVerified,
+      false
+    );
+
+    assert.equal(
       createPayload.activeSessionId,
-      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      ""
     );
 
-    assert.ok(
-      createPayload.lastLoginAt
-        instanceof Date
+    assert.equal(
+      createPayload.lastLoginAt,
+      null
     );
 
     assert.equal(
       createPayload.lastLoginDevice,
-      "PravixoEduTech Student Web"
+      ""
     );
 
     assert.equal(
-      typeof res.body.token,
-      "string"
-    );
-
-    assert.ok(
-      res.body.token.length > 20
-    );
-
-    const decoded = jwt.verify(
-      res.body.token,
-      process.env.JWT_SECRET
-    );
-
-    assert.equal(
-      decoded.id,
-      "student-id-1"
-    );
-
-    assert.equal(
-      decoded.tenantId,
-      "pravixoedutech"
-    );
-
-    assert.equal(
-      decoded.role,
-      "student"
-    );
-
-    assert.equal(
-      decoded.sessionId,
-      createPayload.activeSessionId
+      Object.prototype.hasOwnProperty.call(
+        createPayload,
+        "referralCode"
+      ),
+      false
     );
 
     assert.equal(
@@ -685,9 +788,83 @@ test("registerUser creates trusted student session and returns matching JWT", as
     );
 
     assert.equal(
-      Object.prototype.hasOwnProperty.call(
-        createPayload,
-        "referralCode"
+      res.body.data.emailVerificationRequired,
+      true
+    );
+
+    assert.equal(
+      res.body.data.verificationEmailSent,
+      true
+    );
+
+    assert.equal(
+      res.body.data.referral,
+      null
+    );
+
+    assert.equal(fetchCalls, 1);
+
+    assert.equal(
+      verificationDeleteCalls,
+      0
+    );
+
+    assert.ok(verificationWrite);
+
+    assert.equal(
+      String(verificationWrite.filter.userId),
+      "507f1f77bcf86cd799439011"
+    );
+
+    assert.equal(
+      verificationWrite.filter.tenantId,
+      "pravixoedutech"
+    );
+
+    assert.match(
+      verificationWrite.update.$set.tokenHash,
+      /^[a-f0-9]{64}$/
+    );
+
+    assert.match(
+      verificationWrite.update.$set.emailHash,
+      /^[a-f0-9]{64}$/
+    );
+
+    assert.equal(
+      postmarkMessage.TrackOpens,
+      false
+    );
+
+    assert.equal(
+      postmarkMessage.TrackLinks,
+      "None"
+    );
+
+    const rawTokenMatch =
+      postmarkMessage.TextBody.match(
+        /#token=([A-Za-z0-9_-]{43})/
+      );
+
+    assert.ok(rawTokenMatch);
+
+    const rawToken =
+      rawTokenMatch[1];
+
+    const expectedTokenHash =
+      require("node:crypto")
+        .createHash("sha256")
+        .update(rawToken, "utf8")
+        .digest("hex");
+
+    assert.equal(
+      verificationWrite.update.$set.tokenHash,
+      expectedTokenHash
+    );
+
+    assert.equal(
+      postmarkMessage.TextBody.includes(
+        "?token="
       ),
       false
     );
@@ -695,15 +872,390 @@ test("registerUser creates trusted student session and returns matching JWT", as
     User.findOne = originalFindOne;
     User.create = originalCreate;
 
-    if (originalJwtSecret === undefined) {
-      delete process.env.JWT_SECRET;
-    } else {
-      process.env.JWT_SECRET =
-        originalJwtSecret;
-    }
+    EmailVerificationToken.findOneAndUpdate =
+      originalVerificationFindOneAndUpdate;
+
+    EmailVerificationToken.deleteOne =
+      originalVerificationDeleteOne;
+
+    globalThis.fetch = originalFetch;
+
+    restoreEnv(
+      "NODE_ENV",
+      originalNodeEnv
+    );
+
+    restoreEnv(
+      "RAILWAY_ENVIRONMENT_NAME",
+      originalRailwayEnvironmentName
+    );
+
+    restoreEnv(
+      "RAILWAY_DEPLOYMENT_ID",
+      originalRailwayDeploymentId
+    );
+
+    restoreEnv(
+      "EMAIL_VERIFICATION_FRONTEND_ORIGIN",
+      originalVerificationOrigin
+    );
+
+    restoreEnv(
+      "POSTMARK_SERVER_TOKEN",
+      originalPostmarkToken
+    );
+
+    restoreEnv(
+      "POSTMARK_FROM_EMAIL",
+      originalPostmarkFrom
+    );
+
+    restoreEnv(
+      "POSTMARK_MESSAGE_STREAM",
+      originalPostmarkStream
+    );
   }
 });
 
+test("registerUser preserves pending account when verification delivery fails", async () => {
+  const originalFindOne = User.findOne;
+  const originalCreate = User.create;
+
+  const originalVerificationFindOneAndUpdate =
+    EmailVerificationToken.findOneAndUpdate;
+
+  const originalVerificationDeleteOne =
+    EmailVerificationToken.deleteOne;
+
+  const originalFetch = globalThis.fetch;
+  const originalConsoleError = console.error;
+
+  const originalNodeEnv =
+    process.env.NODE_ENV;
+
+  const originalRailwayEnvironmentName =
+    process.env.RAILWAY_ENVIRONMENT_NAME;
+
+  const originalRailwayDeploymentId =
+    process.env.RAILWAY_DEPLOYMENT_ID;
+
+  const originalVerificationOrigin =
+    process.env.EMAIL_VERIFICATION_FRONTEND_ORIGIN;
+
+  const originalPostmarkToken =
+    process.env.POSTMARK_SERVER_TOKEN;
+
+  const originalPostmarkFrom =
+    process.env.POSTMARK_FROM_EMAIL;
+
+  const originalPostmarkStream =
+    process.env.POSTMARK_MESSAGE_STREAM;
+
+  const restoreEnv = (key, value) => {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  };
+
+  let createPayload;
+  let verificationWrite;
+  let cleanupFilter;
+  let fetchCalls = 0;
+  let rawToken;
+
+  const hostedLogs = [];
+
+  try {
+    process.env.NODE_ENV = "production";
+
+    delete process.env.RAILWAY_ENVIRONMENT_NAME;
+    delete process.env.RAILWAY_DEPLOYMENT_ID;
+
+    process.env.EMAIL_VERIFICATION_FRONTEND_ORIGIN =
+      "https://student.example.com";
+
+    process.env.POSTMARK_SERVER_TOKEN =
+      "postmark-registration-failure-token";
+
+    process.env.POSTMARK_FROM_EMAIL =
+      "security@pravixo.example";
+
+    process.env.POSTMARK_MESSAGE_STREAM =
+      "outbound";
+
+    console.error = (...args) => {
+      hostedLogs.push(args);
+    };
+
+    User.findOne = async () => null;
+
+    User.create = async (payload) => {
+      createPayload = payload;
+
+      return {
+        _id: "507f1f77bcf86cd799439021",
+        ...payload,
+      };
+    };
+
+    EmailVerificationToken.findOneAndUpdate =
+      async (filter, update) => {
+        verificationWrite = {
+          filter,
+          update,
+        };
+
+        return {
+          _id: "507f1f77bcf86cd799439022",
+        };
+      };
+
+    EmailVerificationToken.deleteOne =
+      async (filter) => {
+        cleanupFilter = filter;
+
+        return {
+          deletedCount: 1,
+        };
+      };
+
+    globalThis.fetch = async (url, options) => {
+      fetchCalls += 1;
+
+      assert.equal(
+        url,
+        "https://api.postmarkapp.com/email"
+      );
+
+      const postmarkMessage =
+        JSON.parse(options.body);
+
+      const tokenMatch =
+        postmarkMessage.TextBody.match(
+          /#token=([A-Za-z0-9_-]{43})/
+        );
+
+      assert.ok(tokenMatch);
+
+      rawToken = tokenMatch[1];
+
+      return {
+        ok: false,
+        status: 503,
+
+        json: async () => ({
+          ErrorCode: 999,
+          Message: "provider-private-detail",
+        }),
+      };
+    };
+
+    const req = {
+      registrationTenantId:
+        "pravixoedutech",
+
+      registrationInput:
+        makeValidRegistrationBody({
+          mobile: "9876543211",
+          email: "failure@example.com",
+          referralCode: "",
+        }),
+
+      body: {
+        tenantId:
+          "malicious-other-tenant",
+
+        role: "super_admin",
+      },
+    };
+
+    const res = makeResponse();
+
+    await registerUser(req, res);
+
+    assert.equal(res.statusCode, 201);
+    assert.equal(res.body.success, true);
+
+    assert.equal(
+      res.body.code,
+      "EMAIL_VERIFICATION_REQUIRED"
+    );
+
+    assert.equal(
+      res.body.data.emailVerificationRequired,
+      true
+    );
+
+    assert.equal(
+      res.body.data.verificationEmailSent,
+      false
+    );
+
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        res.body,
+        "token"
+      ),
+      false
+    );
+
+    assert.match(
+      res.body.message,
+      /verification email could not be sent/i
+    );
+
+    assert.equal(
+      createPayload.isActive,
+      true
+    );
+
+    assert.equal(
+      createPayload.isEmailVerified,
+      false
+    );
+
+    assert.equal(
+      createPayload.activeSessionId,
+      ""
+    );
+
+    assert.equal(
+      createPayload.lastLoginAt,
+      null
+    );
+
+    assert.equal(
+      createPayload.lastLoginDevice,
+      ""
+    );
+
+    assert.equal(fetchCalls, 1);
+
+    assert.ok(verificationWrite);
+    assert.ok(cleanupFilter);
+    assert.ok(rawToken);
+
+    assert.equal(
+      cleanupFilter.tenantId,
+      "pravixoedutech"
+    );
+
+    assert.equal(
+      String(cleanupFilter.userId),
+      "507f1f77bcf86cd799439021"
+    );
+
+    assert.equal(
+      cleanupFilter.tokenHash,
+      verificationWrite.update.$set.tokenHash
+    );
+
+    assert.notEqual(
+      cleanupFilter.tokenHash,
+      rawToken
+    );
+
+    const publicJson =
+      JSON.stringify(res.body);
+
+    assert.equal(
+      publicJson.includes(
+        "provider-private-detail"
+      ),
+      false
+    );
+
+    assert.equal(
+      publicJson.includes(
+        "postmark-registration-failure-token"
+      ),
+      false
+    );
+
+    assert.equal(
+      publicJson.includes(rawToken),
+      false
+    );
+
+    const logJson =
+      JSON.stringify(hostedLogs);
+
+    assert.equal(
+      logJson.includes(
+        "provider-private-detail"
+      ),
+      false
+    );
+
+    assert.equal(
+      logJson.includes(
+        "postmark-registration-failure-token"
+      ),
+      false
+    );
+
+    assert.equal(
+      logJson.includes(
+        "failure@example.com"
+      ),
+      false
+    );
+
+    assert.equal(
+      logJson.includes(rawToken),
+      false
+    );
+  } finally {
+    User.findOne = originalFindOne;
+    User.create = originalCreate;
+
+    EmailVerificationToken.findOneAndUpdate =
+      originalVerificationFindOneAndUpdate;
+
+    EmailVerificationToken.deleteOne =
+      originalVerificationDeleteOne;
+
+    globalThis.fetch = originalFetch;
+    console.error = originalConsoleError;
+
+    restoreEnv(
+      "NODE_ENV",
+      originalNodeEnv
+    );
+
+    restoreEnv(
+      "RAILWAY_ENVIRONMENT_NAME",
+      originalRailwayEnvironmentName
+    );
+
+    restoreEnv(
+      "RAILWAY_DEPLOYMENT_ID",
+      originalRailwayDeploymentId
+    );
+
+    restoreEnv(
+      "EMAIL_VERIFICATION_FRONTEND_ORIGIN",
+      originalVerificationOrigin
+    );
+
+    restoreEnv(
+      "POSTMARK_SERVER_TOKEN",
+      originalPostmarkToken
+    );
+
+    restoreEnv(
+      "POSTMARK_FROM_EMAIL",
+      originalPostmarkFrom
+    );
+
+    restoreEnv(
+      "POSTMARK_MESSAGE_STREAM",
+      originalPostmarkStream
+    );
+  }
+});
 test("registerUser returns 409 for pre-existing account", async () => {
   const originalFindOne = User.findOne;
   const originalCreate = User.create;

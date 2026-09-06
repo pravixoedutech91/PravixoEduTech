@@ -25,6 +25,33 @@ const {
   sendPasswordResetEmail,
 } = require("../services/passwordResetEmailService");
 
+const {
+  EMAIL_VERIFICATION_RESULT_CODES,
+  issueStudentEmailVerification,
+} = require(
+  "../services/emailVerificationService"
+);
+
+const {
+  buildStudentEmailVerificationUrl,
+} = require(
+  "../services/emailVerificationLinkService"
+);
+
+const {
+  sendEmailVerificationEmail,
+} = require(
+  "../services/emailVerificationEmailService"
+);
+
+const REGISTRATION_EMAIL_VERIFICATION_REQUIRED_CODE =
+  "EMAIL_VERIFICATION_REQUIRED";
+
+const REGISTRATION_EMAIL_VERIFICATION_SENT_MESSAGE =
+  "Account created successfully. Please verify your email before signing in.";
+
+const REGISTRATION_EMAIL_VERIFICATION_PENDING_MESSAGE =
+  "Account created successfully, but the verification email could not be sent. Please request a new verification email.";
 const PASSWORD_RESET_REQUEST_GENERIC_MESSAGE =
   "If an eligible account exists, password reset instructions have been sent.";
 
@@ -199,24 +226,6 @@ const registerUser = async (req, res) => {
       });
     }
 
-    const registrationSessionContext =
-      req.registrationSessionContext;
-
-    if (
-      !registrationSessionContext ||
-      typeof registrationSessionContext.deviceInfo !==
-        "string" ||
-      registrationSessionContext.deviceInfo.length > 200
-    ) {
-      return res.status(500).json({
-        success: false,
-        message: "Registration is currently unavailable",
-      });
-    }
-
-    const { deviceInfo } =
-      registrationSessionContext;
-
     const {
       name,
       mobile,
@@ -235,15 +244,17 @@ const registerUser = async (req, res) => {
         message: "Registration is currently unavailable",
       });
     }
+
     const cleanMobile = normalizeMobile(mobile);
     const cleanEmail = normalizeEmail(email);
 
-    const referralValidation = await validateReferralCodeForRegistration({
-      tenantId: resolvedTenantId,
-      referralCode,
-      mobile: cleanMobile,
-      email: cleanEmail,
-    });
+    const referralValidation =
+      await validateReferralCodeForRegistration({
+        tenantId: resolvedTenantId,
+        referralCode,
+        mobile: cleanMobile,
+        email: cleanEmail,
+      });
 
     if (referralValidation.error) {
       return res.status(400).json({
@@ -253,7 +264,10 @@ const registerUser = async (req, res) => {
     }
 
     const existingUser = await User.findOne({
-      $or: [{ mobile: cleanMobile }, { email: cleanEmail }],
+      $or: [
+        { mobile: cleanMobile },
+        { email: cleanEmail },
+      ],
     });
 
     if (existingUser) {
@@ -263,9 +277,11 @@ const registerUser = async (req, res) => {
       });
     }
 
-    const sessionId = crypto.randomUUID();
-    const initialLoginAt = new Date();
-
+    /*
+     * Registration creates account identity only.
+     * Authentication begins only after mailbox verification
+     * followed by an explicit sign-in.
+     */
     const user = await User.create({
       name,
       mobile: cleanMobile,
@@ -273,25 +289,85 @@ const registerUser = async (req, res) => {
       password,
       tenantId: resolvedTenantId,
       role: "student",
-      activeSessionId: sessionId,
-      lastLoginAt: initialLoginAt,
-      lastLoginDevice: deviceInfo,
+      isActive: true,
+      isEmailVerified: false,
+      activeSessionId: "",
+      lastLoginAt: null,
+      lastLoginDevice: "",
     });
 
-    const referralAttribution = await createReferralAttributionForStudent({
-      tenantId: resolvedTenantId,
-      studentId: user._id,
-      partner: referralValidation.partner,
-      referralCode: referralValidation.code,
-    });
+    /*
+     * Preserve existing referral semantics.
+     * Attribution remains tied to account creation,
+     * not to email delivery or later verification.
+     */
+    const referralAttribution =
+      await createReferralAttributionForStudent({
+        tenantId: resolvedTenantId,
+        studentId: user._id,
+        partner: referralValidation.partner,
+        referralCode: referralValidation.code,
+      });
 
-    const token =
-      generateToken(user, sessionId);
+    let verificationEmailSent = false;
+
+    try {
+      const verificationResult =
+        await issueStudentEmailVerification({
+          user,
+          enforceCooldown: false,
+
+          deliverVerification: async ({
+            toEmail,
+            rawToken,
+            expiresAt,
+          }) => {
+            const verificationUrl =
+              buildStudentEmailVerificationUrl({
+                rawToken,
+              });
+
+            await sendEmailVerificationEmail({
+              toEmail,
+              verificationUrl,
+              expiresAt,
+            });
+          },
+        });
+
+      verificationEmailSent =
+        verificationResult?.success === true &&
+        verificationResult?.code ===
+          EMAIL_VERIFICATION_RESULT_CODES.ISSUED;
+
+      if (!verificationEmailSent) {
+        logRuntimeError(
+          "Registration email verification issuance unavailable:",
+          {
+            name: "EmailVerificationRegistrationError",
+            type: "email_verification_registration_not_issued",
+          }
+        );
+      }
+    } catch (error) {
+      /*
+       * The account is already valid pending identity.
+       * A delivery/configuration outage must not delete it
+       * or create an authenticated session.
+       */
+      logRuntimeError(
+        "Registration email verification delivery failed:",
+        error
+      );
+    }
 
     res.status(201).json({
       success: true,
-      message: "User registered successfully",
-      token,
+      code:
+        REGISTRATION_EMAIL_VERIFICATION_REQUIRED_CODE,
+      message: verificationEmailSent
+        ? REGISTRATION_EMAIL_VERIFICATION_SENT_MESSAGE
+        : REGISTRATION_EMAIL_VERIFICATION_PENDING_MESSAGE,
       data: {
         id: user._id,
         name: user.name,
@@ -299,11 +375,16 @@ const registerUser = async (req, res) => {
         email: user.email,
         tenantId: user.tenantId,
         role: user.role,
+        emailVerificationRequired: true,
+        verificationEmailSent,
         referral: referralAttribution
           ? {
-              referralCode: referralAttribution.referralCode,
-              referralPartnerId: referralAttribution.referralPartnerId,
-              attributionId: referralAttribution._id,
+              referralCode:
+                referralAttribution.referralCode,
+              referralPartnerId:
+                referralAttribution.referralPartnerId,
+              attributionId:
+                referralAttribution._id,
             }
           : null,
       },
