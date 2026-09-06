@@ -447,6 +447,7 @@ test("student limit uses trusted registration tenant only", async () => {
     assert.deepEqual(receivedFilter, {
       tenantId: "pravixoedutech",
       role: "student",
+      isEmailVerified: true,
     });
   } finally {
     User.countDocuments =

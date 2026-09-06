@@ -35,6 +35,7 @@ const checkStudentLimit = async (req, res, next) => {
       await User.countDocuments({
         tenantId,
         role: "student",
+        isEmailVerified: true,
       });
 
     if (currentStudents >= maxStudents) {
