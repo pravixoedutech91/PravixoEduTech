@@ -2,6 +2,12 @@ const { logRuntimeError } = require("../utils/runtimeSecurity");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 
+const PROTECT_EMAIL_VERIFICATION_REQUIRED_CODE =
+  "EMAIL_VERIFICATION_REQUIRED";
+
+const PROTECT_EMAIL_VERIFICATION_REQUIRED_MESSAGE =
+  "Please verify your email before continuing.";
+
 // Protect Routes
 const protect = async (req, res, next) => {
   try {
@@ -43,6 +49,23 @@ const protect = async (req, res, next) => {
         success: false,
         message:
           "Session expired. Logged in from another device.",
+      });
+    }
+
+    /*
+     * Session authority must be proven before
+     * student email-verification state is exposed.
+     */
+    if (
+      user.role === "student" &&
+      user.isEmailVerified !== true
+    ) {
+      return res.status(403).json({
+        success: false,
+        code:
+          PROTECT_EMAIL_VERIFICATION_REQUIRED_CODE,
+        message:
+          PROTECT_EMAIL_VERIFICATION_REQUIRED_MESSAGE,
       });
     }
 
