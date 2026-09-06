@@ -52,6 +52,11 @@ const REGISTRATION_EMAIL_VERIFICATION_SENT_MESSAGE =
 
 const REGISTRATION_EMAIL_VERIFICATION_PENDING_MESSAGE =
   "Account created successfully, but the verification email could not be sent. Please request a new verification email.";
+const LOGIN_EMAIL_VERIFICATION_REQUIRED_CODE =
+  "EMAIL_VERIFICATION_REQUIRED";
+
+const LOGIN_EMAIL_VERIFICATION_REQUIRED_MESSAGE =
+  "Please verify your email before signing in.";
 const PASSWORD_RESET_REQUEST_GENERIC_MESSAGE =
   "If an eligible account exists, password reset instructions have been sent.";
 
@@ -450,6 +455,20 @@ const loginUser = async (req, res) => {
       });
     }
 
+    /*
+     * Validate the password before exposing account state.
+     * This prevents inactive/unverified status disclosure to
+     * a caller who does not possess valid credentials.
+     */
+    const isMatch = await user.matchPassword(password);
+
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid login credentials",
+      });
+    }
+
     if (!user.isActive) {
       return res.status(403).json({
         success: false,
@@ -457,12 +476,16 @@ const loginUser = async (req, res) => {
       });
     }
 
-    const isMatch = await user.matchPassword(password);
-
-    if (!isMatch) {
-      return res.status(401).json({
+    if (
+      user.role === "student" &&
+      user.isEmailVerified !== true
+    ) {
+      return res.status(403).json({
         success: false,
-        message: "Invalid login credentials",
+        code:
+          LOGIN_EMAIL_VERIFICATION_REQUIRED_CODE,
+        message:
+          LOGIN_EMAIL_VERIFICATION_REQUIRED_MESSAGE,
       });
     }
 

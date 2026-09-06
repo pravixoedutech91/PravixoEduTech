@@ -1367,6 +1367,7 @@ test("loginUser normalizes email login and device metadata", async () => {
     mobile: "9876543210",
     email: "student@example.com",
     isActive: true,
+    isEmailVerified: true,
     activeSessionId: "",
     lastLoginAt: null,
     lastLoginDevice: "",
@@ -1478,6 +1479,7 @@ test("loginUser normalizes formatted mobile login", async () => {
     mobile: "9876543210",
     email: "mobile@example.com",
     isActive: true,
+    isEmailVerified: true,
     activeSessionId: "",
     lastLoginAt: null,
     lastLoginDevice: "",
@@ -1569,6 +1571,384 @@ test("loginUser rejects missing credentials before database lookup", async () =>
   }
 });
 
+test("loginUser validates password before inactive or verification state disclosure", async () => {
+  const originalFindOne = User.findOne;
+
+  let passwordCalls = 0;
+  let saveCalls = 0;
+
+  const originalLastLoginAt =
+    new Date("2026-01-01T00:00:00.000Z");
+
+  const user = {
+    _id: "login-security-bad-password",
+    tenantId: "pravixoedutech",
+    role: "student",
+    name: "Security Student",
+    mobile: "9876543201",
+    email: "bad-password@example.com",
+    isActive: false,
+    isEmailVerified: false,
+    activeSessionId: "existing-session",
+    lastLoginAt: originalLastLoginAt,
+    lastLoginDevice: "Existing Device",
+
+    matchPassword: async () => {
+      passwordCalls += 1;
+      return false;
+    },
+
+    save: async () => {
+      saveCalls += 1;
+    },
+  };
+
+  try {
+    User.findOne = () => ({
+      select: async () => user,
+    });
+
+    const req = {
+      body: {
+        login: "bad-password@example.com",
+        password: "WrongPassword123",
+        deviceInfo: "Attacker Device",
+      },
+    };
+
+    const res = makeResponse();
+
+    await loginUser(req, res);
+
+    assert.equal(passwordCalls, 1);
+    assert.equal(saveCalls, 0);
+    assert.equal(res.statusCode, 401);
+
+    assert.deepEqual(res.body, {
+      success: false,
+      message: "Invalid login credentials",
+    });
+
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        res.body,
+        "code"
+      ),
+      false
+    );
+
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        res.body,
+        "token"
+      ),
+      false
+    );
+
+    assert.equal(
+      user.activeSessionId,
+      "existing-session"
+    );
+
+    assert.equal(
+      user.lastLoginAt,
+      originalLastLoginAt
+    );
+
+    assert.equal(
+      user.lastLoginDevice,
+      "Existing Device"
+    );
+  } finally {
+    User.findOne = originalFindOne;
+  }
+});
+
+test("loginUser returns inactive response only after valid password", async () => {
+  const originalFindOne = User.findOne;
+
+  let passwordCalls = 0;
+  let saveCalls = 0;
+
+  const originalLastLoginAt =
+    new Date("2026-01-02T00:00:00.000Z");
+
+  const user = {
+    _id: "login-security-inactive",
+    tenantId: "pravixoedutech",
+    role: "student",
+    name: "Inactive Student",
+    mobile: "9876543202",
+    email: "inactive@example.com",
+    isActive: false,
+    isEmailVerified: false,
+    activeSessionId: "inactive-existing-session",
+    lastLoginAt: originalLastLoginAt,
+    lastLoginDevice: "Inactive Existing Device",
+
+    matchPassword: async () => {
+      passwordCalls += 1;
+      return true;
+    },
+
+    save: async () => {
+      saveCalls += 1;
+    },
+  };
+
+  try {
+    User.findOne = () => ({
+      select: async () => user,
+    });
+
+    const req = {
+      body: {
+        login: "inactive@example.com",
+        password: "StrongPass123",
+        deviceInfo: "New Device",
+      },
+    };
+
+    const res = makeResponse();
+
+    await loginUser(req, res);
+
+    assert.equal(passwordCalls, 1);
+    assert.equal(saveCalls, 0);
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.body.success, false);
+
+    assert.equal(
+      res.body.message,
+      "Account is inactive"
+    );
+
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        res.body,
+        "code"
+      ),
+      false
+    );
+
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        res.body,
+        "token"
+      ),
+      false
+    );
+
+    assert.equal(
+      user.activeSessionId,
+      "inactive-existing-session"
+    );
+
+    assert.equal(
+      user.lastLoginAt,
+      originalLastLoginAt
+    );
+
+    assert.equal(
+      user.lastLoginDevice,
+      "Inactive Existing Device"
+    );
+  } finally {
+    User.findOne = originalFindOne;
+  }
+});
+
+test("loginUser blocks active unverified student without session or JWT", async () => {
+  const originalFindOne = User.findOne;
+
+  let passwordCalls = 0;
+  let saveCalls = 0;
+
+  const originalLastLoginAt =
+    new Date("2026-01-03T00:00:00.000Z");
+
+  const user = {
+    _id: "login-security-unverified",
+    tenantId: "pravixoedutech",
+    role: "student",
+    name: "Unverified Student",
+    mobile: "9876543203",
+    email: "unverified@example.com",
+    isActive: true,
+    isEmailVerified: false,
+    activeSessionId: "legacy-session",
+    lastLoginAt: originalLastLoginAt,
+    lastLoginDevice: "Legacy Device",
+
+    matchPassword: async () => {
+      passwordCalls += 1;
+      return true;
+    },
+
+    save: async () => {
+      saveCalls += 1;
+    },
+  };
+
+  try {
+    User.findOne = () => ({
+      select: async () => user,
+    });
+
+    const req = {
+      body: {
+        login: "unverified@example.com",
+        password: "StrongPass123",
+        deviceInfo: "Attempted New Device",
+      },
+    };
+
+    const res = makeResponse();
+
+    await loginUser(req, res);
+
+    assert.equal(passwordCalls, 1);
+    assert.equal(saveCalls, 0);
+    assert.equal(res.statusCode, 403);
+    assert.equal(res.body.success, false);
+
+    assert.equal(
+      res.body.code,
+      "EMAIL_VERIFICATION_REQUIRED"
+    );
+
+    assert.equal(
+      res.body.message,
+      "Please verify your email before signing in."
+    );
+
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        res.body,
+        "token"
+      ),
+      false
+    );
+
+    assert.equal(
+      user.activeSessionId,
+      "legacy-session"
+    );
+
+    assert.equal(
+      user.lastLoginAt,
+      originalLastLoginAt
+    );
+
+    assert.equal(
+      user.lastLoginDevice,
+      "Legacy Device"
+    );
+  } finally {
+    User.findOne = originalFindOne;
+  }
+});
+
+test("loginUser keeps non-student roles outside student email verification gate", async () => {
+  const originalFindOne = User.findOne;
+  const originalJwtSecret =
+    process.env.JWT_SECRET;
+
+  let passwordCalls = 0;
+  let saveCalls = 0;
+
+  const user = {
+    _id: "login-security-admin",
+    tenantId: "pravixoedutech",
+    role: "tenant_admin",
+    name: "Tenant Admin",
+    mobile: "9876543204",
+    email: "admin@example.com",
+    isActive: true,
+    isEmailVerified: false,
+    activeSessionId: "",
+    lastLoginAt: null,
+    lastLoginDevice: "",
+
+    matchPassword: async () => {
+      passwordCalls += 1;
+      return true;
+    },
+
+    save: async () => {
+      saveCalls += 1;
+    },
+  };
+
+  try {
+    process.env.JWT_SECRET =
+      "pravixo-admin-login-contract-secret";
+
+    User.findOne = () => ({
+      select: async () => user,
+    });
+
+    const req = {
+      body: {
+        login: "admin@example.com",
+        password: "StrongPass123",
+        deviceInfo: "  Admin Device  ",
+      },
+    };
+
+    const res = makeResponse();
+
+    await loginUser(req, res);
+
+    assert.equal(passwordCalls, 1);
+    assert.equal(saveCalls, 1);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.success, true);
+
+    assert.equal(
+      typeof res.body.token,
+      "string"
+    );
+
+    assert.match(
+      user.activeSessionId,
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    );
+
+    assert.ok(
+      user.lastLoginAt instanceof Date
+    );
+
+    assert.equal(
+      user.lastLoginDevice,
+      "Admin Device"
+    );
+
+    const decoded = jwt.verify(
+      res.body.token,
+      process.env.JWT_SECRET
+    );
+
+    assert.equal(
+      decoded.role,
+      "tenant_admin"
+    );
+
+    assert.equal(
+      decoded.sessionId,
+      user.activeSessionId
+    );
+  } finally {
+    User.findOne = originalFindOne;
+
+    if (originalJwtSecret === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET =
+        originalJwtSecret;
+    }
+  }
+});
 test("hosted registration safety gate remains closed", async () => {
   const originalNodeEnv =
     process.env.NODE_ENV;
