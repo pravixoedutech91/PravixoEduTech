@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
 const API_BASE_URL =
@@ -9,29 +8,28 @@ const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_BASE_URL ||
     "http://localhost:5000";
 
-const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
-const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
-
 const REGISTRATION_DEVICE_INFO = "PravixoEduTech Student Web";
 
 type RegisterResponse = {
-    success: boolean;
+    success?: boolean;
+    code?: string;
     message?: string;
-    token?: string;
     data?: {
-        id?: string;
-        name?: string;
-        mobile?: string;
-        email?: string;
-        tenantId?: string;
-        role?: string;
-        referral?: {
-            referralCode?: string;
-            referralPartnerId?: string;
-            attributionId?: string;
-        } | null;
+        emailVerificationRequired?: boolean;
+        verificationEmailSent?: boolean;
     };
 };
+
+type ResendVerificationResponse = {
+    success?: boolean;
+    message?: string;
+};
+
+const EMAIL_VERIFICATION_REQUIRED_CODE =
+    "EMAIL_VERIFICATION_REQUIRED";
+
+const GENERIC_RESEND_MESSAGE =
+    "If an eligible account exists, email verification instructions have been sent.";
 
 const normalizeName = (value: string) =>
     value.trim().replace(/\s+/g, " ");
@@ -54,7 +52,6 @@ const getUtf8ByteLength = (value: string) =>
     new TextEncoder().encode(value).length;
 
 export default function StudentRegisterPage() {
-    const router = useRouter();
 
     const [name, setName] = useState("");
     const [mobile, setMobile] = useState("");
@@ -70,6 +67,20 @@ export default function StudentRegisterPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
+
+    const [registrationComplete, setRegistrationComplete] =
+        useState(false);
+
+    const [registrationEmail, setRegistrationEmail] = useState("");
+
+    const [verificationEmailSent, setVerificationEmailSent] =
+        useState(false);
+
+    const [isResendingVerification, setIsResendingVerification] =
+        useState(false);
+
+    const [resendMessage, setResendMessage] = useState("");
+    const [resendError, setResendError] = useState("");
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -138,33 +149,30 @@ export default function StudentRegisterPage() {
                 );
             }
 
-            if (!result.token) {
+            if (
+                result.code !==
+                    EMAIL_VERIFICATION_REQUIRED_CODE ||
+                result.data?.emailVerificationRequired !== true
+            ) {
                 throw new Error(
-                    "Account created but a secure session was not received."
+                    "Account was created, but the email verification state was not confirmed. Please use Student Login or contact support."
                 );
             }
 
-            if (result.data?.role !== "student") {
-                throw new Error(
-                    "Account created with an unexpected account type."
-                );
-            }
-
-            window.localStorage.setItem(
-                STUDENT_TOKEN_STORAGE_KEY,
-                result.token
+            setRegistrationEmail(cleanEmail);
+            setVerificationEmailSent(
+                result.data.verificationEmailSent === true
             );
 
-            window.localStorage.setItem(
-                STUDENT_PROFILE_STORAGE_KEY,
-                JSON.stringify(result.data || {})
-            );
+            setPassword("");
+            setConfirmPassword("");
 
             setSuccessMessage(
-                "Account created successfully. Opening your dashboard..."
+                result.message ||
+                    "Account created successfully. Please verify your email before signing in."
             );
 
-            router.replace("/student");
+            setRegistrationComplete(true);
         } catch (error) {
             setErrorMessage(
                 error instanceof Error
@@ -175,6 +183,166 @@ export default function StudentRegisterPage() {
             setIsSubmitting(false);
         }
     };
+
+    const handleResendVerification = async () => {
+        if (
+            !registrationComplete ||
+            !registrationEmail ||
+            isResendingVerification
+        ) {
+            return;
+        }
+
+        setResendMessage("");
+        setResendError("");
+        setIsResendingVerification(true);
+
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/auth/resend-email-verification`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        login: registrationEmail,
+                    }),
+                }
+            );
+
+            let result: ResendVerificationResponse = {};
+
+            try {
+                result =
+                    (await response.json()) as
+                        ResendVerificationResponse;
+            } catch {
+                result = {};
+            }
+
+            if (
+                !response.ok ||
+                result.success !== true
+            ) {
+                if (response.status === 429) {
+                    throw new Error(
+                        "Too many verification requests. Please wait a few minutes and try again."
+                    );
+                }
+
+                throw new Error(
+                    "Unable to request another verification email right now. Please try again later."
+                );
+            }
+
+            setResendMessage(
+                result.message ||
+                    GENERIC_RESEND_MESSAGE
+            );
+        } catch (error) {
+            setResendError(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to request another verification email right now."
+            );
+        } finally {
+            setIsResendingVerification(false);
+        }
+    };
+
+    if (registrationComplete) {
+        return (
+            <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-900 sm:px-6 lg:px-8">
+                <div className="mx-auto flex max-w-3xl flex-col gap-6">
+                    <section className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
+                        <div className="bg-gradient-to-br from-blue-700 via-indigo-700 to-slate-950 p-8 text-white sm:p-10">
+                            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-blue-100">
+                                PravixoEduTech
+                            </p>
+
+                            <h1 className="mt-4 text-3xl font-bold md:text-4xl">
+                                Check your email
+                            </h1>
+
+                            <p className="mt-4 max-w-2xl text-sm leading-6 text-blue-50 sm:text-base">
+                                Your student account has been created, but
+                                you must verify your email before signing in.
+                            </p>
+                        </div>
+
+                        <div className="p-6 sm:p-8">
+                            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-800">
+                                <p className="font-semibold">
+                                    Account created successfully
+                                </p>
+
+                                <p className="mt-2 leading-6">
+                                    {successMessage}
+                                </p>
+                            </div>
+
+                            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                                    Verification email
+                                </p>
+
+                                <p className="mt-2 break-all font-semibold text-slate-900">
+                                    {registrationEmail}
+                                </p>
+
+                                <p className="mt-3 text-sm leading-6 text-slate-600">
+                                    {verificationEmailSent
+                                        ? "A verification link was sent to this email address. Open that link to activate sign-in access."
+                                        : "Your account was created, but the first verification email could not be sent. You can request another verification email below."}
+                                </p>
+                            </div>
+
+                            <div className="mt-6 space-y-3">
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        void handleResendVerification()
+                                    }
+                                    disabled={isResendingVerification}
+                                    className="min-h-12 w-full rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                >
+                                    {isResendingVerification
+                                        ? "Requesting verification email..."
+                                        : "Resend Verification Email"}
+                                </button>
+
+                                {resendMessage ? (
+                                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium leading-6 text-emerald-800">
+                                        {resendMessage}
+                                    </div>
+                                ) : null}
+
+                                {resendError ? (
+                                    <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium leading-6 text-red-700">
+                                        {resendError}
+                                    </div>
+                                ) : null}
+                            </div>
+
+                            <p className="mt-6 text-sm leading-6 text-slate-600">
+                                After verifying your email, return to Student
+                                Login. Verification itself will not sign you
+                                in automatically.
+                            </p>
+
+                            <Link
+                                href="/student/login"
+                                className="mt-5 flex min-h-12 w-full items-center justify-center rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                            >
+                                Go to Student Login
+                            </Link>
+                        </div>
+                    </section>
+                </div>
+            </main>
+        );
+    }
 
     return (
         <main className="min-h-screen bg-slate-50 px-4 py-6 text-slate-900 sm:px-6 sm:py-8 lg:px-8">

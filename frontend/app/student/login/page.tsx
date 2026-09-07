@@ -12,8 +12,15 @@ const API_BASE_URL =
 const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
 const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
 
+const EMAIL_VERIFICATION_REQUIRED_CODE =
+    "EMAIL_VERIFICATION_REQUIRED";
+
+const GENERIC_RESEND_MESSAGE =
+    "If an eligible account exists, email verification instructions have been sent.";
+
 type LoginResponse = {
     success: boolean;
+    code?: string;
     message?: string;
     token?: string;
     data?: {
@@ -26,6 +33,11 @@ type LoginResponse = {
     };
 };
 
+type ResendVerificationResponse = {
+    success?: boolean;
+    message?: string;
+};
+
 export default function StudentLoginPage() {
     const router = useRouter();
 
@@ -36,6 +48,18 @@ export default function StudentLoginPage() {
     const [errorMessage, setErrorMessage] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
 
+    const [verificationRequiredLogin, setVerificationRequiredLogin] =
+        useState("");
+
+    const [verificationMessage, setVerificationMessage] =
+        useState("");
+
+    const [isResendingVerification, setIsResendingVerification] =
+        useState(false);
+
+    const [resendMessage, setResendMessage] = useState("");
+    const [resendError, setResendError] = useState("");
+
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
 
@@ -43,6 +67,10 @@ export default function StudentLoginPage() {
 
         setErrorMessage("");
         setSuccessMessage("");
+        setVerificationRequiredLogin("");
+        setVerificationMessage("");
+        setResendMessage("");
+        setResendError("");
 
         if (!cleanLogin || !password) {
             setErrorMessage("Please enter mobile/email and password.");
@@ -65,6 +93,21 @@ export default function StudentLoginPage() {
             });
 
             const result = (await response.json()) as LoginResponse;
+
+            if (
+                response.status === 403 &&
+                result.code ===
+                    EMAIL_VERIFICATION_REQUIRED_CODE
+            ) {
+                setVerificationRequiredLogin(cleanLogin);
+                setVerificationMessage(
+                    result.message ||
+                        "Please verify your email before signing in."
+                );
+
+                setPassword("");
+                return;
+            }
 
             if (!response.ok || !result.success) {
                 throw new Error(result.message || "Login failed.");
@@ -93,6 +136,72 @@ export default function StudentLoginPage() {
             );
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handleResendVerification = async () => {
+        if (
+            !verificationRequiredLogin ||
+            isResendingVerification
+        ) {
+            return;
+        }
+
+        setResendMessage("");
+        setResendError("");
+        setIsResendingVerification(true);
+
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/auth/resend-email-verification`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        login: verificationRequiredLogin,
+                    }),
+                }
+            );
+
+            let result: ResendVerificationResponse = {};
+
+            try {
+                result =
+                    (await response.json()) as
+                        ResendVerificationResponse;
+            } catch {
+                result = {};
+            }
+
+            if (
+                !response.ok ||
+                result.success !== true
+            ) {
+                if (response.status === 429) {
+                    throw new Error(
+                        "Too many verification requests. Please wait a few minutes and try again."
+                    );
+                }
+
+                throw new Error(
+                    "Unable to request another verification email right now. Please try again later."
+                );
+            }
+
+            setResendMessage(
+                result.message ||
+                    GENERIC_RESEND_MESSAGE
+            );
+        } catch (error) {
+            setResendError(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to request another verification email right now."
+            );
+        } finally {
+            setIsResendingVerification(false);
         }
     };
 
@@ -197,6 +306,49 @@ export default function StudentLoginPage() {
                                 {errorMessage ? (
                                     <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
                                         {errorMessage}
+                                    </div>
+                                ) : null}
+
+                                {verificationRequiredLogin ? (
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                                        <p className="font-semibold">
+                                            Verify your email to continue
+                                        </p>
+
+                                        <p className="mt-2 leading-6">
+                                            {verificationMessage}
+                                        </p>
+
+                                        <p className="mt-2 text-xs leading-5 text-amber-800">
+                                            Verification does not sign you in
+                                            automatically. After verification,
+                                            return here and sign in again.
+                                        </p>
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                void handleResendVerification()
+                                            }
+                                            disabled={isResendingVerification}
+                                            className="mt-4 min-h-11 w-full rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {isResendingVerification
+                                                ? "Requesting verification email..."
+                                                : "Resend Verification Email"}
+                                        </button>
+
+                                        {resendMessage ? (
+                                            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium leading-6 text-emerald-800">
+                                                {resendMessage}
+                                            </div>
+                                        ) : null}
+
+                                        {resendError ? (
+                                            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium leading-6 text-red-700">
+                                                {resendError}
+                                            </div>
+                                        ) : null}
                                     </div>
                                 ) : null}
 
