@@ -12,6 +12,13 @@ const {
   resetPasswordRateLimiter,
 } = require("../middleware/passwordResetRateLimitMiddleware");
 
+const {
+  resendEmailVerificationRateLimiter,
+  verifyEmailVerificationRateLimiter,
+} = require(
+  "../middleware/emailVerificationRateLimitMiddleware"
+);
+
 const router = express.Router();
 
 
@@ -20,6 +27,8 @@ const {
   loginUser,
   forgotPassword,
   resetPassword,
+  resendEmailVerification,
+  verifyEmail,
   getMe,
   createTenantAdmin,
 } = require("../controllers/authController");
@@ -73,6 +82,20 @@ router.post(
   "/reset-password",
   resetPasswordRateLimiter,
   resetPassword
+);
+
+// Resend Email Verification
+router.post(
+  "/resend-email-verification",
+  resendEmailVerificationRateLimiter,
+  resendEmailVerification
+);
+
+// Verify Email
+router.post(
+  "/verify-email",
+  verifyEmailVerificationRateLimiter,
+  verifyEmail
 );
 
 router.get("/me", protect, getMe);

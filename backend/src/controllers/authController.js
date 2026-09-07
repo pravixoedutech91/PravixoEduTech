@@ -28,6 +28,8 @@ const {
 const {
   EMAIL_VERIFICATION_RESULT_CODES,
   issueStudentEmailVerification,
+  requestStudentEmailVerification,
+  verifyStudentEmail,
 } = require(
   "../services/emailVerificationService"
 );
@@ -65,6 +67,15 @@ const PASSWORD_RESET_INVALID_OR_EXPIRED_MESSAGE =
 
 const PASSWORD_RESET_SUCCESS_MESSAGE =
   "Password reset successfully. Please sign in again.";
+const EMAIL_VERIFICATION_REQUEST_GENERIC_MESSAGE =
+  "If an eligible account exists, email verification instructions have been sent.";
+
+const EMAIL_VERIFICATION_INVALID_OR_EXPIRED_MESSAGE =
+  "This email verification link is invalid or has expired. Please request a new one.";
+
+const EMAIL_VERIFICATION_SUCCESS_MESSAGE =
+  "Email verified successfully. Please sign in.";
+
 const generateToken = (user, sessionId) => {
   return jwt.sign(
     {
@@ -640,6 +651,113 @@ const resetPassword = async (req, res) => {
     });
   }
 };
+// Resend Student Email Verification
+const resendEmailVerification = async (req, res) => {
+  try {
+    const login =
+      req &&
+      req.body &&
+      typeof req.body === "object"
+        ? req.body.login
+        : undefined;
+
+    await requestStudentEmailVerification({
+      login,
+
+      deliverVerification: async ({
+        toEmail,
+        rawToken,
+        expiresAt,
+      }) => {
+        const verificationUrl =
+          buildStudentEmailVerificationUrl({
+            rawToken,
+          });
+
+        await sendEmailVerificationEmail({
+          toEmail,
+          verificationUrl,
+          expiresAt,
+        });
+      },
+    });
+  } catch (error) {
+    /*
+     * Preserve one generic public response for unknown,
+     * ineligible, already-verified and cooling-down accounts,
+     * as well as DB/link/provider failures.
+     */
+    logRuntimeError("Email verification request failed:", error);
+  }
+
+  return res.status(200).json({
+    success: true,
+    message:
+      EMAIL_VERIFICATION_REQUEST_GENERIC_MESSAGE,
+  });
+};
+
+// Verify Student Email
+const verifyEmail = async (req, res) => {
+  try {
+    const body =
+      req &&
+      req.body &&
+      typeof req.body === "object"
+        ? req.body
+        : {};
+
+    const result =
+      await verifyStudentEmail({
+        rawToken:
+          body.token,
+      });
+
+    if (
+      result &&
+      result.success === true &&
+      (
+        result.code ===
+          EMAIL_VERIFICATION_RESULT_CODES.VERIFIED ||
+        result.code ===
+          EMAIL_VERIFICATION_RESULT_CODES
+            .ALREADY_VERIFIED
+      )
+    ) {
+      return res.status(200).json({
+        success: true,
+        message:
+          EMAIL_VERIFICATION_SUCCESS_MESSAGE,
+      });
+    }
+
+    if (
+      result &&
+      result.code ===
+        EMAIL_VERIFICATION_RESULT_CODES
+          .INVALID_OR_EXPIRED_TOKEN
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          EMAIL_VERIFICATION_INVALID_OR_EXPIRED_MESSAGE,
+      });
+    }
+
+    throw new Error(
+      "Unexpected email verification result"
+    );
+  } catch (error) {
+    logRuntimeError("Email verification failed:", error);
+
+    return res.status(500).json({
+      success: false,
+      message:
+        getInternalErrorMessage(error),
+    });
+  }
+};
+
 // Get Logged In User Profile
 const getMe = async (req, res) => {
   res.status(200).json({
@@ -715,6 +833,8 @@ module.exports = {
   loginUser,
   forgotPassword,
   resetPassword,
+  resendEmailVerification,
+  verifyEmail,
   getMe,
   createTenantAdmin,
 };
