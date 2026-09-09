@@ -1,6 +1,7 @@
 const Tenant = require("../models/Tenant");
 
 const {
+  isHostedEnvironment,
   getInternalErrorMessage,
   logRuntimeError,
 } = require("../utils/runtimeSecurity");
@@ -9,12 +10,19 @@ const DEFAULT_PUBLIC_REGISTRATION_TENANT_ID =
   "pravixoedutech";
 
 const getConfiguredPublicRegistrationTenantId = () => {
-  return String(
-    process.env.PUBLIC_REGISTRATION_TENANT_ID ||
-      DEFAULT_PUBLIC_REGISTRATION_TENANT_ID
+  const configuredTenantId = String(
+    process.env.PUBLIC_REGISTRATION_TENANT_ID || ""
   )
     .trim()
     .toLowerCase();
+
+  if (configuredTenantId) {
+    return configuredTenantId;
+  }
+
+  return isHostedEnvironment()
+    ? ""
+    : DEFAULT_PUBLIC_REGISTRATION_TENANT_ID;
 };
 
 const resolvePublicRegistrationTenant = async (
