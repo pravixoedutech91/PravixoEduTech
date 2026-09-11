@@ -30,6 +30,7 @@ const {
   resendEmailVerification,
   verifyEmail,
   getMe,
+  logoutUser,
   createTenantAdmin,
 } = require("../controllers/authController");
 
@@ -68,6 +69,12 @@ router.post(
   "/login",
   loginRateLimiter,
   loginUser
+);
+// Logout
+router.post(
+  "/logout",
+  protect,
+  logoutUser
 );
 
 // Forgot Password

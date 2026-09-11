@@ -531,6 +531,35 @@ const loginUser = async (req, res) => {
     });
   }
 };
+// Logout User
+const logoutUser = async (req, res) => {
+  try {
+    await User.findOneAndUpdate(
+      {
+        _id: req.user._id,
+        activeSessionId: req.authSessionId,
+      },
+      {
+        $set: {
+          activeSessionId: "",
+          lastLoginDevice: "",
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Logout successful",
+    });
+  } catch (error) {
+    logRuntimeError("Logout failed:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: getInternalErrorMessage(error),
+    });
+  }
+};
 
 // Forgot Student Password
 const forgotPassword = async (req, res) => {
@@ -836,5 +865,6 @@ module.exports = {
   resendEmailVerification,
   verifyEmail,
   getMe,
+  logoutUser,
   createTenantAdmin,
 };

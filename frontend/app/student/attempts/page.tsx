@@ -1,5 +1,6 @@
 "use client";
 
+import { secureLogout } from "../../../lib/secureLogout";
 import StudentPortalShell, { type StudentPortalProfile } from "@/components/student/StudentPortalShell";
 
 import Link from "next/link";
@@ -316,12 +317,22 @@ export default function StudentAttemptsPage() {
         return () => window.clearTimeout(timer);
     }, [isClientReady, cleanToken, fetchAttempts]);
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
         const shouldLogout = window.confirm(
             "Are you sure you want to logout? Your saved student session will be cleared."
         );
 
         if (!shouldLogout) {
+            return;
+        }
+
+        const logoutResult = await secureLogout(token);
+
+        if (!logoutResult.shouldClearLocalSession) {
+            setSuccessMessage("");
+            setErrorMessage(
+                "Secure logout could not be confirmed. Please check your connection and try again."
+            );
             return;
         }
 

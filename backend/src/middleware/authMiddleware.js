@@ -69,6 +69,7 @@ const protect = async (req, res, next) => {
       });
     }
 
+    req.authSessionId = decoded.sessionId;
     req.user = user;
 
     next();
