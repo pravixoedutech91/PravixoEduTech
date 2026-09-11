@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 const API_BASE_URL =
     process.env.NEXT_PUBLIC_API_URL ||
@@ -30,6 +30,18 @@ const EMAIL_VERIFICATION_REQUIRED_CODE =
 
 const GENERIC_RESEND_MESSAGE =
     "If an eligible account exists, email verification instructions have been sent.";
+
+const RESEND_VERIFICATION_COOLDOWN_SECONDS = 120;
+
+const formatResendCooldown = (seconds: number) => {
+    const safeSeconds = Math.max(0, Math.floor(seconds));
+    const minutes = Math.floor(safeSeconds / 60);
+    const remainingSeconds = safeSeconds % 60;
+
+    return `${String(minutes).padStart(2, "0")}:${String(
+        remainingSeconds
+    ).padStart(2, "0")}`;
+};
 
 const normalizeName = (value: string) =>
     value.trim().replace(/\s+/g, " ");
@@ -79,8 +91,27 @@ export default function StudentRegisterPage() {
     const [isResendingVerification, setIsResendingVerification] =
         useState(false);
 
+    const [resendCooldownSeconds, setResendCooldownSeconds] =
+        useState(0);
+
     const [resendMessage, setResendMessage] = useState("");
     const [resendError, setResendError] = useState("");
+
+    useEffect(() => {
+        if (resendCooldownSeconds <= 0) {
+            return;
+        }
+
+        const timeoutId = window.setTimeout(() => {
+            setResendCooldownSeconds((current) =>
+                Math.max(0, current - 1)
+            );
+        }, 1000);
+
+        return () => {
+            window.clearTimeout(timeoutId);
+        };
+    }, [resendCooldownSeconds]);
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -159,9 +190,17 @@ export default function StudentRegisterPage() {
                 );
             }
 
+            const wasVerificationEmailSent =
+                result.data.verificationEmailSent === true;
+
             setRegistrationEmail(cleanEmail);
             setVerificationEmailSent(
-                result.data.verificationEmailSent === true
+                wasVerificationEmailSent
+            );
+            setResendCooldownSeconds(
+                wasVerificationEmailSent
+                    ? RESEND_VERIFICATION_COOLDOWN_SECONDS
+                    : 0
             );
 
             setPassword("");
@@ -188,7 +227,8 @@ export default function StudentRegisterPage() {
         if (
             !registrationComplete ||
             !registrationEmail ||
-            isResendingVerification
+            isResendingVerification ||
+            resendCooldownSeconds > 0
         ) {
             return;
         }
@@ -239,6 +279,9 @@ export default function StudentRegisterPage() {
             setResendMessage(
                 result.message ||
                     GENERIC_RESEND_MESSAGE
+            );
+            setResendCooldownSeconds(
+                RESEND_VERIFICATION_COOLDOWN_SECONDS
             );
         } catch (error) {
             setResendError(
@@ -304,12 +347,19 @@ export default function StudentRegisterPage() {
                                     onClick={() =>
                                         void handleResendVerification()
                                     }
-                                    disabled={isResendingVerification}
+                                    disabled={
+                                        isResendingVerification ||
+                                        resendCooldownSeconds > 0
+                                    }
                                     className="min-h-12 w-full rounded-2xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
                                 >
                                     {isResendingVerification
                                         ? "Requesting verification email..."
-                                        : "Resend Verification Email"}
+                                        : resendCooldownSeconds > 0
+                                          ? `Resend available in ${formatResendCooldown(
+                                                resendCooldownSeconds
+                                            )}`
+                                          : "Resend Verification Email"}
                                 </button>
 
                                 {resendMessage ? (
@@ -429,6 +479,13 @@ export default function StudentRegisterPage() {
                                     onSubmit={handleSubmit}
                                     className="mt-7 space-y-5"
                                 >
+                                    <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-slate-700">
+                                        Use your own active email address and a valid
+                                        10-digit mobile number. We will send your
+                                        account verification link to the email
+                                        address you provide.
+                                    </div>
+
                                     <div>
                                         <label
                                             htmlFor="student-name"
@@ -535,7 +592,10 @@ export default function StudentRegisterPage() {
                                             </div>
 
                                             <p className="mt-2 text-xs leading-5 text-slate-500">
-                                                Use at least 8 characters.
+                                                Use at least 8 characters. Choose a password you can
+                                                remember because you will need it to sign in after
+                                                email verification. If you forget it, use Forgot
+                                                Password.
                                             </p>
                                         </div>
 

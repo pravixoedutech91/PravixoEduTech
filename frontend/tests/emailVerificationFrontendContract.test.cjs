@@ -142,6 +142,107 @@ test(
 );
 
 test(
+  "registration resend presents a 120-second local countdown without persisting cooldown authority",
+  () => {
+    assert.match(
+      registerSource,
+      /RESEND_VERIFICATION_COOLDOWN_SECONDS = 120/
+    );
+
+    assert.match(
+      registerSource,
+      /const \[resendCooldownSeconds, setResendCooldownSeconds\]/
+    );
+
+    assert.match(
+      registerSource,
+      /useEffect\(\(\) => \{[\s\S]*window\.setTimeout\([\s\S]*1000[\s\S]*window\.clearTimeout/
+    );
+
+    assert.match(
+      registerSource,
+      /setResendCooldownSeconds\(\s*wasVerificationEmailSent\s*\?\s*RESEND_VERIFICATION_COOLDOWN_SECONDS\s*:\s*0\s*\)/
+    );
+
+    assert.match(
+      registerSource,
+      /disabled=\{\s*isResendingVerification\s*\|\|\s*resendCooldownSeconds > 0\s*\}/
+    );
+
+    assert.match(
+      registerSource,
+      /Resend available in \$\{formatResendCooldown\(\s*resendCooldownSeconds\s*\)\}/
+    );
+
+    assert.match(
+      registerSource,
+      /setResendCooldownSeconds\(\s*RESEND_VERIFICATION_COOLDOWN_SECONDS\s*\)/
+    );
+
+    assert.equal(
+      count(
+        registerSource,
+        "localStorage"
+      ),
+      0
+    );
+
+    assert.equal(
+      count(
+        registerSource,
+        "sessionStorage"
+      ),
+      0
+    );
+  }
+);
+
+test(
+  "registration clearly instructs candidates to use an active email and valid mobile number",
+  () => {
+    assert.match(
+      registerSource,
+      /Use your own active email address\s+and a valid\s+10-digit mobile number\./
+    );
+
+    assert.match(
+      registerSource,
+      /We will send your\s+account verification link to the email\s+address you provide\./
+    );
+
+    assert.match(
+      registerSource,
+      /placeholder="10-digit mobile"/
+    );
+
+    assert.match(
+      registerSource,
+      /type="email"/
+    );
+  }
+);
+
+test(
+  "registration reminds candidates to remember their password and identifies recovery",
+  () => {
+    assert.match(
+      registerSource,
+      /Choose a password you can\s+remember because you will need it to sign in after\s+email verification\./
+    );
+
+    assert.match(
+      registerSource,
+      /If you forget it, use Forgot\s+Password\./
+    );
+
+    assert.match(
+      registerSource,
+      /Use at least 8 characters\./
+    );
+  }
+);
+
+test(
   "unverified login handles verification-required before token validation and session writes",
   () => {
     const verificationBranch =
