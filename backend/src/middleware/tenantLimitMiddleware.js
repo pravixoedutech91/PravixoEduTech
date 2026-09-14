@@ -2,22 +2,24 @@ const {
   getInternalErrorMessage,
   logRuntimeError,
 } = require("../utils/runtimeSecurity");
-const Tenant = require("../models/Tenant");
 const User = require("../models/User");
 
 const checkStudentLimit = async (req, res, next) => {
   try {
-    const tenantId =
-      req.body.tenantId || "pravixoedutech";
+    const tenantId = String(
+      req.registrationTenantId || ""
+    ).trim();
 
-    const tenant = await Tenant.findOne({
-      slug: tenantId,
-    });
+    const tenant = req.registrationTenant;
 
-    if (!tenant) {
-      return res.status(404).json({
+    if (
+      !tenantId ||
+      !tenant ||
+      String(tenant.slug) !== tenantId
+    ) {
+      return res.status(503).json({
         success: false,
-        message: "Tenant not found",
+        message: "Registration is currently unavailable",
       });
     }
 
@@ -33,6 +35,7 @@ const checkStudentLimit = async (req, res, next) => {
       await User.countDocuments({
         tenantId,
         role: "student",
+        isEmailVerified: true,
       });
 
     if (currentStudents >= maxStudents) {
