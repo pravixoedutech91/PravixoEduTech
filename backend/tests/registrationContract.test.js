@@ -585,14 +585,14 @@ test("registerUser creates pending unverified student and sends verification wit
   const originalVerificationOrigin =
     process.env.EMAIL_VERIFICATION_FRONTEND_ORIGIN;
 
-  const originalPostmarkToken =
-    process.env.POSTMARK_SERVER_TOKEN;
+  const originalEmailProvider =
+    process.env.EMAIL_PROVIDER;
 
-  const originalPostmarkFrom =
-    process.env.POSTMARK_FROM_EMAIL;
+  const originalEmailFrom =
+    process.env.EMAIL_FROM;
 
-  const originalPostmarkStream =
-    process.env.POSTMARK_MESSAGE_STREAM;
+  const originalResendApiKey =
+    process.env.RESEND_API_KEY;
 
   const restoreEnv = (key, value) => {
     if (value === undefined) {
@@ -606,7 +606,8 @@ test("registerUser creates pending unverified student and sends verification wit
   let verificationWrite;
   let verificationDeleteCalls = 0;
   let fetchCalls = 0;
-  let postmarkMessage;
+  let resendMessage;
+  let sentIdempotencyKey;
 
   try {
     process.env.NODE_ENV = "production";
@@ -617,14 +618,14 @@ test("registerUser creates pending unverified student and sends verification wit
     process.env.EMAIL_VERIFICATION_FRONTEND_ORIGIN =
       "https://student.example.com";
 
-    process.env.POSTMARK_SERVER_TOKEN =
-      "postmark-registration-contract-token";
+    process.env.EMAIL_PROVIDER =
+      "resend";
 
-    process.env.POSTMARK_FROM_EMAIL =
+    process.env.EMAIL_FROM =
       "security@pravixo.example";
 
-    process.env.POSTMARK_MESSAGE_STREAM =
-      "outbound";
+    process.env.RESEND_API_KEY =
+      "re_registration_contract_key";
 
     User.findOne = async () => null;
 
@@ -663,7 +664,7 @@ test("registerUser creates pending unverified student and sends verification wit
 
       assert.equal(
         url,
-        "https://api.postmarkapp.com/email"
+        "https://api.resend.com/emails"
       );
 
       assert.equal(
@@ -676,21 +677,46 @@ test("registerUser creates pending unverified student and sends verification wit
         "error"
       );
 
-      assert.equal(
-        options.headers["X-Postmark-Server-Token"],
-        "postmark-registration-contract-token"
+      assert.deepEqual(
+        Object.keys(
+          options.headers
+        ).sort(),
+        [
+          "Accept",
+          "Authorization",
+          "Content-Type",
+          "Idempotency-Key",
+        ].sort()
       );
 
-      postmarkMessage =
-        JSON.parse(options.body);
+      assert.equal(
+        options.headers.Authorization,
+        "Bearer re_registration_contract_key"
+      );
+
+      sentIdempotencyKey =
+        options.headers[
+          "Idempotency-Key"
+        ];
+
+      resendMessage =
+        JSON.parse(
+          options.body
+        );
+
+      assert.equal(
+        options.body.includes(
+          "re_registration_contract_key"
+        ),
+        false
+      );
 
       return {
-        ok: true,
         status: 200,
 
         json: async () => ({
-          ErrorCode: 0,
-          MessageID: "registration-contract-message-id",
+          id:
+            "registration-contract-message-id",
         }),
       };
     };
@@ -805,6 +831,25 @@ test("registerUser creates pending unverified student and sends verification wit
 
     assert.equal(fetchCalls, 1);
 
+    assert.ok(resendMessage);
+    assert.ok(sentIdempotencyKey);
+
+    const sentCredentialMatch =
+      resendMessage.text.match(
+        /#token=([A-Za-z0-9_-]{43})/
+      );
+
+    assert.ok(
+      sentCredentialMatch
+    );
+
+    assert.equal(
+      sentIdempotencyKey.includes(
+        sentCredentialMatch[1]
+      ),
+      false
+    );
+
     assert.equal(
       verificationDeleteCalls,
       0
@@ -832,18 +877,38 @@ test("registerUser creates pending unverified student and sends verification wit
       /^[a-f0-9]{64}$/
     );
 
-    assert.equal(
-      postmarkMessage.TrackOpens,
-      false
+    assert.deepEqual(
+      Object.keys(
+        resendMessage
+      ).sort(),
+      [
+        "from",
+        "html",
+        "subject",
+        "text",
+        "to",
+      ].sort()
     );
 
     assert.equal(
-      postmarkMessage.TrackLinks,
-      "None"
+      resendMessage.from,
+      "security@pravixo.example"
+    );
+
+    assert.deepEqual(
+      resendMessage.to,
+      [
+        createPayload.email,
+      ]
+    );
+
+    assert.match(
+      sentIdempotencyKey,
+      /^email-verification\/[a-f0-9]{64}$/
     );
 
     const rawTokenMatch =
-      postmarkMessage.TextBody.match(
+      resendMessage.text.match(
         /#token=([A-Za-z0-9_-]{43})/
       );
 
@@ -864,7 +929,7 @@ test("registerUser creates pending unverified student and sends verification wit
     );
 
     assert.equal(
-      postmarkMessage.TextBody.includes(
+      resendMessage.text.includes(
         "?token="
       ),
       false
@@ -902,18 +967,18 @@ test("registerUser creates pending unverified student and sends verification wit
     );
 
     restoreEnv(
-      "POSTMARK_SERVER_TOKEN",
-      originalPostmarkToken
+      "EMAIL_PROVIDER",
+      originalEmailProvider
     );
 
     restoreEnv(
-      "POSTMARK_FROM_EMAIL",
-      originalPostmarkFrom
+      "EMAIL_FROM",
+      originalEmailFrom
     );
 
     restoreEnv(
-      "POSTMARK_MESSAGE_STREAM",
-      originalPostmarkStream
+      "RESEND_API_KEY",
+      originalResendApiKey
     );
   }
 });
@@ -943,14 +1008,14 @@ test("registerUser preserves pending account when verification delivery fails", 
   const originalVerificationOrigin =
     process.env.EMAIL_VERIFICATION_FRONTEND_ORIGIN;
 
-  const originalPostmarkToken =
-    process.env.POSTMARK_SERVER_TOKEN;
+  const originalEmailProvider =
+    process.env.EMAIL_PROVIDER;
 
-  const originalPostmarkFrom =
-    process.env.POSTMARK_FROM_EMAIL;
+  const originalEmailFrom =
+    process.env.EMAIL_FROM;
 
-  const originalPostmarkStream =
-    process.env.POSTMARK_MESSAGE_STREAM;
+  const originalResendApiKey =
+    process.env.RESEND_API_KEY;
 
   const restoreEnv = (key, value) => {
     if (value === undefined) {
@@ -977,14 +1042,14 @@ test("registerUser preserves pending account when verification delivery fails", 
     process.env.EMAIL_VERIFICATION_FRONTEND_ORIGIN =
       "https://student.example.com";
 
-    process.env.POSTMARK_SERVER_TOKEN =
-      "postmark-registration-failure-token";
+    process.env.EMAIL_PROVIDER =
+      "resend";
 
-    process.env.POSTMARK_FROM_EMAIL =
+    process.env.EMAIL_FROM =
       "security@pravixo.example";
 
-    process.env.POSTMARK_MESSAGE_STREAM =
-      "outbound";
+    process.env.RESEND_API_KEY =
+      "re_registration_failure_key";
 
     console.error = (...args) => {
       hostedLogs.push(args);
@@ -1027,28 +1092,68 @@ test("registerUser preserves pending account when verification delivery fails", 
 
       assert.equal(
         url,
-        "https://api.postmarkapp.com/email"
+        "https://api.resend.com/emails"
       );
 
-      const postmarkMessage =
-        JSON.parse(options.body);
+      assert.equal(
+        options.method,
+        "POST"
+      );
+
+      assert.equal(
+        options.redirect,
+        "error"
+      );
+
+      assert.equal(
+        options.headers.Authorization,
+        "Bearer re_registration_failure_key"
+      );
+
+      assert.match(
+        options.headers[
+          "Idempotency-Key"
+        ],
+        /^email-verification\/[a-f0-9]{64}$/
+      );
+
+      const resendMessage =
+        JSON.parse(
+          options.body
+        );
 
       const tokenMatch =
-        postmarkMessage.TextBody.match(
+        resendMessage.text.match(
           /#token=([A-Za-z0-9_-]{43})/
         );
 
       assert.ok(tokenMatch);
 
-      rawToken = tokenMatch[1];
+      rawToken =
+        tokenMatch[1];
+
+      assert.equal(
+        options.headers[
+          "Idempotency-Key"
+        ].includes(
+          rawToken
+        ),
+        false
+      );
+
+      assert.equal(
+        options.body.includes(
+          "re_registration_failure_key"
+        ),
+        false
+      );
 
       return {
-        ok: false,
         status: 503,
 
         json: async () => ({
-          ErrorCode: 999,
-          Message: "provider-private-detail",
+          error:
+            "provider-private-detail",
         }),
       };
     };
@@ -1170,7 +1275,7 @@ test("registerUser preserves pending account when verification delivery fails", 
 
     assert.equal(
       publicJson.includes(
-        "postmark-registration-failure-token"
+        "re_registration_failure_key"
       ),
       false
     );
@@ -1192,7 +1297,7 @@ test("registerUser preserves pending account when verification delivery fails", 
 
     assert.equal(
       logJson.includes(
-        "postmark-registration-failure-token"
+        "re_registration_failure_key"
       ),
       false
     );
@@ -1242,18 +1347,18 @@ test("registerUser preserves pending account when verification delivery fails", 
     );
 
     restoreEnv(
-      "POSTMARK_SERVER_TOKEN",
-      originalPostmarkToken
+      "EMAIL_PROVIDER",
+      originalEmailProvider
     );
 
     restoreEnv(
-      "POSTMARK_FROM_EMAIL",
-      originalPostmarkFrom
+      "EMAIL_FROM",
+      originalEmailFrom
     );
 
     restoreEnv(
-      "POSTMARK_MESSAGE_STREAM",
-      originalPostmarkStream
+      "RESEND_API_KEY",
+      originalResendApiKey
     );
   }
 });

@@ -42,23 +42,14 @@ const {
 );
 
 const {
-  POSTMARK_EMAIL_ENDPOINT,
-  POSTMARK_REQUEST_TIMEOUT_MS,
-  DEFAULT_POSTMARK_MESSAGE_STREAM,
-  EMAIL_VERIFICATION_EMAIL_SUBJECT,
-  EMAIL_VERIFICATION_EMAIL_TAG,
   EmailVerificationEmailDeliveryError,
   normalizeTrustedVerificationUrl,
-  buildEmailVerificationMessage,
+  buildNeutralEmailVerificationMessage,
   sendEmailVerificationEmail,
 } = require(
   "../src/services/emailVerificationEmailService"
 );
 
-const passwordResetEmail =
-  require(
-    "../src/services/passwordResetEmailService"
-  );
 
 const saveEnvironment =
   () => ({
@@ -497,7 +488,7 @@ test(
 );
 
 test(
-  "verification email message is trusted, transactional and tracking-free",
+  "verification email message is trusted and provider-neutral",
   () => {
     const environment =
       saveEnvironment();
@@ -519,85 +510,44 @@ test(
         );
 
       const message =
-        buildEmailVerificationMessage({
+        buildNeutralEmailVerificationMessage({
           toEmail:
             " Student@Example.com ",
 
           verificationUrl,
 
           expiresAt,
-
-          configuration: {
-            fromEmail:
-              "security@pravixo.example",
-
-            messageStream:
-              "outbound",
-          },
         });
 
-      assert.equal(
-        POSTMARK_EMAIL_ENDPOINT,
-        passwordResetEmail
-          .POSTMARK_EMAIL_ENDPOINT
+      assert.deepEqual(
+        Object.keys(message).sort(),
+        [
+          "htmlBody",
+          "subject",
+          "textBody",
+          "toEmail",
+        ].sort()
       );
 
       assert.equal(
-        POSTMARK_REQUEST_TIMEOUT_MS,
-        passwordResetEmail
-          .POSTMARK_REQUEST_TIMEOUT_MS
-      );
-
-      assert.equal(
-        DEFAULT_POSTMARK_MESSAGE_STREAM,
-        passwordResetEmail
-          .DEFAULT_POSTMARK_MESSAGE_STREAM
-      );
-
-      assert.equal(
-        EMAIL_VERIFICATION_EMAIL_SUBJECT,
-        "Verify your PravixoEduTech email"
-      );
-
-      assert.equal(
-        EMAIL_VERIFICATION_EMAIL_TAG,
-        "email-verification"
-      );
-
-      assert.equal(
-        message.To,
+        message.toEmail,
         "student@example.com"
       );
 
       assert.equal(
-        message.From,
-        "PravixoEduTech <security@pravixo.example>"
+        message.subject,
+        "Verify your PravixoEduTech email"
       );
 
       assert.equal(
-        message.Tag,
-        "email-verification"
-      );
-
-      assert.equal(
-        message.TrackOpens,
-        false
-      );
-
-      assert.equal(
-        message.TrackLinks,
-        "None"
-      );
-
-      assert.equal(
-        message.TextBody.includes(
+        message.textBody.includes(
           verificationUrl
         ),
         true
       );
 
       assert.equal(
-        message.HtmlBody.includes(
+        message.htmlBody.includes(
           verificationUrl.replaceAll(
             "&",
             "&amp;"
@@ -605,6 +555,38 @@ test(
         ),
         true
       );
+
+      assert.equal(
+        message.textBody.includes(
+          "2030-01-02T03:04:05.000Z"
+        ),
+        true
+      );
+
+      const providerSpecificKeys = [
+        "From",
+        "To",
+        "Tag",
+        "TextBody",
+        "HtmlBody",
+        "MessageStream",
+        "TrackOpens",
+        "TrackLinks",
+      ];
+
+      for (
+        const key of
+        providerSpecificKeys
+      ) {
+        assert.equal(
+          Object.prototype
+            .hasOwnProperty.call(
+              message,
+              key
+            ),
+          false
+        );
+      }
     } finally {
       restoreEnvironment(
         environment
@@ -612,7 +594,6 @@ test(
     }
   }
 );
-
 test(
   "verification email rejects untrusted credential-bearing URLs",
   () => {
@@ -664,7 +645,7 @@ test(
 );
 
 test(
-  "verification Postmark adapter confines credential and sanitizes successful result",
+  "verification Resend adapter confines credentials and sanitizes successful result",
   async () => {
     const environment =
       saveEnvironment();
@@ -700,14 +681,14 @@ test(
             ),
 
           env: {
-            POSTMARK_SERVER_TOKEN:
-              "postmark-contract-token",
+            EMAIL_PROVIDER:
+              "resend",
 
-            POSTMARK_FROM_EMAIL:
+            EMAIL_FROM:
               "security@pravixo.example",
 
-            POSTMARK_MESSAGE_STREAM:
-              "outbound",
+            RESEND_API_KEY:
+              "re_verification_contract_key",
           },
 
           fetchImpl:
@@ -721,22 +702,13 @@ test(
               };
 
               return {
-                ok:
-                  true,
-
                 status:
                   200,
 
                 json:
                   async () => ({
-                    ErrorCode:
-                      0,
-
-                    Message:
-                      "OK",
-
-                    MessageID:
-                      " contract-message-id ",
+                    id:
+                      "contract-message-id",
                   }),
               };
             },
@@ -750,9 +722,22 @@ test(
         }
       );
 
+      assert.deepEqual(
+        Object.keys(
+          result
+        ),
+        [
+          "messageId",
+        ]
+      );
+
+      assert.ok(
+        captured
+      );
+
       assert.equal(
         captured.url,
-        "https://api.postmarkapp.com/email"
+        "https://api.resend.com/emails"
       );
 
       assert.equal(
@@ -765,15 +750,49 @@ test(
         "error"
       );
 
-      assert.equal(
-        captured.options.headers[
-          "X-Postmark-Server-Token"
-        ],
-        "postmark-contract-token"
-      );
-
       assert.ok(
         captured.options.signal
+      );
+
+      assert.deepEqual(
+        Object.keys(
+          captured.options.headers
+        ).sort(),
+        [
+          "Accept",
+          "Authorization",
+          "Content-Type",
+          "Idempotency-Key",
+        ].sort()
+      );
+
+      assert.equal(
+        captured.options.headers.Authorization,
+        "Bearer re_verification_contract_key"
+      );
+
+      const idempotencyKey =
+        captured.options.headers[
+          "Idempotency-Key"
+        ];
+
+      assert.match(
+        idempotencyKey,
+        /^email-verification\/[a-f0-9]{64}$/
+      );
+
+      assert.equal(
+        idempotencyKey.includes(
+          rawToken
+        ),
+        false
+      );
+
+      assert.equal(
+        idempotencyKey.includes(
+          verificationUrl
+        ),
+        false
       );
 
       const message =
@@ -781,45 +800,64 @@ test(
           captured.options.body
         );
 
+      assert.deepEqual(
+        Object.keys(
+          message
+        ).sort(),
+        [
+          "from",
+          "html",
+          "subject",
+          "text",
+          "to",
+        ].sort()
+      );
+
       assert.equal(
-        message.TrackOpens,
+        message.from,
+        "security@pravixo.example"
+      );
+
+      assert.deepEqual(
+        message.to,
+        [
+          "student@example.com",
+        ]
+      );
+
+      assert.ok(
+        message.text.includes(
+          verificationUrl
+        )
+      );
+
+      assert.ok(
+        message.html.includes(
+          verificationUrl
+        )
+      );
+
+      assert.equal(
+        captured.options.body.includes(
+          "re_verification_contract_key"
+        ),
         false
       );
 
       assert.equal(
-        message.TrackLinks,
-        "None"
-      );
-
-      assert.equal(
-        message.TextBody.includes(
-          verificationUrl
-        ),
-        true
-      );
-
-      const resultJson =
         JSON.stringify(
           result
-        );
-
-      assert.equal(
-        resultJson.includes(
-          verificationUrl
+        ).includes(
+          rawToken
         ),
         false
       );
 
       assert.equal(
-        resultJson.includes(
-          "student@example.com"
-        ),
-        false
-      );
-
-      assert.equal(
-        resultJson.includes(
-          "postmark-contract-token"
+        JSON.stringify(
+          result
+        ).includes(
+          "re_verification_contract_key"
         ),
         false
       );
@@ -830,9 +868,8 @@ test(
     }
   }
 );
-
 test(
-  "verification Postmark adapter fails before transport when configuration is absent",
+  "verification Resend adapter fails before transport when configuration is absent",
   async () => {
     const environment =
       saveEnvironment();
@@ -894,9 +931,8 @@ test(
     }
   }
 );
-
 test(
-  "verification Postmark provider failures expose no provider response detail",
+  "verification Resend provider failures expose no provider response detail",
   async () => {
     const environment =
       saveEnvironment();
@@ -913,14 +949,14 @@ test(
         });
 
       const fakeEnv = {
-        POSTMARK_SERVER_TOKEN:
-          "postmark-contract-token",
+        EMAIL_PROVIDER:
+          "resend",
 
-        POSTMARK_FROM_EMAIL:
+        EMAIL_FROM:
           "security@pravixo.example",
 
-        POSTMARK_MESSAGE_STREAM:
-          "outbound",
+        RESEND_API_KEY:
+          "re_verification_contract_key",
       };
 
       await assert.rejects(
@@ -941,18 +977,12 @@ test(
 
           fetchImpl:
             async () => ({
-              ok:
-                false,
-
               status:
                 422,
 
               json:
                 async () => ({
-                  ErrorCode:
-                    300,
-
-                  Message:
+                  error:
                     "sensitive provider detail",
                 }),
             }),
@@ -966,6 +996,12 @@ test(
             422 &&
           !error.message.includes(
             "sensitive provider detail"
+          ) &&
+          !error.message.includes(
+            "re_verification_contract_key"
+          ) &&
+          !error.message.includes(
+            rawToken
           )
       );
     } finally {
@@ -975,7 +1011,6 @@ test(
     }
   }
 );
-
 test(
   "verification resend and verify limiters enforce independent successful-request budgets",
   async () => {

@@ -107,14 +107,14 @@ const captureRuntimeState = () => ({
   PASSWORD_RESET_FRONTEND_ORIGIN:
     process.env.PASSWORD_RESET_FRONTEND_ORIGIN,
 
-  POSTMARK_SERVER_TOKEN:
-    process.env.POSTMARK_SERVER_TOKEN,
+  EMAIL_PROVIDER:
+    process.env.EMAIL_PROVIDER,
 
-  POSTMARK_FROM_EMAIL:
-    process.env.POSTMARK_FROM_EMAIL,
+  EMAIL_FROM:
+    process.env.EMAIL_FROM,
 
-  POSTMARK_MESSAGE_STREAM:
-    process.env.POSTMARK_MESSAGE_STREAM,
+  RESEND_API_KEY:
+    process.env.RESEND_API_KEY,
 });
 
 const restoreRuntimeState = (
@@ -159,18 +159,18 @@ const restoreRuntimeState = (
   );
 
   restoreEnvironmentValue(
-    "POSTMARK_SERVER_TOKEN",
-    original.POSTMARK_SERVER_TOKEN
+    "EMAIL_PROVIDER",
+    original.EMAIL_PROVIDER
   );
 
   restoreEnvironmentValue(
-    "POSTMARK_FROM_EMAIL",
-    original.POSTMARK_FROM_EMAIL
+    "EMAIL_FROM",
+    original.EMAIL_FROM
   );
 
   restoreEnvironmentValue(
-    "POSTMARK_MESSAGE_STREAM",
-    original.POSTMARK_MESSAGE_STREAM
+    "RESEND_API_KEY",
+    original.RESEND_API_KEY
   );
 };
 
@@ -188,18 +188,18 @@ const configureLocalRecoveryEnvironment =
     delete process.env
       .PASSWORD_RESET_FRONTEND_ORIGIN;
 
-    process.env.POSTMARK_SERVER_TOKEN =
-      "TEST_SERVER_TOKEN";
+    process.env.EMAIL_PROVIDER =
+      "resend";
 
-    process.env.POSTMARK_FROM_EMAIL =
+    process.env.EMAIL_FROM =
       "security@pravixo.example";
 
-    process.env.POSTMARK_MESSAGE_STREAM =
-      "outbound";
+    process.env.RESEND_API_KEY =
+      "re_TEST_RESEND_KEY";
   };
 
 test(
-  "Postmark reset adapter uses fixed endpoint and disables credential tracking",
+  "Resend reset adapter uses fixed endpoint, redirect rejection and credential-safe idempotency",
   { concurrency: false },
   async () => {
     let request;
@@ -220,14 +220,14 @@ test(
           ),
 
         env: {
-          POSTMARK_SERVER_TOKEN:
-            "SECRET_SERVER_TOKEN",
+          EMAIL_PROVIDER:
+            "resend",
 
-          POSTMARK_FROM_EMAIL:
+          EMAIL_FROM:
             "security@pravixo.example",
 
-          POSTMARK_MESSAGE_STREAM:
-            "outbound",
+          RESEND_API_KEY:
+            "re_SECRET_RESEND_TEST_KEY",
         },
 
         fetchImpl:
@@ -242,9 +242,7 @@ test(
 
               json:
                 async () => ({
-                  ErrorCode: 0,
-                  Message: "OK",
-                  MessageID:
+                  id:
                     "persistent-test-message-id",
                 }),
             };
@@ -253,7 +251,7 @@ test(
 
     assert.equal(
       request.url,
-      "https://api.postmarkapp.com/email"
+      "https://api.resend.com/emails"
     );
 
     assert.equal(
@@ -267,10 +265,37 @@ test(
     );
 
     assert.equal(
+      request.options.headers.Authorization,
+      "Bearer re_SECRET_RESEND_TEST_KEY"
+    );
+
+    assert.deepEqual(
+      Object.keys(
+        request.options.headers
+      ).sort(),
+      [
+        "Accept",
+        "Authorization",
+        "Content-Type",
+        "Idempotency-Key",
+      ].sort()
+    );
+
+    const idempotencyKey =
       request.options.headers[
-        "X-Postmark-Server-Token"
-      ],
-      "SECRET_SERVER_TOKEN"
+        "Idempotency-Key"
+      ];
+
+    assert.match(
+      idempotencyKey,
+      /^password-reset\/[a-f0-9]{64}$/
+    );
+
+    assert.equal(
+      idempotencyKey.includes(
+        "ABC_123-xyz"
+      ),
+      false
     );
 
     const body =
@@ -279,34 +304,48 @@ test(
       );
 
     assert.equal(
-      body.TrackOpens,
-      false
+      body.from,
+      "security@pravixo.example"
+    );
+
+    assert.deepEqual(
+      body.to,
+      [
+        "student@example.com",
+      ]
     );
 
     assert.equal(
-      body.TrackLinks,
-      "None"
-    );
-
-    assert.equal(
-      body.MessageStream,
-      "outbound"
-    );
-
-    assert.equal(
-      body.To,
-      "student@example.com"
+      body.subject,
+      "Reset your PravixoEduTech password"
     );
 
     assert.ok(
-      body.TextBody.includes(
+      body.text.includes(
         resetUrl
       )
     );
 
+    assert.ok(
+      body.html.includes(
+        resetUrl
+      )
+    );
+
+    assert.deepEqual(
+      Object.keys(body).sort(),
+      [
+        "from",
+        "html",
+        "subject",
+        "text",
+        "to",
+      ].sort()
+    );
+
     assert.equal(
       request.options.body.includes(
-        "SECRET_SERVER_TOKEN"
+        "re_SECRET_RESEND_TEST_KEY"
       ),
       false
     );
@@ -319,24 +358,11 @@ test(
       }
     );
 
-    assert.equal(
-      Object.prototype
-        .hasOwnProperty
-        .call(
-          result,
-          "resetUrl"
-        ),
-      false
-    );
-
-    assert.equal(
-      Object.prototype
-        .hasOwnProperty
-        .call(
-          result,
-          "toEmail"
-        ),
-      false
+    assert.deepEqual(
+      Object.keys(result),
+      [
+        "messageId",
+      ]
     );
   }
 );
@@ -549,6 +575,7 @@ test(
         () => {};
 
       let sentEmail;
+      let sentIdempotencyKey;
 
       User.findOne = (query) => {
         assert.equal(
@@ -609,8 +636,40 @@ test(
         ) => {
           assert.equal(
             url,
-            "https://api.postmarkapp.com/email"
+            "https://api.resend.com/emails"
           );
+
+          assert.equal(
+            options.method,
+            "POST"
+          );
+
+          assert.equal(
+            options.redirect,
+            "error"
+          );
+
+          assert.equal(
+            options.headers.Authorization,
+            "Bearer re_TEST_RESEND_KEY"
+          );
+
+          assert.deepEqual(
+            Object.keys(
+              options.headers
+            ).sort(),
+            [
+              "Accept",
+              "Authorization",
+              "Content-Type",
+              "Idempotency-Key",
+            ].sort()
+          );
+
+          sentIdempotencyKey =
+            options.headers[
+              "Idempotency-Key"
+            ];
 
           sentEmail =
             JSON.parse(
@@ -622,9 +681,7 @@ test(
 
             json:
               async () => ({
-                ErrorCode: 0,
-                Message: "OK",
-                MessageID:
+                id:
                   "eligible-message-id",
               }),
           };
@@ -669,48 +726,70 @@ test(
         }
       );
 
-      assert.equal(
-        sentEmail.To,
-        "student@example.com"
+      assert.deepEqual(
+        sentEmail.to,
+        [
+          "student@example.com",
+        ]
       );
 
       assert.equal(
-        sentEmail.TrackOpens,
-        false
+        sentEmail.from,
+        "security@pravixo.example"
       );
 
-      assert.equal(
-        sentEmail.TrackLinks,
-        "None"
+      assert.deepEqual(
+        Object.keys(
+          sentEmail
+        ).sort(),
+        [
+          "from",
+          "html",
+          "subject",
+          "text",
+          "to",
+        ].sort()
       );
 
       assert.ok(
-        sentEmail.TextBody.includes(
+        sentEmail.text.includes(
           "http://localhost:3000/student/reset-password#token="
         )
       );
 
       assert.equal(
-        sentEmail.TextBody.includes(
+        sentEmail.text.includes(
           "?token="
         ),
         false
       );
 
       assert.equal(
-        sentEmail.TextBody.includes(
+        sentEmail.text.includes(
           "attacker.example"
         ),
         false
       );
 
       const tokenMatch =
-        sentEmail.TextBody.match(
+        sentEmail.text.match(
           /#token=([A-Za-z0-9_-]{43})/
         );
 
       assert.ok(
         tokenMatch
+      );
+
+      assert.match(
+        sentIdempotencyKey,
+        /^password-reset\/[a-f0-9]{64}$/
+      );
+
+      assert.equal(
+        sentIdempotencyKey.includes(
+          tokenMatch[1]
+        ),
+        false
       );
 
       assert.equal(
@@ -846,7 +925,7 @@ test(
 
           json:
             async () => ({
-              ErrorCode: 500,
+              error: "simulated-provider-failure",
               Message:
                 "Provider failure",
             }),

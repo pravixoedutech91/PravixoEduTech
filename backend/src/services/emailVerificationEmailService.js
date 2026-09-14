@@ -1,12 +1,15 @@
 const {
-  POSTMARK_EMAIL_ENDPOINT,
-  POSTMARK_REQUEST_TIMEOUT_MS,
-  DEFAULT_POSTMARK_MESSAGE_STREAM,
   normalizeSingleEmailAddress,
-  getPostmarkConfiguration,
 } = require(
-  "./passwordResetEmailService"
+  "../utils/emailAddressNormalization"
 );
+
+const {
+  TransactionalEmailDeliveryError,
+  buildCredentialSafeIdempotencyKey,
+  getTransactionalEmailConfiguration,
+  sendTransactionalEmail,
+} = require("./transactionalEmailTransportService");
 
 const {
   STUDENT_EMAIL_VERIFICATION_PATH,
@@ -62,42 +65,6 @@ const hasControlCharacters = (
   return /[\u0000-\u001F\u007F]/.test(
     value
   );
-};
-
-const normalizeMessageStream = (
-  value
-) => {
-  if (
-    value === undefined ||
-    value === null ||
-    value === ""
-  ) {
-    return DEFAULT_POSTMARK_MESSAGE_STREAM;
-  }
-
-  if (
-    typeof value !== "string"
-  ) {
-    return "";
-  }
-
-  const stream =
-    value.trim();
-
-  if (
-    !stream ||
-    stream.length > 100 ||
-    hasControlCharacters(
-      stream
-    ) ||
-    /\s/.test(
-      stream
-    )
-  ) {
-    return "";
-  }
-
-  return stream;
 };
 
 const normalizeTrustedVerificationUrl =
@@ -220,11 +187,10 @@ const escapeHtml = (
     );
 };
 
-const buildEmailVerificationMessage = ({
+const buildNeutralEmailVerificationMessage = ({
   toEmail,
   verificationUrl,
   expiresAt,
-  configuration,
 } = {}) => {
   const normalizedTo =
     normalizeSingleEmailAddress(
@@ -255,37 +221,6 @@ const buildEmailVerificationMessage = ({
     throw new EmailVerificationEmailDeliveryError({
       type:
         "email_verification_email_input_error",
-    });
-  }
-
-  if (
-    !configuration ||
-    typeof configuration !==
-      "object"
-  ) {
-    throw new EmailVerificationEmailDeliveryError({
-      type:
-        "email_verification_email_configuration_error",
-    });
-  }
-
-  const fromEmail =
-    normalizeSingleEmailAddress(
-      configuration.fromEmail
-    );
-
-  const messageStream =
-    normalizeMessageStream(
-      configuration.messageStream
-    );
-
-  if (
-    !fromEmail ||
-    !messageStream
-  ) {
-    throw new EmailVerificationEmailDeliveryError({
-      type:
-        "email_verification_email_configuration_error",
     });
   }
 
@@ -343,39 +278,58 @@ const buildEmailVerificationMessage = ({
   );
 
   return {
-    From:
-      "PravixoEduTech <" +
-      fromEmail +
-      ">",
-
-    To:
+    toEmail:
       normalizedTo,
 
-    Subject:
+    subject:
       EMAIL_VERIFICATION_EMAIL_SUBJECT,
 
-    TextBody:
-      textBody,
+    textBody,
 
-    HtmlBody:
-      htmlBody,
-
-    MessageStream:
-      messageStream,
-
-    Tag:
-      EMAIL_VERIFICATION_EMAIL_TAG,
-
-    /*
-     * A verification URL is a bearer credential.
-     * Provider-side open/link tracking stays disabled.
-     */
-    TrackOpens:
-      false,
-
-    TrackLinks:
-      "None",
+    htmlBody,
   };
+};
+
+const mapTransactionalEmailDeliveryError = (
+  error
+) => {
+  if (
+    !(
+      error instanceof
+      TransactionalEmailDeliveryError
+    )
+  ) {
+    return new EmailVerificationEmailDeliveryError({
+      type:
+        "email_verification_email_transport_error",
+    });
+  }
+
+  const mappedTypes = {
+    transactional_email_configuration_error:
+      "email_verification_email_configuration_error",
+
+    transactional_email_input_error:
+      "email_verification_email_input_error",
+
+    transactional_email_transport_error:
+      "email_verification_email_transport_error",
+
+    transactional_email_provider_error:
+      "email_verification_email_provider_error",
+
+    transactional_email_provider_response_error:
+      "email_verification_email_provider_response_error",
+  };
+
+  return new EmailVerificationEmailDeliveryError({
+    type:
+      mappedTypes[error.type] ||
+      "email_verification_email_transport_error",
+
+    statusCode:
+      error.statusCode,
+  });
 };
 
 const sendEmailVerificationEmail =
@@ -388,6 +342,10 @@ const sendEmailVerificationEmail =
     env =
       process.env,
   } = {}) => {
+    /*
+     * Preserve the existing verification delivery
+     * boundary for callers and controller behavior.
+     */
     if (
       typeof fetchImpl !==
         "function"
@@ -398,158 +356,108 @@ const sendEmailVerificationEmail =
       });
     }
 
-    let configuration;
-
     try {
-      configuration =
-        getPostmarkConfiguration(
-          env
-        );
-    } catch {
-      /*
-       * Do not leak reset-specific provider/configuration
-       * error types through the verification boundary.
-       */
-      throw new EmailVerificationEmailDeliveryError({
-        type:
-          "email_verification_email_configuration_error",
-      });
+      getTransactionalEmailConfiguration(
+        env
+      );
+    } catch (error) {
+      throw mapTransactionalEmailDeliveryError(
+        error
+      );
     }
 
-    const message =
-      buildEmailVerificationMessage({
-        toEmail,
-        verificationUrl,
-        expiresAt,
-        configuration,
-      });
+    /*
+     * Verification URLs are bearer credentials.
+     * Validate the trusted credential before deriving
+     * any transport metadata from it.
+     */
+    const normalizedVerificationUrl =
+      normalizeTrustedVerificationUrl(
+        verificationUrl
+      );
 
-    let response;
-
-    try {
-      response =
-        await fetchImpl(
-          POSTMARK_EMAIL_ENDPOINT,
-          {
-            method:
-              "POST",
-
-            headers: {
-              Accept:
-                "application/json",
-
-              "Content-Type":
-                "application/json",
-
-              "X-Postmark-Server-Token":
-                configuration.serverToken,
-            },
-
-            body:
-              JSON.stringify(
-                message
-              ),
-
-            /*
-             * Never allow a redirect while carrying the
-             * Postmark server credential.
-             */
-            redirect:
-              "error",
-
-            signal:
-              AbortSignal.timeout(
-                POSTMARK_REQUEST_TIMEOUT_MS
-              ),
-          }
-        );
-    } catch {
+    if (!normalizedVerificationUrl) {
       throw new EmailVerificationEmailDeliveryError({
         type:
-          "email_verification_email_transport_error",
-      });
-    }
-
-    if (
-      !response ||
-      typeof response.ok !==
-        "boolean" ||
-      !Number.isInteger(
-        response.status
-      )
-    ) {
-      throw new EmailVerificationEmailDeliveryError({
-        type:
-          "email_verification_email_provider_response_error",
-      });
-    }
-
-    if (
-      !response.ok
-    ) {
-      throw new EmailVerificationEmailDeliveryError({
-        type:
-          "email_verification_email_provider_error",
-
-        statusCode:
-          response.status,
-      });
-    }
-
-    let providerResult;
-
-    try {
-      providerResult =
-        await response.json();
-    } catch {
-      throw new EmailVerificationEmailDeliveryError({
-        type:
-          "email_verification_email_provider_response_error",
-
-        statusCode:
-          response.status,
-      });
-    }
-
-    if (
-      !providerResult ||
-      typeof providerResult !==
-        "object" ||
-      providerResult.ErrorCode !==
-        0 ||
-      typeof providerResult.MessageID !==
-        "string" ||
-      !providerResult.MessageID.trim()
-    ) {
-      throw new EmailVerificationEmailDeliveryError({
-        type:
-          "email_verification_email_provider_response_error",
-
-        statusCode:
-          response.status,
+          "email_verification_email_input_error",
       });
     }
 
     /*
+     * Build provider-neutral verification content.
+     * Sender identity and provider credentials remain
+     * inside the transactional transport boundary.
+     */
+    const message =
+      buildNeutralEmailVerificationMessage({
+        toEmail,
+
+        verificationUrl:
+          normalizedVerificationUrl,
+
+        expiresAt,
+      });
+
+    const idempotencyKey =
+      buildCredentialSafeIdempotencyKey({
+        purpose:
+          "email-verification",
+
+        credentialUrl:
+          normalizedVerificationUrl,
+      });
+
+    if (!idempotencyKey) {
+      throw new EmailVerificationEmailDeliveryError({
+        type:
+          "email_verification_email_input_error",
+      });
+    }
+
+    let deliveryResult;
+
+    try {
+      deliveryResult =
+        await sendTransactionalEmail({
+          toEmail:
+            message.toEmail,
+
+          subject:
+            message.subject,
+
+          textBody:
+            message.textBody,
+
+          htmlBody:
+            message.htmlBody,
+
+          idempotencyKey,
+
+          fetchImpl,
+
+          env,
+        });
+    } catch (error) {
+      throw mapTransactionalEmailDeliveryError(
+        error
+      );
+    }
+
+    /*
+     * Preserve the verification caller API.
      * Never return recipient, verification URL,
-     * provider response body, or Postmark credential.
+     * provider payload/name or API credential.
      */
     return {
       messageId:
-        providerResult
-          .MessageID
-          .trim(),
+        deliveryResult.messageId,
     };
-  };
-
+};
 module.exports = {
-  POSTMARK_EMAIL_ENDPOINT,
-  POSTMARK_REQUEST_TIMEOUT_MS,
-  DEFAULT_POSTMARK_MESSAGE_STREAM,
   EMAIL_VERIFICATION_EMAIL_SUBJECT,
   EMAIL_VERIFICATION_EMAIL_TAG,
   EmailVerificationEmailDeliveryError,
   normalizeTrustedVerificationUrl,
-  buildEmailVerificationMessage,
+  buildNeutralEmailVerificationMessage,
   sendEmailVerificationEmail,
 };

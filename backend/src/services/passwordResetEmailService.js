@@ -1,21 +1,22 @@
 const {
+  normalizeSingleEmailAddress,
+} = require(
+  "../utils/emailAddressNormalization"
+);
+const {
   PASSWORD_RESET_TOKEN_TTL_MS,
 } = require("../utils/passwordResetSecurity");
 
-const POSTMARK_EMAIL_ENDPOINT =
-  "https://api.postmarkapp.com/email";
-
-const POSTMARK_REQUEST_TIMEOUT_MS =
-  10 * 1000;
-
-const DEFAULT_POSTMARK_MESSAGE_STREAM =
-  "outbound";
-
+const {
+  TransactionalEmailDeliveryError,
+  buildCredentialSafeIdempotencyKey,
+  getTransactionalEmailConfiguration,
+  sendTransactionalEmail,
+} = require(
+  "./transactionalEmailTransportService"
+);
 const PASSWORD_RESET_EMAIL_SUBJECT =
   "Reset your PravixoEduTech password";
-
-const PASSWORD_RESET_EMAIL_TAG =
-  "password-reset";
 
 class PasswordResetEmailDeliveryError extends Error {
   constructor({
@@ -50,86 +51,6 @@ const hasControlCharacters = (value) => {
   return /[\u0000-\u001F\u007F]/.test(
     value
   );
-};
-
-const normalizeSingleEmailAddress = (
-  value
-) => {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  const email =
-    value
-      .trim()
-      .toLowerCase();
-
-  if (
-    !email ||
-    email.length > 254 ||
-    hasControlCharacters(email) ||
-    email.includes(",") ||
-    email.includes(";") ||
-    email.includes(" ") ||
-    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-      email
-    )
-  ) {
-    return "";
-  }
-
-  return email;
-};
-
-const normalizeServerToken = (value) => {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  const token =
-    value.trim();
-
-  if (
-    !token ||
-    token.length > 512 ||
-    /\s/.test(token) ||
-    hasControlCharacters(token)
-  ) {
-    return "";
-  }
-
-  return token;
-};
-
-const normalizeMessageStream = (
-  value
-) => {
-  if (
-    value === undefined ||
-    value === null ||
-    value === ""
-  ) {
-    return DEFAULT_POSTMARK_MESSAGE_STREAM;
-  }
-
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  const stream =
-    value.trim();
-
-  if (
-    !stream ||
-    stream.length > 100 ||
-    !/^[A-Za-z0-9._-]+$/.test(
-      stream
-    )
-  ) {
-    return "";
-  }
-
-  return stream;
 };
 
 const isLocalDevelopmentHostname = (
@@ -213,50 +134,10 @@ const escapeHtml = (value) => {
     .replaceAll("'", "&#39;");
 };
 
-const getPostmarkConfiguration = (
-  env = process.env
-) => {
-  const serverToken =
-    normalizeServerToken(
-      env &&
-      env.POSTMARK_SERVER_TOKEN
-    );
-
-  const fromEmail =
-    normalizeSingleEmailAddress(
-      env &&
-      env.POSTMARK_FROM_EMAIL
-    );
-
-  const messageStream =
-    normalizeMessageStream(
-      env &&
-      env.POSTMARK_MESSAGE_STREAM
-    );
-
-  if (
-    !serverToken ||
-    !fromEmail ||
-    !messageStream
-  ) {
-    throw new PasswordResetEmailDeliveryError({
-      type:
-        "password_reset_email_configuration_error",
-    });
-  }
-
-  return {
-    serverToken,
-    fromEmail,
-    messageStream,
-  };
-};
-
-const buildPasswordResetEmailMessage = ({
+const buildNeutralPasswordResetEmailMessage = ({
   toEmail,
   resetUrl,
   expiresAt,
-  configuration,
 } = {}) => {
   const normalizedTo =
     normalizeSingleEmailAddress(
@@ -287,36 +168,6 @@ const buildPasswordResetEmailMessage = ({
     throw new PasswordResetEmailDeliveryError({
       type:
         "password_reset_email_input_error",
-    });
-  }
-
-  if (
-    !configuration ||
-    typeof configuration !== "object"
-  ) {
-    throw new PasswordResetEmailDeliveryError({
-      type:
-        "password_reset_email_configuration_error",
-    });
-  }
-
-  const fromEmail =
-    normalizeSingleEmailAddress(
-      configuration.fromEmail
-    );
-
-  const messageStream =
-    normalizeMessageStream(
-      configuration.messageStream
-    );
-
-  if (
-    !fromEmail ||
-    !messageStream
-  ) {
-    throw new PasswordResetEmailDeliveryError({
-      type:
-        "password_reset_email_configuration_error",
     });
   }
 
@@ -367,39 +218,58 @@ const buildPasswordResetEmailMessage = ({
   ].join("");
 
   return {
-    From:
-      "PravixoEduTech <" +
-      fromEmail +
-      ">",
-
-    To:
+    toEmail:
       normalizedTo,
 
-    Subject:
+    subject:
       PASSWORD_RESET_EMAIL_SUBJECT,
 
-    TextBody:
-      textBody,
+    textBody,
 
-    HtmlBody:
-      htmlBody,
-
-    MessageStream:
-      messageStream,
-
-    Tag:
-      PASSWORD_RESET_EMAIL_TAG,
-
-    /*
-     * A password-reset URL is itself a credential.
-     * Do not enable provider tracking for it.
-     */
-    TrackOpens:
-      false,
-
-    TrackLinks:
-      "None",
+    htmlBody,
   };
+};
+
+const mapTransactionalEmailDeliveryError = (
+  error
+) => {
+  if (
+    !(
+      error instanceof
+      TransactionalEmailDeliveryError
+    )
+  ) {
+    return new PasswordResetEmailDeliveryError({
+      type:
+        "password_reset_email_transport_error",
+    });
+  }
+
+  const mappedTypes = {
+    transactional_email_configuration_error:
+      "password_reset_email_configuration_error",
+
+    transactional_email_input_error:
+      "password_reset_email_input_error",
+
+    transactional_email_transport_error:
+      "password_reset_email_transport_error",
+
+    transactional_email_provider_error:
+      "password_reset_email_provider_error",
+
+    transactional_email_provider_response_error:
+      "password_reset_email_provider_response_error",
+  };
+
+  return new PasswordResetEmailDeliveryError({
+    type:
+      mappedTypes[error.type] ||
+      "password_reset_email_transport_error",
+
+    statusCode:
+      error.statusCode,
+  });
 };
 
 const sendPasswordResetEmail = async ({
@@ -409,6 +279,11 @@ const sendPasswordResetEmail = async ({
   fetchImpl = globalThis.fetch,
   env = process.env,
 } = {}) => {
+  /*
+   * Preserve the existing public password-reset
+   * delivery contract: missing transport authority
+   * is a password-reset transport error.
+   */
   if (typeof fetchImpl !== "function") {
     throw new PasswordResetEmailDeliveryError({
       type:
@@ -416,136 +291,100 @@ const sendPasswordResetEmail = async ({
     });
   }
 
-  const configuration =
-    getPostmarkConfiguration(
-      env
+  const normalizedResetUrl =
+    normalizeTrustedResetUrl(
+      resetUrl
     );
 
-  const message =
-    buildPasswordResetEmailMessage({
-      toEmail,
-      resetUrl,
-      expiresAt,
-      configuration,
+  if (!normalizedResetUrl) {
+    throw new PasswordResetEmailDeliveryError({
+      type:
+        "password_reset_email_input_error",
     });
+  }
 
-  let response;
+  let configuration;
 
   try {
-    response =
-      await fetchImpl(
-        POSTMARK_EMAIL_ENDPOINT,
-        {
-          method: "POST",
-
-          headers: {
-            Accept:
-              "application/json",
-
-            "Content-Type":
-              "application/json",
-
-            "X-Postmark-Server-Token":
-              configuration.serverToken,
-          },
-
-          body:
-            JSON.stringify(
-              message
-            ),
-
-          /*
-           * The provider endpoint is fixed.
-           * Never follow an unexpected redirect
-           * while carrying a server credential.
-           */
-          redirect:
-            "error",
-
-          signal:
-            AbortSignal.timeout(
-              POSTMARK_REQUEST_TIMEOUT_MS
-            ),
-        }
+    configuration =
+      getTransactionalEmailConfiguration(
+        env
       );
-  } catch {
+  } catch (error) {
+    throw mapTransactionalEmailDeliveryError(
+      error
+    );
+  }
+
+  const message =
+    buildNeutralPasswordResetEmailMessage({
+      toEmail,
+
+      resetUrl:
+        normalizedResetUrl,
+
+      expiresAt,
+    });
+  const idempotencyKey =
+    buildCredentialSafeIdempotencyKey({
+      purpose:
+        "password-reset",
+
+      credentialUrl:
+        normalizedResetUrl,
+    });
+
+  if (!idempotencyKey) {
     throw new PasswordResetEmailDeliveryError({
       type:
-        "password_reset_email_transport_error",
+        "password_reset_email_input_error",
     });
   }
 
-  if (
-    !response ||
-    typeof response.status !== "number" ||
-    response.status !== 200
-  ) {
-    throw new PasswordResetEmailDeliveryError({
-      type:
-        "password_reset_email_provider_error",
-
-      statusCode:
-        response &&
-        Number.isInteger(
-          response.status
-        )
-          ? response.status
-          : undefined,
-    });
-  }
-
-  let providerResult;
+  let deliveryResult;
 
   try {
-    providerResult =
-      await response.json();
-  } catch {
-    throw new PasswordResetEmailDeliveryError({
-      type:
-        "password_reset_email_provider_response_error",
+    deliveryResult =
+      await sendTransactionalEmail({
+        toEmail:
+          message.toEmail,
 
-      statusCode:
-        response.status,
-    });
-  }
+        subject:
+          message.subject,
 
-  if (
-    !providerResult ||
-    providerResult.ErrorCode !== 0 ||
-    typeof providerResult.MessageID !== "string" ||
-    !providerResult.MessageID.trim()
-  ) {
-    throw new PasswordResetEmailDeliveryError({
-      type:
-        "password_reset_email_provider_response_error",
+        textBody:
+          message.textBody,
 
-      statusCode:
-        response.status,
-    });
+        htmlBody:
+          message.htmlBody,
+
+        idempotencyKey,
+
+        fetchImpl,
+
+        env,
+      });
+  } catch (error) {
+    throw mapTransactionalEmailDeliveryError(
+      error
+    );
   }
 
   /*
-   * Do not return recipient, token-bearing URL,
-   * provider response body, or API credential.
+   * Preserve the existing password-reset caller API.
+   * Never return recipient, credential-bearing URL,
+   * provider payload, provider name or API credential.
    */
   return {
     messageId:
-      providerResult
-        .MessageID
-        .trim(),
+      deliveryResult.messageId,
   };
 };
 
 module.exports = {
-  POSTMARK_EMAIL_ENDPOINT,
-  POSTMARK_REQUEST_TIMEOUT_MS,
-  DEFAULT_POSTMARK_MESSAGE_STREAM,
   PASSWORD_RESET_EMAIL_SUBJECT,
-  PASSWORD_RESET_EMAIL_TAG,
   PasswordResetEmailDeliveryError,
-  normalizeSingleEmailAddress,
   normalizeTrustedResetUrl,
-  getPostmarkConfiguration,
-  buildPasswordResetEmailMessage,
+  buildNeutralPasswordResetEmailMessage,
   sendPasswordResetEmail,
 };
