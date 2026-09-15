@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { secureLogout } from "../../../lib/secureLogout";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -585,7 +586,7 @@ export default function StudentMockTestsPage() {
         };
     }, [isClientReady, loadMockTests, loadPaymentPackages, token]);
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
         const shouldLogout = window.confirm(
             "Are you sure you want to logout? Your saved student session will be cleared."
         );
@@ -594,6 +595,15 @@ export default function StudentMockTestsPage() {
             return;
         }
 
+        const logoutResult = await secureLogout(token);
+
+        if (!logoutResult.shouldClearLocalSession) {
+            setActionMessage("");
+            setErrorMessage(
+                "Secure logout could not be confirmed. Please check your connection and try again."
+            );
+            return;
+        }
         clearStudentSessionStorage();
 
         setToken("");

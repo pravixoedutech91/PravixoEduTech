@@ -12,8 +12,15 @@ const API_BASE_URL =
 const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
 const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
 
+const EMAIL_VERIFICATION_REQUIRED_CODE =
+    "EMAIL_VERIFICATION_REQUIRED";
+
+const GENERIC_RESEND_MESSAGE =
+    "If an eligible account exists, email verification instructions have been sent.";
+
 type LoginResponse = {
     success: boolean;
+    code?: string;
     message?: string;
     token?: string;
     data?: {
@@ -26,14 +33,32 @@ type LoginResponse = {
     };
 };
 
+type ResendVerificationResponse = {
+    success?: boolean;
+    message?: string;
+};
+
 export default function StudentLoginPage() {
     const router = useRouter();
 
     const [login, setLogin] = useState("");
     const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
+
+    const [verificationRequiredLogin, setVerificationRequiredLogin] =
+        useState("");
+
+    const [verificationMessage, setVerificationMessage] =
+        useState("");
+
+    const [isResendingVerification, setIsResendingVerification] =
+        useState(false);
+
+    const [resendMessage, setResendMessage] = useState("");
+    const [resendError, setResendError] = useState("");
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         event.preventDefault();
@@ -42,6 +67,10 @@ export default function StudentLoginPage() {
 
         setErrorMessage("");
         setSuccessMessage("");
+        setVerificationRequiredLogin("");
+        setVerificationMessage("");
+        setResendMessage("");
+        setResendError("");
 
         if (!cleanLogin || !password) {
             setErrorMessage("Please enter mobile/email and password.");
@@ -64,6 +93,21 @@ export default function StudentLoginPage() {
             });
 
             const result = (await response.json()) as LoginResponse;
+
+            if (
+                response.status === 403 &&
+                result.code ===
+                    EMAIL_VERIFICATION_REQUIRED_CODE
+            ) {
+                setVerificationRequiredLogin(cleanLogin);
+                setVerificationMessage(
+                    result.message ||
+                        "Please verify your email before signing in."
+                );
+
+                setPassword("");
+                return;
+            }
 
             if (!response.ok || !result.success) {
                 throw new Error(result.message || "Login failed.");
@@ -92,6 +136,72 @@ export default function StudentLoginPage() {
             );
         } finally {
             setIsSubmitting(false);
+        }
+    };
+
+    const handleResendVerification = async () => {
+        if (
+            !verificationRequiredLogin ||
+            isResendingVerification
+        ) {
+            return;
+        }
+
+        setResendMessage("");
+        setResendError("");
+        setIsResendingVerification(true);
+
+        try {
+            const response = await fetch(
+                `${API_BASE_URL}/api/auth/resend-email-verification`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        login: verificationRequiredLogin,
+                    }),
+                }
+            );
+
+            let result: ResendVerificationResponse = {};
+
+            try {
+                result =
+                    (await response.json()) as
+                        ResendVerificationResponse;
+            } catch {
+                result = {};
+            }
+
+            if (
+                !response.ok ||
+                result.success !== true
+            ) {
+                if (response.status === 429) {
+                    throw new Error(
+                        "Too many verification requests. Please wait a few minutes and try again."
+                    );
+                }
+
+                throw new Error(
+                    "Unable to request another verification email right now. Please try again later."
+                );
+            }
+
+            setResendMessage(
+                result.message ||
+                    GENERIC_RESEND_MESSAGE
+            );
+        } catch (error) {
+            setResendError(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to request another verification email right now."
+            );
+        } finally {
+            setIsResendingVerification(false);
         }
     };
 
@@ -157,22 +267,88 @@ export default function StudentLoginPage() {
                                     >
                                         Password
                                     </label>
-                                    <input
-                                        id="student-password"
-                                        type="password"
-                                        value={password}
-                                        onChange={(event) =>
-                                            setPassword(event.target.value)
-                                        }
-                                        placeholder="Enter password"
-                                        autoComplete="current-password"
-                                        className="mt-2 min-h-12 w-full rounded-2xl border border-slate-300 px-4 text-sm outline-none focus:border-blue-500"
-                                    />
+                                    <div className="relative mt-2">
+                                        <input
+                                            id="student-password"
+                                            type={showPassword ? "text" : "password"}
+                                            value={password}
+                                            onChange={(event) =>
+                                                setPassword(event.target.value)
+                                            }
+                                            placeholder="Enter password"
+                                            autoComplete="current-password"
+                                            className="min-h-12 w-full rounded-2xl border border-slate-300 px-4 pr-16 text-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
+                                        />
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setShowPassword(
+                                                    (current) => !current
+                                                )
+                                            }
+                                            aria-label={showPassword ? "Hide password" : "Show password"}
+                                            className="absolute inset-y-0 right-0 flex items-center px-4 text-xs font-semibold text-blue-700 hover:text-blue-900 focus:outline-none"
+                                        >
+                                            {showPassword ? "Hide" : "Show"}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="-mt-2 text-right">
+                                    <Link
+                                        href="/student/forgot-password"
+                                        className="text-sm font-semibold text-blue-700 hover:text-blue-800"
+                                    >
+                                        Forgot password?
+                                    </Link>
                                 </div>
 
                                 {errorMessage ? (
                                     <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
                                         {errorMessage}
+                                    </div>
+                                ) : null}
+
+                                {verificationRequiredLogin ? (
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                                        <p className="font-semibold">
+                                            Verify your email to continue
+                                        </p>
+
+                                        <p className="mt-2 leading-6">
+                                            {verificationMessage}
+                                        </p>
+
+                                        <p className="mt-2 text-xs leading-5 text-amber-800">
+                                            Verification does not sign you in
+                                            automatically. After verification,
+                                            return here and sign in again.
+                                        </p>
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                void handleResendVerification()
+                                            }
+                                            disabled={isResendingVerification}
+                                            className="mt-4 min-h-11 w-full rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            {isResendingVerification
+                                                ? "Requesting verification email..."
+                                                : "Resend Verification Email"}
+                                        </button>
+
+                                        {resendMessage ? (
+                                            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium leading-6 text-emerald-800">
+                                                {resendMessage}
+                                            </div>
+                                        ) : null}
+
+                                        {resendError ? (
+                                            <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm font-medium leading-6 text-red-700">
+                                                {resendError}
+                                            </div>
+                                        ) : null}
                                     </div>
                                 ) : null}
 
@@ -191,17 +367,14 @@ export default function StudentLoginPage() {
                                 </button>
                             </form>
 
-                            <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-sm">
+                            <div className="mt-6 border-t border-slate-200 pt-5 text-center text-sm text-slate-600">
+                                New to Pravixo?{" "}
                                 <Link
-                                    href="/student/mock-tests"
-                                    className="font-semibold text-slate-600 hover:text-blue-700"
+                                    href="/student/register"
+                                    className="font-semibold text-blue-700 hover:text-blue-800"
                                 >
-                                    Back to Mock Tests
+                                    Create Account
                                 </Link>
-
-                                <span className="text-slate-500">
-                                    Use your registered mobile number or email to sign in.
-                                </span>
                             </div>
                         </div>
                     </div>

@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import { secureLogout } from "../../../lib/secureLogout";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -270,7 +271,7 @@ export default function StudentAttemptsPage() {
         return () => window.clearTimeout(timer);
     }, [isClientReady, cleanToken, fetchAttempts]);
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
         const shouldLogout = window.confirm(
             "Are you sure you want to logout? Your saved student session will be cleared."
         );
@@ -279,6 +280,15 @@ export default function StudentAttemptsPage() {
             return;
         }
 
+        const logoutResult = await secureLogout(token);
+
+        if (!logoutResult.shouldClearLocalSession) {
+            setSuccessMessage("");
+            setErrorMessage(
+                "Secure logout could not be confirmed. Please check your connection and try again."
+            );
+            return;
+        }
         clearStudentSessionStorage();
 
         setToken("");
