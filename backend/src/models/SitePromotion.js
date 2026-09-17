@@ -7,6 +7,8 @@ const PROMOTION_PLACEMENTS = [
   "current_affairs_hero",
   "jobs_hero",
   "mock_tests_hero",
+  "student_dashboard_primary",
+  "student_dashboard_secondary",
 ];
 
 const PROMOTION_STATUSES = [

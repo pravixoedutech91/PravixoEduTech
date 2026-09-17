@@ -4,6 +4,7 @@ const router = express.Router();
 
 const {
   getActivePromotion,
+  getActiveStudentPromotion,
   getAdminPromotions,
   getAdminPromotionById,
   createPromotion,
@@ -27,6 +28,13 @@ const promotionAdminRoles = [
 router.get(
   "/active",
   getActivePromotion
+);
+
+router.get(
+  "/student/active",
+  protect,
+  authorize("student"),
+  getActiveStudentPromotion
 );
 
 router.get(
