@@ -45,6 +45,33 @@ const helperSource =
 const pageContracts = [
   {
     name:
+      "student dashboard",
+
+    file:
+      "app/student/page.tsx",
+
+    importPath:
+      "../../lib/secureLogout",
+
+    tokenExpression:
+      "token",
+
+    cleanupMarker:
+      "clearStudentSessionStorage();",
+
+    redirectMarker:
+      'router.replace("/student/login");',
+
+    forbiddenFailureOperations: [
+      "clearStudentSessionStorage();",
+      'setToken("");',
+      "setProfile(null);",
+      'router.replace("/student/login");',
+    ],
+  },
+
+  {
+    name:
       "mock-tests",
 
     file:
@@ -679,12 +706,22 @@ for (
 }
 
 test(
-  "timed attempt remains outside logout implementation scope",
+  "StudentPortalShell and timed attempt remain outside logout implementation scope",
   () => {
+    const shell =
+      read(
+        "components/student/StudentPortalShell.tsx"
+      );
+
     const timedAttempt =
       read(
         "app/student/attempts/[attemptId]/page.tsx"
       );
+
+    assert.doesNotMatch(
+      shell,
+      /secureLogout/
+    );
 
     assert.doesNotMatch(
       timedAttempt,

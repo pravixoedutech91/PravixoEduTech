@@ -342,7 +342,7 @@ test(
     assert.equal(
       count(
         loginSource,
-        'router.push("/student/mock-tests")'
+        'router.push("/student")'
       ),
       1
     );
