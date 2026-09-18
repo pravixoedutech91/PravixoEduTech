@@ -306,6 +306,17 @@ export default function StudentAttemptsPage() {
     }, [activeStatusFilter, cleanToken, currentPage, router]);
 
     useEffect(() => {
+        if (!isClientReady) {
+            return;
+        }
+
+        if (!cleanToken) {
+            clearStudentSessionStorage();
+            router.replace("/student/login");
+        }
+    }, [isClientReady, cleanToken, router]);
+
+    useEffect(() => {
         if (!isClientReady || !cleanToken) {
             return;
         }
@@ -316,6 +327,10 @@ export default function StudentAttemptsPage() {
 
         return () => window.clearTimeout(timer);
     }, [isClientReady, cleanToken, fetchAttempts]);
+
+    if (!isClientReady || !cleanToken) {
+        return null;
+    }
 
     const handleLogout = async () => {
         const shouldLogout = window.confirm(
