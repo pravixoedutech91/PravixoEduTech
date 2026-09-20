@@ -228,8 +228,8 @@ function isActiveStudentRoute(
 
 function desktopNavClassName(isActive: boolean) {
     return isActive
-        ? "flex min-h-11 items-center gap-3 rounded-xl bg-white/10 px-3.5 text-sm font-bold text-white ring-1 ring-white/8"
-        : "flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white";
+        ? "pravixo-sidebar-link flex min-h-11 items-center gap-3 rounded-xl bg-white/10 px-3.5 text-sm font-bold text-white ring-1 ring-white/8"
+        : "pravixo-sidebar-link flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white";
 }
 
 function mobileNavClassName(isActive: boolean) {
@@ -257,8 +257,128 @@ export default function StudentPortalShell({
 
     return (
         <div className="min-h-[100dvh] bg-[#f5f7fb] text-slate-950">
-            <aside className="fixed inset-y-0 left-0 z-40 hidden w-[248px] flex-col bg-[#060b1d] text-white lg:flex">
-                <div className="flex h-[82px] items-center border-b border-white/8 px-5">
+            <style>{`
+                @keyframes pravixoSidebarTwinkle {
+                    0%,
+                    100% {
+                        opacity: 0.22;
+                        transform: scale(0.82);
+                    }
+
+                    50% {
+                        opacity: 0.95;
+                        transform: scale(1.18);
+                    }
+                }
+
+                @keyframes pravixoSidebarGlow {
+                    0%,
+                    100% {
+                        opacity: 0.34;
+                        transform: scale(0.96);
+                    }
+
+                    50% {
+                        opacity: 0.58;
+                        transform: scale(1.04);
+                    }
+                }
+
+                .pravixo-sidebar-star {
+                    animation: pravixoSidebarTwinkle 4.8s ease-in-out infinite;
+                }
+
+                .pravixo-sidebar-glow {
+                    animation: pravixoSidebarGlow 8s ease-in-out infinite;
+                }
+
+                @media (max-height: 760px) {
+                    .pravixo-student-sidebar .pravixo-sidebar-header {
+                        height: 64px !important;
+                        padding-left: 16px !important;
+                        padding-right: 16px !important;
+                    }
+
+                    .pravixo-student-sidebar .pravixo-sidebar-scroll {
+                        padding-top: 8px !important;
+                        padding-bottom: 8px !important;
+                    }
+
+                    .pravixo-student-sidebar .pravixo-sidebar-label {
+                        font-size: 8px !important;
+                        line-height: 10px !important;
+                    }
+
+                    .pravixo-student-sidebar .pravixo-sidebar-label.pravixo-sidebar-section {
+                        margin-top: 10px !important;
+                    }
+
+                    .pravixo-student-sidebar .pravixo-sidebar-nav {
+                        margin-top: 4px !important;
+                    }
+
+                    .pravixo-student-sidebar .pravixo-sidebar-link {
+                        min-height: 30px !important;
+                        gap: 8px !important;
+                        padding-left: 12px !important;
+                        padding-right: 12px !important;
+                        font-size: 12px !important;
+                    }
+
+                    .pravixo-student-sidebar .pravixo-sidebar-card {
+                        margin-top: 8px !important;
+                        height: 80px !important;
+                        padding: 8px 12px 0 !important;
+                    }
+
+                    .pravixo-student-sidebar .pravixo-sidebar-card-title {
+                        font-size: 13px !important;
+                        line-height: 1.05 !important;
+                    }
+
+                    .pravixo-student-sidebar .pravixo-sidebar-card-copy {
+                        margin-top: 3px !important;
+                        font-size: 8px !important;
+                        line-height: 11px !important;
+                    }
+
+                    .pravixo-student-sidebar .pravixo-sidebar-card-mountain {
+                        height: 58px !important;
+                    }
+
+                    .pravixo-student-sidebar .pravixo-sidebar-footer {
+                        padding: 6px 8px !important;
+                    }
+
+                    .pravixo-student-sidebar .pravixo-sidebar-profile {
+                        gap: 8px !important;
+                        padding-top: 3px !important;
+                        padding-bottom: 3px !important;
+                    }
+                }
+                @media (prefers-reduced-motion: reduce) {
+                    .pravixo-sidebar-star,
+                    .pravixo-sidebar-glow {
+                        animation: none !important;
+                    }
+                }
+            `}</style>
+            <aside className="pravixo-student-sidebar fixed inset-y-0 left-0 z-40 hidden w-[248px] flex-col overflow-hidden bg-[#060b1d] text-white lg:flex">
+                <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 overflow-hidden"
+                >
+                    <div className="pravixo-sidebar-glow absolute -left-20 top-[15%] h-52 w-52 rounded-full bg-blue-600/10 blur-3xl" />
+                    <div className="pravixo-sidebar-glow absolute -right-24 top-[55%] h-56 w-56 rounded-full bg-indigo-500/10 blur-3xl [animation-delay:2s]" />
+
+                    <span className="pravixo-sidebar-star absolute left-[18%] top-[13%] h-1 w-1 rounded-full bg-blue-100 shadow-[0_0_7px_rgba(191,219,254,0.8)]" />
+                    <span className="pravixo-sidebar-star absolute right-[20%] top-[21%] h-1.5 w-1.5 rounded-full bg-white/80 shadow-[0_0_8px_rgba(255,255,255,0.7)] [animation-delay:1.1s]" />
+                    <span className="pravixo-sidebar-star absolute left-[34%] top-[40%] h-1 w-1 rounded-full bg-cyan-100/80 [animation-delay:2.3s]" />
+                    <span className="pravixo-sidebar-star absolute right-[12%] top-[48%] h-1 w-1 rounded-full bg-blue-100/80 [animation-delay:0.6s]" />
+                    <span className="pravixo-sidebar-star absolute left-[16%] top-[69%] h-1.5 w-1.5 rounded-full bg-white/75 shadow-[0_0_7px_rgba(255,255,255,0.55)] [animation-delay:3.2s]" />
+                    <span className="pravixo-sidebar-star absolute right-[28%] top-[76%] h-1 w-1 rounded-full bg-blue-200/80 [animation-delay:1.7s]" />
+                </div>
+                <div className="pravixo-sidebar-header flex h-[82px] items-center border-b border-white/8 px-5">
                     <Link
                         href="/student"
                         className="flex min-w-0 items-center gap-3"
@@ -279,12 +399,12 @@ export default function StudentPortalShell({
                     </Link>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-3 py-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    <p className="px-3 text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">
+                <div className="pravixo-sidebar-scroll flex-1 overflow-y-auto px-3 py-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    <p className="pravixo-sidebar-label px-3 text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">
                         Workspace
                     </p>
 
-                    <nav className="mt-2">
+                    <nav className="pravixo-sidebar-nav mt-2">
                         <Link
                             href="/student"
                             className={desktopNavClassName(
@@ -296,12 +416,12 @@ export default function StudentPortalShell({
                         </Link>
                     </nav>
 
-                    <p className="mt-6 px-3 text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">
+                    <p className="pravixo-sidebar-label pravixo-sidebar-section mt-6 px-3 text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">
                         Learn
                     </p>
 
-                    <nav className="mt-2 space-y-0.5">
-                        <div className="flex min-h-11 items-center justify-between rounded-xl px-3.5 text-sm font-semibold text-slate-400">
+                    <nav className="pravixo-sidebar-nav mt-2 space-y-0.5">
+                        <div className="pravixo-sidebar-link flex min-h-11 items-center justify-between rounded-xl px-3.5 text-sm font-semibold text-slate-400">
                             <span className="flex items-center gap-3">
                                 <Icon name="course" />
                                 Courses
@@ -315,7 +435,7 @@ export default function StudentPortalShell({
                             <Link
                                 key={item.href}
                                 href={item.href}
-                                className="flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white"
+                                className="pravixo-sidebar-link flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white"
                             >
                                 <Icon name={item.icon} />
                                 {item.label}
@@ -323,11 +443,11 @@ export default function StudentPortalShell({
                         ))}
                     </nav>
 
-                    <p className="mt-6 px-3 text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">
+                    <p className="pravixo-sidebar-label pravixo-sidebar-section mt-6 px-3 text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">
                         Practice
                     </p>
 
-                    <nav className="mt-2 space-y-0.5">
+                    <nav className="pravixo-sidebar-nav mt-2 space-y-0.5">
                         {practiceLinks.map((item) => {
                             const isActive =
                                 isActiveStudentRoute(
@@ -350,16 +470,16 @@ export default function StudentPortalShell({
                         })}
                     </nav>
 
-                    <p className="mt-6 px-3 text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">
+                    <p className="pravixo-sidebar-label pravixo-sidebar-section mt-6 px-3 text-[9px] font-black uppercase tracking-[0.22em] text-slate-500">
                         Explore
                     </p>
 
-                    <nav className="mt-2 space-y-0.5">
+                    <nav className="pravixo-sidebar-nav mt-2 space-y-0.5">
                         {exploreLinks.map((item) => (
                             <Link
                                 key={item.href}
                                 href={item.href}
-                                className="flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white"
+                                className="pravixo-sidebar-link flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white"
                             >
                                 <Icon name={item.icon} />
                                 {item.label}
@@ -368,16 +488,82 @@ export default function StudentPortalShell({
 
                         <Link
                             href="/search"
-                            className="flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white"
+                            className="pravixo-sidebar-link flex min-h-11 items-center gap-3 rounded-xl px-3.5 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white"
                         >
                             <Icon name="search" />
                             Search
                         </Link>
                     </nav>
+                    <div className="pravixo-sidebar-card relative mt-5 h-[182px] overflow-hidden rounded-[1.3rem] border border-blue-300/15 bg-gradient-to-b from-[#0c1d46] via-[#0a1838] to-[#071126] px-4 pt-4 shadow-[0_20px_45px_-28px_rgba(59,130,246,0.75)]">
+                        <div className="relative z-10">
+                            <p className="pravixo-sidebar-card-title text-[17px] font-black leading-[1.15] tracking-tight text-white">
+                                Learn.
+                                <br />
+                                <span className="text-blue-300">
+                                    Practice.
+                                </span>
+                                <br />
+                                Progress.
+                            </p>
+
+                            <p className="pravixo-sidebar-card-copy mt-2 max-w-[145px] text-[10px] font-medium leading-4 text-slate-300">
+                                Your Dream Govt. Job
+                                <br />
+                                Starts Here
+                            </p>
+                        </div>
+
+                        <div
+                            aria-hidden="true"
+                            className="absolute inset-0"
+                        >
+                            <div className="pravixo-sidebar-glow absolute right-5 top-4 h-12 w-12 rounded-full bg-blue-300/10 blur-xl" />
+
+                            <span className="pravixo-sidebar-star absolute right-7 top-5 h-1 w-1 rounded-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.8)]" />
+                            <span className="pravixo-sidebar-star absolute right-14 top-10 h-1 w-1 rounded-full bg-blue-100/90 [animation-delay:1.4s]" />
+                            <span className="pravixo-sidebar-star absolute right-4 top-[39%] h-1.5 w-1.5 rounded-full bg-white/85 shadow-[0_0_8px_rgba(255,255,255,0.6)] [animation-delay:2.6s]" />
+
+                            <svg
+                                viewBox="0 0 220 105"
+                                preserveAspectRatio="xMidYMax meet"
+                                className="pravixo-sidebar-card-mountain absolute bottom-0 left-0 h-[100px] w-full"
+                            >
+                                <path
+                                    d="M0 105 L42 69 L64 83 L91 54 L123 82 L155 52 L220 105 Z"
+                                    fill="#10265d"
+                                />
+
+                                <path
+                                    d="M0 105 L57 75 L83 91 L121 45 L160 87 L183 65 L220 105 Z"
+                                    fill="#153a8b"
+                                />
+
+                                <path
+                                    d="M55 105 L124 38 L195 105 Z"
+                                    fill="#1d4ed8"
+                                />
+
+                                <path
+                                    d="M124 38 L104 58 L118 53 L127 64 L136 52 L147 59 Z"
+                                    fill="#93c5fd"
+                                />
+
+                                <path
+                                    d="M0 105 C36 90 62 94 94 105 Z"
+                                    fill="#0a1738"
+                                />
+
+                                <path
+                                    d="M137 105 C167 90 192 92 220 105 Z"
+                                    fill="#08132f"
+                                />
+                            </svg>
+                        </div>
+                    </div>
                 </div>
 
-                <div className="border-t border-white/8 p-3">
-                    <div className="flex items-center gap-3 rounded-xl px-2 py-2">
+                <div className="pravixo-sidebar-footer border-t border-white/8 p-3">
+                    <div className="pravixo-sidebar-profile flex items-center gap-3 rounded-xl px-2 py-2">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-sm font-black">
                             {getInitial(profile?.name)}
                         </span>
