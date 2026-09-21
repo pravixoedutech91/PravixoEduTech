@@ -1342,11 +1342,11 @@ export default function StudentDashboardPage() {
                             </h2>
                         </div>
 
-                        <div className="mt-3 grid gap-3 md:grid-cols-2">
-                            <article className="relative overflow-hidden rounded-[1.2rem] bg-gradient-to-br from-indigo-950 to-slate-950 p-4 text-white shadow-sm">
+                        <div className="mt-3 grid gap-2.5 md:grid-cols-2">
+                            <article className="group relative overflow-hidden rounded-[1.15rem] border border-indigo-900/50 bg-gradient-to-br from-[#151643] via-[#101537] to-[#080d1f] p-3.5 text-white shadow-[0_14px_32px_-24px_rgba(15,23,42,0.95)] transition hover:-translate-y-0.5 hover:border-indigo-700/60 hover:shadow-md">
                                 <div className="absolute -right-10 -top-14 h-32 w-32 rounded-full bg-indigo-500/20 blur-3xl" />
 
-                                <div className="relative flex min-h-[112px] flex-col">
+                                <div className="relative flex min-h-[102px] flex-col">
                                     <div className="flex items-start justify-between gap-3">
                                         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-indigo-100">
                                             <Icon
@@ -1383,11 +1383,11 @@ export default function StudentDashboardPage() {
 
                             <Link
                                 href="/student/mock-tests"
-                                className="group relative overflow-hidden rounded-[1.2rem] bg-gradient-to-br from-blue-600 via-blue-700 to-slate-950 p-4 text-white shadow-sm transition hover:-translate-y-0.5"
+                                className="group relative overflow-hidden rounded-[1.15rem] border border-blue-400/20 bg-gradient-to-br from-[#2563eb] via-[#1d4ed8] to-[#10234f] p-3.5 text-white shadow-[0_14px_32px_-24px_rgba(37,99,235,0.8)] transition hover:-translate-y-0.5 hover:border-blue-300/30 hover:shadow-md"
                             >
                                 <div className="absolute -right-10 -top-14 h-32 w-32 rounded-full bg-cyan-300/20 blur-3xl" />
 
-                                <div className="relative flex min-h-[112px] flex-col">
+                                <div className="relative flex min-h-[102px] flex-col">
                                     <div className="flex items-start justify-between gap-3">
                                         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10">
                                             <Icon
@@ -1470,13 +1470,13 @@ export default function StudentDashboardPage() {
                             </Link>
                         </div>
 
-                        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-5">
+                        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
                             {[...learnLinks, ...exploreLinks].map(
                                 (item) => (
                                     <Link
                                         key={item.href}
                                         href={item.href}
-                                        className="group min-h-[92px] rounded-xl border border-slate-200 bg-white p-3 shadow-sm transition hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-md"
+                                        className="group min-h-[82px] rounded-[1rem] border border-slate-200/90 bg-white p-2.5 shadow-[0_10px_24px_-22px_rgba(15,23,42,0.8)] transition hover:-translate-y-0.5 hover:border-blue-200 hover:bg-blue-50/20 hover:shadow-md"
                                     >
                                         <div className="flex items-start justify-between gap-2">
                                             <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-700 transition group-hover:bg-blue-50 group-hover:text-blue-700">
@@ -1504,7 +1504,7 @@ export default function StudentDashboardPage() {
                             )}
                         </div>
                     </section>
-<section className="mt-8 rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+<section className="mt-6 rounded-[1.25rem] border border-slate-200/90 bg-white p-4 shadow-[0_14px_34px_-28px_rgba(15,23,42,0.8)] sm:p-5">
                         <div className="flex items-center justify-between gap-4">
                             <div>
                                 <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
@@ -1533,12 +1533,12 @@ export default function StudentDashboardPage() {
                                 {[1, 2, 3].map((item) => (
                                     <div
                                         key={item}
-                                        className="h-16 animate-pulse rounded-xl bg-slate-100"
+                                        className="h-14 animate-pulse rounded-xl bg-slate-100"
                                     />
                                 ))}
                             </div>
                         ) : attempts.length === 0 ? (
-                            <div className="mt-5 rounded-2xl bg-slate-50 p-5 text-sm text-slate-600">
+                            <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/80 p-4 text-sm text-slate-600">
                                 Your test activity will appear here after
                                 you start practicing.
                             </div>
@@ -1549,7 +1549,7 @@ export default function StudentDashboardPage() {
                                     .map((attempt) => (
                                         <div
                                             key={attempt.attemptId}
-                                            className="flex flex-col gap-3 py-4 first:pt-1 last:pb-1 sm:flex-row sm:items-center sm:justify-between"
+                                            className="flex flex-col gap-2.5 py-3 first:pt-1 last:pb-1 sm:flex-row sm:items-center sm:justify-between"
                                         >
                                             <div className="min-w-0">
                                                 <div className="flex flex-wrap items-center gap-2">
