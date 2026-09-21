@@ -42,6 +42,11 @@ const buildStudentMockTestListItem = (
 ) => {
     const activeVersionSettings =
         mockTest.activeVersionId?.settings || mockTest.settings || {};
+    const examTaxonomyNode = mockTest.examTaxonomyNodeId;
+    const examFamilyNode = examTaxonomyNode?.parentId;
+    const hasValidExamTaxonomy =
+        examTaxonomyNode?.kind === "exam" &&
+        examFamilyNode?.kind === "exam_family";
 
     return {
         _id: mockTest._id,
@@ -58,6 +63,24 @@ const buildStudentMockTestListItem = (
                 _id: mockTest.categoryId._id,
                 name: mockTest.categoryId.name,
                 slug: mockTest.categoryId.slug,
+            }
+            : null,
+        examTaxonomy: hasValidExamTaxonomy
+            ? {
+                exam: {
+                    _id: examTaxonomyNode._id,
+                    slug: examTaxonomyNode.slug,
+                    nameEn: examTaxonomyNode.nameEn,
+                    nameHi: examTaxonomyNode.nameHi,
+                    order: examTaxonomyNode.order,
+                },
+                family: {
+                    _id: examFamilyNode._id,
+                    slug: examFamilyNode.slug,
+                    nameEn: examFamilyNode.nameEn,
+                    nameHi: examFamilyNode.nameHi,
+                    order: examFamilyNode.order,
+                },
             }
             : null,
         examPattern: mockTest.examPatternId
@@ -1379,9 +1402,27 @@ const getPublishedMockTestsForStudent = async (req, res) => {
 
         const mockTests = await MockTest.find(filter)
             .select(
-                "title slug description testType accessType price salePrice isPurchasable categoryId examPatternId activeVersionId settings.maxAttempts settings.interfaceMode settings.showResultImmediately settings.solutionVisibility publishedAt createdAt"
+                "title slug description testType accessType price salePrice isPurchasable categoryId examTaxonomyNodeId examPatternId activeVersionId settings.maxAttempts settings.interfaceMode settings.showResultImmediately settings.solutionVisibility publishedAt createdAt"
             )
             .populate("categoryId", "name slug")
+            .populate({
+                path: "examTaxonomyNodeId",
+                match: {
+                    tenantId,
+                    kind: "exam",
+                    isActive: true,
+                },
+                select: "slug nameEn nameHi order kind parentId",
+                populate: {
+                    path: "parentId",
+                    match: {
+                        tenantId,
+                        kind: "exam_family",
+                        isActive: true,
+                    },
+                    select: "slug nameEn nameHi order kind",
+                },
+            })
             .populate("examPatternId", "name examType totalDurationMinutes")
             .populate("activeVersionId", "versionNumber publishedAt settings.maxAttempts settings.interfaceMode settings.showResultImmediately settings.solutionVisibility")
             .sort({ publishedAt: -1, createdAt: -1 });
