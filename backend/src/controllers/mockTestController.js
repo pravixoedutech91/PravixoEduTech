@@ -292,6 +292,27 @@ const validateExamTaxonomyAccess = async (examTaxonomyNodeId, tenantId) => {
         };
     }
 
+    if (!examTaxonomyNode.parentId) {
+        return {
+            success: false,
+            message: "Exam taxonomy node does not have a valid exam family",
+        };
+    }
+
+    const examFamilyNode = await TaxonomyNode.findOne({
+        _id: examTaxonomyNode.parentId,
+        tenantId,
+        kind: "exam_family",
+        isActive: true,
+    });
+
+    if (!examFamilyNode) {
+        return {
+            success: false,
+            message: "Exam taxonomy family not found or access denied",
+        };
+    }
+
     return {
         success: true,
     };
