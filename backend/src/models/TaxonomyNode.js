@@ -10,7 +10,7 @@ const taxonomyNodeSchema = new mongoose.Schema(
 
     kind: {
       type: String,
-      enum: ["subject", "topic", "subtopic"],
+      enum: ["subject", "topic", "subtopic", "exam_family", "exam"],
       required: true,
     },
 
@@ -126,9 +126,15 @@ taxonomyNodeSchema.pre("validate", function () {
       "A subject cannot have a parent taxonomy node."
     );
   }
+  if (this.kind === "exam_family" && this.parentId) {
+    this.invalidate(
+      "parentId",
+      "An exam family cannot have a parent taxonomy node."
+    );
+  }
 
   if (
-    ["topic", "subtopic"].includes(this.kind) &&
+    ["topic", "subtopic", "exam"].includes(this.kind) &&
     !this.parentId
   ) {
     this.invalidate(
