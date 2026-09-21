@@ -13,6 +13,7 @@ const ExamPattern = require("../models/ExamPattern");
 const Question = require("../models/Question");
 const QuestionGroup = require("../models/QuestionGroup");
 const Category = require("../models/Category");
+const TaxonomyNode = require("../models/TaxonomyNode");
 
 const { getTenantFilter } = require("../middleware/tenantMiddleware");
 
@@ -255,6 +256,39 @@ const validateCategoryAccess = async (categoryId, tenantId) => {
         return {
             success: false,
             message: "Category not found or access denied",
+        };
+    }
+
+    return {
+        success: true,
+    };
+};
+
+const validateExamTaxonomyAccess = async (examTaxonomyNodeId, tenantId) => {
+    if (examTaxonomyNodeId === undefined || examTaxonomyNodeId === null) {
+        return {
+            success: true,
+        };
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(examTaxonomyNodeId)) {
+        return {
+            success: false,
+            message: "Invalid exam taxonomy node ID",
+        };
+    }
+
+    const examTaxonomyNode = await TaxonomyNode.findOne({
+        _id: examTaxonomyNodeId,
+        tenantId,
+        kind: "exam",
+        isActive: true,
+    });
+
+    if (!examTaxonomyNode) {
+        return {
+            success: false,
+            message: "Exam taxonomy node not found or access denied",
         };
     }
 
@@ -646,6 +680,17 @@ const createMockTest = async (req, res) => {
                 message: categoryValidation.message,
             });
         }
+        const examTaxonomyValidation = await validateExamTaxonomyAccess(
+            mockTestData.examTaxonomyNodeId,
+            tenantId
+        );
+
+        if (!examTaxonomyValidation.success) {
+            return res.status(400).json({
+                success: false,
+                message: examTaxonomyValidation.message,
+            });
+        }
 
         const questionValidation = await validateQuestionAccess(
             mockTestData.sections,
@@ -961,6 +1006,17 @@ const updateMockTest = async (req, res) => {
                     message: categoryValidation.message,
                 });
             }
+        }
+        const examTaxonomyValidation = await validateExamTaxonomyAccess(
+            mergedMockTestData.examTaxonomyNodeId,
+            existingMockTest.tenantId
+        );
+
+        if (!examTaxonomyValidation.success) {
+            return res.status(400).json({
+                success: false,
+                message: examTaxonomyValidation.message,
+            });
         }
 
         const questionValidation = await validateQuestionAccess(
