@@ -118,6 +118,11 @@ const mockTestSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Category",
     },
+    examTaxonomyNodeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "TaxonomyNode",
+      default: null,
+    },
 
     accessType: {
       type: String,
