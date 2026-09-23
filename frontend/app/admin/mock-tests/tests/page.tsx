@@ -91,6 +91,34 @@ type MockTestSection = {
     questions?: MockTestSectionQuestion[];
 };
 
+type ExamCatalogExam = {
+    _id: string;
+    slug?: string;
+    nameEn?: string;
+    nameHi?: string;
+    isActive?: boolean;
+};
+
+type ExamCatalogFamily = {
+    _id: string;
+    slug?: string;
+    nameEn?: string;
+    nameHi?: string;
+    isActive?: boolean;
+    exams?: ExamCatalogExam[];
+};
+
+type ExamCatalogResponse = {
+    success: boolean;
+    message?: string;
+    data?: ExamCatalogFamily[];
+};
+
+type ExamTaxonomyReference =
+    | string
+    | { _id?: string }
+    | null;
+
 type MockTest = {
     _id: string;
     title?: string;
@@ -102,6 +130,7 @@ type MockTest = {
     salePrice?: number;
     examPatternId?: ExamPatternSummary | string | null;
     categoryId?: CategorySummary | string | null;
+    examTaxonomyNodeId?: ExamTaxonomyReference;
     instructionsEn?: string;
     instructionsHi?: string;
     sections?: MockTestSection[];
@@ -179,6 +208,8 @@ type CreateMockTestForm = {
     price: string;
     salePrice: string;
     examPatternId: string;
+    examFamilyId: string;
+    examTaxonomyNodeId: string;
     instructionsEn: string;
     instructionsHi: string;
     maxAttempts: string;
@@ -200,6 +231,8 @@ const initialCreateMockTestForm: CreateMockTestForm = {
     price: "0",
     salePrice: "0",
     examPatternId: "",
+    examFamilyId: "",
+    examTaxonomyNodeId: "",
     instructionsEn: "",
     instructionsHi: "",
     maxAttempts: "1",
@@ -287,6 +320,17 @@ export default function AdminMockTestsPage() {
     const [mockTests, setMockTests] = useState<MockTest[]>([]);
     const [examPatterns, setExamPatterns] = useState<ExamPattern[]>([]);
     const [activeQuestions, setActiveQuestions] = useState<Question[]>([]);
+    const [examCatalog, setExamCatalog] =
+        useState<ExamCatalogFamily[]>([]);
+    const [isExamCatalogLoading, setIsExamCatalogLoading] =
+        useState(false);
+    const [examCatalogError, setExamCatalogError] =
+        useState("");
+    const [
+        originalExamTaxonomyNodeId,
+        setOriginalExamTaxonomyNodeId,
+    ] = useState("");
+
     const [isMockTestsLoading, setIsMockTestsLoading] = useState(false);
     const [isExamPatternsLoading, setIsExamPatternsLoading] = useState(false);
     const [isQuestionsLoading, setIsQuestionsLoading] = useState(false);
@@ -307,6 +351,36 @@ export default function AdminMockTestsPage() {
     const [createMockTestForm, setCreateMockTestForm] =
         useState<CreateMockTestForm>(initialCreateMockTestForm);
     const [toast, setToast] = useState<ToastState | null>(null);
+
+    const selectedExamFamily =
+        examCatalog.find(
+            (family) =>
+                family._id ===
+                createMockTestForm.examFamilyId
+        ) || null;
+
+    const activeExamTaxonomyIds =
+        new Set(
+            examCatalog.flatMap(
+                (family) =>
+                    (family.exams || []).map(
+                        (exam) => exam._id
+                    )
+            )
+        );
+
+    const existingExamTaxonomyUnavailable =
+        Boolean(
+            editingMockTestId &&
+            originalExamTaxonomyNodeId &&
+            createMockTestForm.examTaxonomyNodeId ===
+                originalExamTaxonomyNodeId &&
+            !isExamCatalogLoading &&
+            !examCatalogError &&
+            !activeExamTaxonomyIds.has(
+                originalExamTaxonomyNodeId
+            )
+        );
 
     const selectedExamPattern =
         examPatterns.find(
@@ -413,6 +487,71 @@ export default function AdminMockTestsPage() {
         }
     };
 
+    const loadExamCatalog = async (savedToken: string) => {
+        setIsExamCatalogLoading(true);
+        setExamCatalogError("");
+
+        try {
+            const response = await fetch(
+                API_BASE_URL + "/api/exam-taxonomy",
+                {
+                    headers: {
+                        Authorization:
+                            "Bearer " + savedToken,
+                    },
+                }
+            );
+
+            const result =
+                (await response.json()) as ExamCatalogResponse;
+
+            if (
+                response.status === 401 ||
+                response.status === 403
+            ) {
+                clearAdminSessionStorage();
+                setIsAllowed(false);
+                setMessage(
+                    result.message ||
+                        "Your admin session has expired. Please login again."
+                );
+                return;
+            }
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.message ||
+                        "Unable to load the Exam Catalog."
+                );
+            }
+
+            setExamCatalog(
+                (result.data || [])
+                    .filter(
+                        (family) =>
+                            family.isActive !== false
+                    )
+                    .map((family) => ({
+                        ...family,
+                        exams: (family.exams || []).filter(
+                            (exam) =>
+                                exam.isActive !== false
+                        ),
+                    }))
+            );
+        } catch (error) {
+            setExamCatalog([]);
+
+            setExamCatalogError(
+                error instanceof Error
+                    ? error.message
+                    : "Unable to load the Exam Catalog."
+            );
+        } finally {
+            setIsExamCatalogLoading(false);
+        }
+    };
+
     const loadActiveQuestions = async (savedToken: string) => {
         setIsQuestionsLoading(true);
         setQuestionsError("");
@@ -492,14 +631,85 @@ export default function AdminMockTestsPage() {
         });
     };
 
+    const getExamTaxonomyNodeIdValue = (
+        value?: ExamTaxonomyReference
+    ) => {
+        if (!value) {
+            return "";
+        }
+
+        if (typeof value === "string") {
+            return value;
+        }
+
+        return value._id || "";
+    };
+
+    const getExamCatalogLabel = (
+        node: {
+            nameEn?: string;
+            nameHi?: string;
+            slug?: string;
+        }
+    ) =>
+        node.nameEn ||
+        node.nameHi ||
+        node.slug ||
+        "Unnamed";
+
+    const findExamFamilyByExamId = (
+        examTaxonomyNodeId: string
+    ) => {
+        if (!examTaxonomyNodeId) {
+            return null;
+        }
+
+        return (
+            examCatalog.find((family) =>
+                (family.exams || []).some(
+                    (exam) =>
+                        exam._id ===
+                        examTaxonomyNodeId
+                )
+            ) || null
+        );
+    };
+
     const resetCreateMockTestForm = () => {
         setCreateMockTestForm(initialCreateMockTestForm);
+        setOriginalExamTaxonomyNodeId("");
     };
 
     const startEditMockTest = (mockTest: MockTest) => {
-        const examPattern = getExamPatternSummary(mockTest.examPatternId);
+        if (isExamCatalogLoading) {
+            showToast({
+                type: "error",
+                message:
+                    "Exam Catalog is still loading. Please try again.",
+            });
+
+            return;
+        }
+        const examPattern =
+            getExamPatternSummary(
+                mockTest.examPatternId
+            );
+
+        const examTaxonomyNodeId =
+            getExamTaxonomyNodeIdValue(
+                mockTest.examTaxonomyNodeId
+            );
+
+        const examFamily =
+            findExamFamilyByExamId(
+                examTaxonomyNodeId
+            );
 
         setEditingMockTestId(mockTest._id);
+
+        setOriginalExamTaxonomyNodeId(
+            examTaxonomyNodeId
+        );
         setCreateMockTestForm({
             title: mockTest.title || "",
             slug: mockTest.slug || "",
@@ -517,6 +727,8 @@ export default function AdminMockTestsPage() {
             price: String(mockTest.price ?? 0),
             salePrice: String(mockTest.salePrice ?? 0),
             examPatternId: examPattern?._id || "",
+            examFamilyId: examFamily?._id || "",
+            examTaxonomyNodeId,
             instructionsEn: mockTest.instructionsEn || "",
             instructionsHi: mockTest.instructionsHi || "",
             maxAttempts: String(mockTest.settings?.maxAttempts ?? 1),
@@ -826,6 +1038,10 @@ export default function AdminMockTestsPage() {
             }
         }
 
+        if (existingExamTaxonomyUnavailable) {
+            return "Current exam classification is inactive or unavailable. Choose an active exam or clear the classification before saving.";
+        }
+
         const price = Number(createMockTestForm.price);
         const salePrice = Number(createMockTestForm.salePrice);
         const maxAttempts = Number(createMockTestForm.maxAttempts);
@@ -856,6 +1072,9 @@ export default function AdminMockTestsPage() {
             description: createMockTestForm.description.trim(),
             testType: createMockTestForm.testType,
             examPatternId: createMockTestForm.examPatternId,
+            examTaxonomyNodeId:
+                createMockTestForm.examTaxonomyNodeId ||
+                null,
             accessType: createMockTestForm.accessType,
             price,
             salePrice,
@@ -895,6 +1114,9 @@ export default function AdminMockTestsPage() {
             slug: createSlugFromText(createMockTestForm.slug),
             description: createMockTestForm.description.trim(),
             testType: createMockTestForm.testType,
+            examTaxonomyNodeId:
+                createMockTestForm.examTaxonomyNodeId ||
+                null,
             accessType: createMockTestForm.accessType,
             price,
             salePrice,
@@ -1345,6 +1567,7 @@ export default function AdminMockTestsPage() {
                 setMessage("");
                 void loadMockTests(savedToken);
                 void loadExamPatterns(savedToken);
+                void loadExamCatalog(savedToken);
                 void loadActiveQuestions(savedToken);
             } catch (error) {
                 clearAdminSessionStorage();
@@ -1497,6 +1720,143 @@ export default function AdminMockTestsPage() {
                             className="mt-5 grid gap-5 rounded-2xl bg-slate-50 p-5 ring-1 ring-slate-200"
                         >
                             <div className="grid gap-4 md:grid-cols-2">
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Exam Family (optional)
+
+                                    <select
+                                        value={
+                                            createMockTestForm.examFamilyId
+                                        }
+                                        onChange={(event) => {
+                                            const examFamilyId =
+                                                event.target.value;
+
+                                            setCreateMockTestForm(
+                                                (current) => ({
+                                                    ...current,
+                                                    examFamilyId,
+                                                    examTaxonomyNodeId:
+                                                        "",
+                                                })
+                                            );
+                                        }}
+                                        disabled={
+                                            isExamCatalogLoading
+                                        }
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
+                                    >
+                                        <option value="">
+                                            {existingExamTaxonomyUnavailable
+                                                ? "Current assignment unavailable"
+                                                : "No Exam / Other Exams"}
+                                        </option>
+
+                                        {examCatalog.map(
+                                            (family) => (
+                                                <option
+                                                    key={family._id}
+                                                    value={family._id}
+                                                >
+                                                    {getExamCatalogLabel(
+                                                        family
+                                                    )}
+                                                </option>
+                                            )
+                                        )}
+                                    </select>
+
+                                    <span className="text-xs font-normal text-slate-500">
+                                        {isExamCatalogLoading
+                                            ? "Loading active Exam Catalog..."
+                                            : examCatalogError
+                                              ? examCatalogError
+                                              : "Optional classification. Choose a family, then an exam."}
+                                    </span>
+                                </label>
+
+                                <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                                    Exam (optional)
+
+                                    <select
+                                        value={
+                                            selectedExamFamily
+                                                ? createMockTestForm.examTaxonomyNodeId
+                                                : ""
+                                        }
+                                        onChange={(event) =>
+                                            setCreateMockTestForm(
+                                                (current) => ({
+                                                    ...current,
+                                                    examTaxonomyNodeId:
+                                                        event.target.value,
+                                                })
+                                            )
+                                        }
+                                        disabled={
+                                            !selectedExamFamily ||
+                                            isExamCatalogLoading
+                                        }
+                                        className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-normal outline-none focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
+                                    >
+                                        <option value="">
+                                            {selectedExamFamily
+                                                ? "No Exam / Other Exams"
+                                                : "Select an Exam Family first"}
+                                        </option>
+
+                                        {(
+                                            selectedExamFamily?.exams ||
+                                            []
+                                        ).map((exam) => (
+                                            <option
+                                                key={exam._id}
+                                                value={exam._id}
+                                            >
+                                                {getExamCatalogLabel(
+                                                    exam
+                                                )}
+                                            </option>
+                                        ))}
+                                    </select>
+
+                                    <span className="text-xs font-normal text-slate-500">
+                                        Only active exams from the selected
+                                        family can be assigned.
+                                    </span>
+                                </label>
+
+                                {existingExamTaxonomyUnavailable ? (
+                                    <div className="md:col-span-2 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900 ring-1 ring-amber-200">
+                                        <p className="font-semibold">
+                                            Current exam classification is
+                                            inactive or unavailable.
+                                        </p>
+
+                                        <p className="mt-1 leading-6">
+                                            Choose an active Exam Family and
+                                            Exam, or clear the classification
+                                            before saving this mock test.
+                                        </p>
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                setCreateMockTestForm(
+                                                    (current) => ({
+                                                        ...current,
+                                                        examFamilyId: "",
+                                                        examTaxonomyNodeId:
+                                                            "",
+                                                    })
+                                                )
+                                            }
+                                            className="mt-3 rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                                        >
+                                            Clear classification
+                                        </button>
+                                    </div>
+                                ) : null}
+
                                 <label className="grid gap-2 text-sm font-semibold text-slate-700">
                                     Exam Pattern
                                     <select
@@ -2095,6 +2455,7 @@ export default function AdminMockTestsPage() {
                                 if (savedToken) {
                                     void loadMockTests(savedToken);
                                     void loadExamPatterns(savedToken);
+                                    void loadExamCatalog(savedToken);
                                     void loadActiveQuestions(savedToken);
                                 }
                             }}
