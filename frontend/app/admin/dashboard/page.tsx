@@ -219,6 +219,16 @@ export default function AdminDashboardPage() {
 
                             <div className="mt-3 space-y-2">
                                 <Link
+                                    href="/admin/mock-tests/exam-catalog"
+                                    className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
+                                >
+                                    <span>Exam Catalog</span>
+                                    <span className="rounded-full bg-blue-950 px-2 py-0.5 text-[11px] text-blue-200">
+                                        Open
+                                    </span>
+                                </Link>
+
+                                <Link
                                     href="/admin/mock-tests/exam-patterns"
                                     className="flex items-center justify-between rounded-2xl border border-slate-800 bg-slate-900 px-4 py-3 text-sm text-slate-200 hover:bg-slate-800"
                                 >
