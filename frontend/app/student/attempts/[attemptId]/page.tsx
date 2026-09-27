@@ -266,8 +266,98 @@ const parsePayloadSnapshot = (payloadSnapshot: string) => {
     }
 };
 
-const getBestText = (primary?: string, fallback?: string) => {
-    return primary || fallback || "";
+type StudentTestLanguage = "en" | "hi";
+
+const STUDENT_TEST_LANGUAGE_STORAGE_KEY =
+    "pravixoStudentMockTestLanguage";
+
+const getLocalizedText = (
+    englishText: string | undefined,
+    hindiText: string | undefined,
+    language: StudentTestLanguage
+) => {
+    if (language === "hi") {
+        return hindiText || englishText || "";
+    }
+
+    return englishText || hindiText || "";
+};
+
+const STUDENT_TEST_LANGUAGE_CHANGE_EVENT =
+    "pravixoStudentMockTestLanguageChange";
+
+const getStudentTestLanguageSnapshot = (): StudentTestLanguage => {
+    if (typeof window === "undefined") {
+        return "en";
+    }
+
+    const storedLanguage =
+        window.localStorage.getItem(
+            STUDENT_TEST_LANGUAGE_STORAGE_KEY
+        );
+
+    return storedLanguage === "hi" ? "hi" : "en";
+};
+
+const getServerStudentTestLanguageSnapshot =
+    (): StudentTestLanguage => "en";
+
+const subscribeToStudentTestLanguage = (
+    onStoreChange: () => void
+) => {
+    if (typeof window === "undefined") {
+        return () => {};
+    }
+
+    const handleStorage = (event: StorageEvent) => {
+        if (
+            event.key ===
+            STUDENT_TEST_LANGUAGE_STORAGE_KEY
+        ) {
+            onStoreChange();
+        }
+    };
+
+    window.addEventListener(
+        "storage",
+        handleStorage
+    );
+
+    window.addEventListener(
+        STUDENT_TEST_LANGUAGE_CHANGE_EVENT,
+        onStoreChange
+    );
+
+    return () => {
+        window.removeEventListener(
+            "storage",
+            handleStorage
+        );
+
+        window.removeEventListener(
+            STUDENT_TEST_LANGUAGE_CHANGE_EVENT,
+            onStoreChange
+        );
+    };
+};
+
+const persistStudentTestLanguage = (
+    language: StudentTestLanguage
+) => {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    window.localStorage.setItem(
+        STUDENT_TEST_LANGUAGE_STORAGE_KEY,
+        language
+    );
+
+    window.dispatchEvent(
+        new Event(
+            STUDENT_TEST_LANGUAGE_CHANGE_EVENT
+        )
+    );
 };
 
 const formatDuration = (totalSeconds: number) => {
@@ -386,6 +476,11 @@ export default function StudentAttemptPage() {
         return parts[parts.length - 1] || "";
     }, [pathname]);
     const [now, setNow] = useState(() => Date.now());
+    const selectedLanguage = useSyncExternalStore(
+        subscribeToStudentTestLanguage,
+        getStudentTestLanguageSnapshot,
+        getServerStudentTestLanguageSnapshot
+    );
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [selectedAnswers, setSelectedAnswers] = useState<
         Record<string, string>
@@ -481,6 +576,40 @@ export default function StudentAttemptPage() {
 
     const currentQuestion = questions[currentQuestionIndex] || null;
     const currentQuestionNumber = currentQuestionIndex + 1;
+
+    const allowLanguageSwitching =
+        payload?.test.settings.allowLanguageSwitching ??
+        payload?.test.examPatternSnapshot.allowLanguageSwitching ??
+        true;
+
+    const getBestText = (
+        englishText?: string,
+        hindiText?: string
+    ) => {
+        return getLocalizedText(
+            englishText,
+            hindiText,
+            selectedLanguage
+        );
+    };
+
+    const handleLanguageChange = (
+        language: StudentTestLanguage
+    ) => {
+        if (language === selectedLanguage) {
+            return;
+        }
+
+        if (!allowLanguageSwitching) {
+            setInterfaceMessage(
+                "Language switching is disabled for this test."
+            );
+            return;
+        }
+
+        persistStudentTestLanguage(language);
+        setInterfaceMessage("");
+    };
 
     const section = useMemo(() => {
         if (!currentQuestion) {
@@ -1217,6 +1346,72 @@ export default function StudentAttemptPage() {
                             </div>
                         </div>
                     ) : null}
+                    <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                    Test Language
+                                </p>
+
+                                <p className="mt-1 text-sm text-slate-600">
+                                    {allowLanguageSwitching
+                                        ? "You can switch language anytime during the test."
+                                        : "Language switching is locked for this test."}
+                                </p>
+                            </div>
+
+                            <div
+                                className="inline-flex rounded-xl bg-slate-100 p-1"
+                                role="group"
+                                aria-label="Test language"
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        handleLanguageChange("en")
+                                    }
+                                    disabled={
+                                        !allowLanguageSwitching &&
+                                        selectedLanguage !== "en"
+                                    }
+                                    aria-pressed={
+                                        selectedLanguage === "en"
+                                    }
+                                    className={
+                                        "rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 " +
+                                        (selectedLanguage === "en"
+                                            ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200"
+                                            : "text-slate-600 hover:text-slate-950")
+                                    }
+                                >
+                                    English
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        handleLanguageChange("hi")
+                                    }
+                                    disabled={
+                                        !allowLanguageSwitching &&
+                                        selectedLanguage !== "hi"
+                                    }
+                                    aria-pressed={
+                                        selectedLanguage === "hi"
+                                    }
+                                    className={
+                                        "rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 " +
+                                        (selectedLanguage === "hi"
+                                            ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200"
+                                            : "text-slate-600 hover:text-slate-950")
+                                    }
+                                >
+                                    हिन्दी
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
 <div className="rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                             Test Instructions
