@@ -22,6 +22,14 @@ const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 const ACTIVE_ATTEMPT_POSITION_STORAGE_KEY = "pravixoActiveAttemptPosition";
 
+type StudentTestLanguage = "en" | "hi";
+
+const STUDENT_TEST_LANGUAGE_STORAGE_KEY =
+    "pravixoStudentMockTestLanguage";
+
+const STUDENT_TEST_LANGUAGE_CHANGE_EVENT =
+    "pravixoStudentMockTestLanguageChange";
+
 const INVALID_STUDENT_SESSION_MESSAGE =
     "Your student session has expired or was invalidated. Please login again.";
 
@@ -218,6 +226,80 @@ const subscribeLocalStorage = (callback: () => void) => {
     return () => window.removeEventListener("storage", listener);
 };
 
+const getStoredStudentTestLanguageSnapshot =
+    (): StudentTestLanguage => {
+        if (typeof window === "undefined") {
+            return "en";
+        }
+
+        return window.localStorage.getItem(
+            STUDENT_TEST_LANGUAGE_STORAGE_KEY
+        ) === "hi"
+            ? "hi"
+            : "en";
+    };
+
+const getEnglishLanguageServerSnapshot =
+    (): StudentTestLanguage => "en";
+
+const subscribeStudentTestLanguage = (
+    onStoreChange: () => void
+) => {
+    if (typeof window === "undefined") {
+        return () => undefined;
+    }
+
+    const handleStorage = (event: StorageEvent) => {
+        if (
+            event.key ===
+            STUDENT_TEST_LANGUAGE_STORAGE_KEY
+        ) {
+            onStoreChange();
+        }
+    };
+
+    window.addEventListener(
+        "storage",
+        handleStorage
+    );
+
+    window.addEventListener(
+        STUDENT_TEST_LANGUAGE_CHANGE_EVENT,
+        onStoreChange
+    );
+
+    return () => {
+        window.removeEventListener(
+            "storage",
+            handleStorage
+        );
+
+        window.removeEventListener(
+            STUDENT_TEST_LANGUAGE_CHANGE_EVENT,
+            onStoreChange
+        );
+    };
+};
+
+const persistStudentTestLanguage = (
+    language: StudentTestLanguage
+) => {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    window.localStorage.setItem(
+        STUDENT_TEST_LANGUAGE_STORAGE_KEY,
+        language
+    );
+
+    window.dispatchEvent(
+        new Event(
+            STUDENT_TEST_LANGUAGE_CHANGE_EVENT
+        )
+    );
+};
+
 const formatDateTime = (value?: string | null) => {
     if (!value) {
         return "-";
@@ -279,20 +361,42 @@ const getQuestionStatusClassName = (question: ReviewQuestion) => {
     return "bg-rose-50 text-rose-700 ring-rose-200";
 };
 
-const renderOptionalText = (primary?: string, secondary?: string) => {
-    if (!primary && !secondary) {
+const getLocalizedText = (
+    textEn: string | undefined,
+    textHi: string | undefined,
+    language: StudentTestLanguage
+) => {
+    if (language === "hi") {
+        return textHi || textEn || "";
+    }
+
+    return textEn || textHi || "";
+};
+
+const renderOptionalText = (
+    textEn: string | undefined,
+    textHi: string | undefined,
+    language: StudentTestLanguage
+) => {
+    const localizedText =
+        getLocalizedText(
+            textEn,
+            textHi,
+            language
+        );
+
+    if (!localizedText) {
         return null;
     }
 
-    return (
-        <div className="space-y-1">
-            {primary ? <p>{primary}</p> : null}
-            {secondary ? <p className="text-sm text-slate-500">{secondary}</p> : null}
-        </div>
-    );
+    return <p>{localizedText}</p>;
 };
 
-const renderContentBlock = (block: ContentBlock, index: number) => {
+const renderContentBlock = (
+    block: ContentBlock,
+    index: number,
+    language: StudentTestLanguage
+) => {
     if (block.isVisible === false) {
         return null;
     }
@@ -306,7 +410,11 @@ const renderContentBlock = (block: ContentBlock, index: number) => {
                 {block.blockType}
             </p>
 
-            {renderOptionalText(block.textEn, block.textHi)}
+            {renderOptionalText(
+                block.textEn,
+                block.textHi,
+                language
+            )}
 
             {block.latex ? (
                 <pre className="mt-3 overflow-x-auto rounded-xl bg-white p-3 text-xs text-slate-700 ring-1 ring-slate-200">
@@ -319,12 +427,24 @@ const renderContentBlock = (block: ContentBlock, index: number) => {
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                         src={block.imageUrl}
-                        alt={block.altText || block.captionEn || "Review image"}
+                        alt={
+                            block.altText ||
+                            getLocalizedText(
+                                block.captionEn,
+                                block.captionHi,
+                                language
+                            ) ||
+                            "Review image"
+                        }
                         className="max-h-80 rounded-xl object-contain ring-1 ring-slate-200"
                     />
                     {block.captionEn || block.captionHi ? (
                         <figcaption className="mt-2 text-xs text-slate-500">
-                            {block.captionEn || block.captionHi}
+                            {getLocalizedText(
+                                block.captionEn,
+                                block.captionHi,
+                                language
+                            )}
                         </figcaption>
                     ) : null}
                 </figure>
@@ -366,6 +486,12 @@ export default function StudentAttemptReviewPage() {
         subscribeLocalStorage,
         getStoredStudentTokenSnapshot,
         getEmptyServerSnapshot
+    );
+
+    const selectedLanguage = useSyncExternalStore(
+        subscribeStudentTestLanguage,
+        getStoredStudentTestLanguageSnapshot,
+        getEnglishLanguageServerSnapshot
     );
 
     const [review, setReview] = useState<ReviewPayload | null>(null);
@@ -642,8 +768,52 @@ export default function StudentAttemptReviewPage() {
                                         {totalReviewQuestions} question(s) | Submitted at {formatDateTime(review.attempt.submittedAt)}
                                     </p>
                                 </div>
-                                <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700 ring-1 ring-slate-100">
-                                    Accuracy: <span className="font-semibold">{formatPercent(summary.accuracy)}</span>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <div
+                                        className="inline-flex rounded-xl bg-slate-100 p-1"
+                                        role="group"
+                                        aria-label="Review language"
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                persistStudentTestLanguage("en")
+                                            }
+                                            aria-pressed={
+                                                selectedLanguage === "en"
+                                            }
+                                            className={
+                                                "rounded-lg px-4 py-2 text-sm font-semibold transition " +
+                                                (selectedLanguage === "en"
+                                                    ? "bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200"
+                                                    : "text-slate-600 hover:text-slate-950")
+                                            }
+                                        >
+                                            English
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                persistStudentTestLanguage("hi")
+                                            }
+                                            aria-pressed={
+                                                selectedLanguage === "hi"
+                                            }
+                                            className={
+                                                "rounded-lg px-4 py-2 text-sm font-semibold transition " +
+                                                (selectedLanguage === "hi"
+                                                    ? "bg-white text-emerald-700 shadow-sm ring-1 ring-slate-200"
+                                                    : "text-slate-600 hover:text-slate-950")
+                                            }
+                                        >
+                                            {"\u0939\u093f\u0928\u094d\u0926\u0940"}
+                                        </button>
+                                    </div>
+
+                                    <div className="rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-700 ring-1 ring-slate-100">
+                                        Accuracy: <span className="font-semibold">{formatPercent(summary.accuracy)}</span>
+                                    </div>
                                 </div>
                             </div>
                         </section>
@@ -683,10 +853,21 @@ export default function StudentAttemptReviewPage() {
 
                                                 <h3 className="text-lg font-bold">{group.title}</h3>
                                                 <div className="mt-3 text-sm text-slate-700">
-                                                    {renderOptionalText(group.instructionEn, group.instructionHi)}
+                                                    {renderOptionalText(
+                                                        group.instructionEn,
+                                                        group.instructionHi,
+                                                        selectedLanguage
+                                                    )}
                                                 </div>
                                                 <div className="mt-4 space-y-3">
-                                                    {(group.contentBlocks || []).map(renderContentBlock)}
+                                                    {(group.contentBlocks || []).map(
+                                                        (block, index) =>
+                                                            renderContentBlock(
+                                                                block,
+                                                                index,
+                                                                selectedLanguage
+                                                            )
+                                                    )}
                                                 </div>
                                             </article>
                                         ))}
@@ -731,7 +912,11 @@ export default function StudentAttemptReviewPage() {
                                                 </div>
 
                                                 <div className="space-y-2 text-lg font-semibold">
-                                                    {renderOptionalText(question.questionTextEn, question.questionTextHi)}
+                                                    {renderOptionalText(
+                                                        question.questionTextEn,
+                                                        question.questionTextHi,
+                                                        selectedLanguage
+                                                    )}
                                                 </div>
 
                                                 {question.questionImageUrl ? (
@@ -766,13 +951,12 @@ export default function StudentAttemptReviewPage() {
                                                                     </span>
                                                                     <div className="min-w-0 flex-1">
                                                                         <p className="font-semibold">
-                                                                            {option.textEn || option.textHi || "-"}
+                                                                            {getLocalizedText(
+                                                                                option.textEn,
+                                                                                option.textHi,
+                                                                                selectedLanguage
+                                                                            ) || "-"}
                                                                         </p>
-                                                                        {option.textHi && option.textHi !== option.textEn ? (
-                                                                            <p className="mt-1 text-sm opacity-80">
-                                                                                {option.textHi}
-                                                                            </p>
-                                                                        ) : null}
 
                                                                         <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
                                                                             {isCorrectOption ? (
@@ -835,7 +1019,8 @@ export default function StudentAttemptReviewPage() {
                                                         </p>
                                                         {renderOptionalText(
                                                             question.explanationEn,
-                                                            question.explanationHi
+                                                            question.explanationHi,
+                                                            selectedLanguage
                                                         )}
                                                     </div>
                                                 ) : null}
