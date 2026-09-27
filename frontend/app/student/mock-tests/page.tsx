@@ -2,7 +2,7 @@
 
 
 import Link from "next/link";
-import { useCallback, useEffect, useState, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 
 type PrimaryAction =
@@ -256,6 +256,87 @@ const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
 
+type StudentTestLanguage = "en" | "hi";
+
+const STUDENT_TEST_LANGUAGE_STORAGE_KEY =
+    "pravixoStudentMockTestLanguage";
+
+const STUDENT_TEST_LANGUAGE_CHANGE_EVENT =
+    "pravixoStudentMockTestLanguageChange";
+
+const getStudentTestLanguageSnapshot = (): StudentTestLanguage => {
+    if (typeof window === "undefined") {
+        return "en";
+    }
+
+    return window.localStorage.getItem(
+        STUDENT_TEST_LANGUAGE_STORAGE_KEY
+    ) === "hi"
+        ? "hi"
+        : "en";
+};
+
+const getServerStudentTestLanguageSnapshot =
+    (): StudentTestLanguage => "en";
+
+const subscribeToStudentTestLanguage = (
+    onStoreChange: () => void
+) => {
+    if (typeof window === "undefined") {
+        return () => {};
+    }
+
+    const handleStorage = (event: StorageEvent) => {
+        if (
+            event.key ===
+            STUDENT_TEST_LANGUAGE_STORAGE_KEY
+        ) {
+            onStoreChange();
+        }
+    };
+
+    window.addEventListener(
+        "storage",
+        handleStorage
+    );
+
+    window.addEventListener(
+        STUDENT_TEST_LANGUAGE_CHANGE_EVENT,
+        onStoreChange
+    );
+
+    return () => {
+        window.removeEventListener(
+            "storage",
+            handleStorage
+        );
+
+        window.removeEventListener(
+            STUDENT_TEST_LANGUAGE_CHANGE_EVENT,
+            onStoreChange
+        );
+    };
+};
+
+const persistStudentTestLanguage = (
+    language: StudentTestLanguage
+) => {
+    if (typeof window === "undefined") {
+        return;
+    }
+
+    window.localStorage.setItem(
+        STUDENT_TEST_LANGUAGE_STORAGE_KEY,
+        language
+    );
+
+    window.dispatchEvent(
+        new Event(
+            STUDENT_TEST_LANGUAGE_CHANGE_EVENT
+        )
+    );
+};
+
 const INVALID_STUDENT_SESSION_MESSAGE =
     "Your student session has expired or was invalidated. Please login again.";
 
@@ -418,6 +499,11 @@ export default function StudentMockTestsPage() {
         useState("all");
     const [selectedExamId, setSelectedExamId] =
         useState("all");
+    const selectedTestLanguage = useSyncExternalStore(
+        subscribeToStudentTestLanguage,
+        getStudentTestLanguageSnapshot,
+        getServerStudentTestLanguageSnapshot
+    );
 
     const examCatalogFamilies = useMemo<ExamCatalogFamily[]>(() => {
         const familyMap = new Map<
@@ -1451,6 +1537,62 @@ export default function StudentMockTestsPage() {
                 </section>
 
                 <section>
+                    <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                                    Test Language
+                                </p>
+
+                                <p className="mt-1 text-sm text-slate-600">
+                                    Choose the language you want when you enter a test. You can switch again during supported tests.
+                                </p>
+                            </div>
+
+                            <div
+                                className="inline-flex w-fit rounded-xl bg-slate-100 p-1"
+                                role="group"
+                                aria-label="Preferred test language"
+                            >
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        persistStudentTestLanguage("en")
+                                    }
+                                    aria-pressed={
+                                        selectedTestLanguage === "en"
+                                    }
+                                    className={
+                                        "rounded-lg px-4 py-2 text-sm font-semibold transition " +
+                                        (selectedTestLanguage === "en"
+                                            ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200"
+                                            : "text-slate-600 hover:text-slate-950")
+                                    }
+                                >
+                                    English
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() =>
+                                        persistStudentTestLanguage("hi")
+                                    }
+                                    aria-pressed={
+                                        selectedTestLanguage === "hi"
+                                    }
+                                    className={
+                                        "rounded-lg px-4 py-2 text-sm font-semibold transition " +
+                                        (selectedTestLanguage === "hi"
+                                            ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200"
+                                            : "text-slate-600 hover:text-slate-950")
+                                    }
+                                >
+                                    {"\u0939\u093f\u0928\u094d\u0926\u0940"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="mb-4 flex items-center justify-between">
                         <h2 className="text-xl font-bold">
                             Available Tests
