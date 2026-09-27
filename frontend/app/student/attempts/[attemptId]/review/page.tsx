@@ -859,6 +859,21 @@ export default function StudentAttemptReviewPage() {
                                                         selectedLanguage
                                                     )}
                                                 </div>
+
+                                                {getLocalizedText(
+                                                    group.passageEn,
+                                                    group.passageHi,
+                                                    selectedLanguage
+                                                ) ? (
+                                                    <p className="mt-3 rounded-2xl bg-slate-50 p-4 text-sm leading-6 text-slate-700">
+                                                        {getLocalizedText(
+                                                            group.passageEn,
+                                                            group.passageHi,
+                                                            selectedLanguage
+                                                        )}
+                                                    </p>
+                                                ) : null}
+
                                                 <div className="mt-4 space-y-3">
                                                     {(group.contentBlocks || []).map(
                                                         (block, index) =>
