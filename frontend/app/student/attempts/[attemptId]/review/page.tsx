@@ -760,7 +760,10 @@ export default function StudentAttemptReviewPage() {
                             </div>
                         </section>
 
-                        <section className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+                        <section
+                            data-review-toolbar="sticky"
+                            className="sticky top-0 z-20 rounded-3xl bg-white/95 p-6 shadow-sm ring-1 ring-slate-200 backdrop-blur"
+                        >
                             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                                 <div>
                                     <h2 className="text-2xl font-bold">Question Review</h2>
