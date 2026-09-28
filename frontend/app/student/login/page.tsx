@@ -83,9 +83,9 @@ export default function StudentLoginPage() {
                 JSON.stringify(result.data || {})
             );
 
-            setSuccessMessage("Login successful. Redirecting to mock tests...");
+            setSuccessMessage("Login successful. Redirecting to your dashboard...");
 
-            router.push("/student/mock-tests");
+            router.push("/student");
         } catch (error) {
             setErrorMessage(
                 error instanceof Error ? error.message : "Unable to login."
