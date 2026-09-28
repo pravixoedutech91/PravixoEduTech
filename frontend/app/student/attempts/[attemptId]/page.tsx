@@ -1268,6 +1268,57 @@ export default function StudentAttemptPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
+                        <div
+                            role="group"
+                            aria-label="Quick test language"
+                            data-language-control="sticky-header"
+                            className="flex items-center rounded-xl border border-slate-200 bg-slate-100 p-1"
+                        >
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    handleLanguageChange("en")
+                                }
+                                disabled={
+                                    !allowLanguageSwitching &&
+                                    selectedLanguage !== "en"
+                                }
+                                aria-pressed={
+                                    selectedLanguage === "en"
+                                }
+                                className={
+                                    "rounded-lg px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 " +
+                                    (selectedLanguage === "en"
+                                        ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200"
+                                        : "text-slate-600 hover:text-slate-950")
+                                }
+                            >
+                                EN
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    handleLanguageChange("hi")
+                                }
+                                disabled={
+                                    !allowLanguageSwitching &&
+                                    selectedLanguage !== "hi"
+                                }
+                                aria-pressed={
+                                    selectedLanguage === "hi"
+                                }
+                                className={
+                                    "rounded-lg px-2.5 py-1.5 text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 " +
+                                    (selectedLanguage === "hi"
+                                        ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200"
+                                        : "text-slate-600 hover:text-slate-950")
+                                }
+                            >
+                                {"\u0939\u093f\u0928\u094d\u0926\u0940"}
+                            </button>
+                        </div>
+
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-center">
                             <p className="text-xs font-semibold uppercase text-slate-500">
                                 Time Left
