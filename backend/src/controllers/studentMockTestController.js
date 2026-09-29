@@ -1,4 +1,5 @@
 ﻿const {
+  isHostedEnvironment,
   getInternalErrorMessage,
   logRuntimeError,
 } = require("../utils/runtimeSecurity");
@@ -700,6 +701,10 @@ const buildStudentAttemptSummary = (
 
 
 
+const isPaymentOrderCreationEnabled = () =>
+    !isHostedEnvironment() ||
+    process.env.PAYMENTS_ENABLED === "true";
+
 const getRazorpayConfig = () => {
     const keyId = process.env.RAZORPAY_KEY_ID || "";
     const keySecret = process.env.RAZORPAY_KEY_SECRET || "";
@@ -715,7 +720,7 @@ const getRazorpayClient = () => {
 
     if (!config.keyId || !config.keySecret) {
         return {
-            error: "Razorpay test keys are not configured on backend",
+            error: "Razorpay credentials are not configured on backend",
         };
     }
 
@@ -806,7 +811,7 @@ const verifyRazorpayPaymentSignature = ({
     if (!config.keySecret) {
         return {
             isValid: false,
-            error: "Razorpay test keys are not configured on backend",
+            error: "Razorpay credentials are not configured on backend",
         };
     }
 
@@ -983,6 +988,9 @@ const getActivePaymentPackagesForStudent = async (req, res) => {
 
         res.status(200).json({
             success: true,
+            checkout: {
+                available: isPaymentOrderCreationEnabled(),
+            },
             count: visibleProducts.length,
             data: visibleProducts,
         });
@@ -999,6 +1007,13 @@ const getActivePaymentPackagesForStudent = async (req, res) => {
 
 const createPaymentPackageOrderForStudent = async (req, res) => {
     try {
+        if (!isPaymentOrderCreationEnabled()) {
+            return res.status(503).json({
+                success: false,
+                message: "Payment checkout is currently unavailable",
+            });
+        }
+
         const tenantId = getStudentTenantId(req);
         const studentId = req.user?._id;
         const { productId } = req.params;
