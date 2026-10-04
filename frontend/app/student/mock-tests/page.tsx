@@ -129,6 +129,9 @@ type StudentPaymentPackage = {
 
 type StudentPaymentPackagesResponse = {
     success: boolean;
+    checkout?: {
+        available?: boolean;
+    };
     count: number;
     data: StudentPaymentPackage[];
     message?: string;
@@ -433,6 +436,7 @@ export default function StudentMockTestsPage() {
     const [mockTests, setMockTests] = useState<MockTest[]>([]);
     const [activeTestType, setActiveTestType] = useState<StudentTestType>("mock");
     const [paymentPackages, setPaymentPackages] = useState<StudentPaymentPackage[]>([]);
+    const [isPaymentCheckoutAvailable, setIsPaymentCheckoutAvailable] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isLoadingPackages, setIsLoadingPackages] = useState(false);
     const [checkoutPackageId, setCheckoutPackageId] = useState<string | null>(null);
@@ -528,6 +532,7 @@ export default function StudentMockTestsPage() {
 
         if (!cleanToken) {
             setPaymentPackages([]);
+            setIsPaymentCheckoutAvailable(false);
             return;
         }
 
@@ -548,6 +553,7 @@ export default function StudentMockTestsPage() {
                 setToken("");
                 setMockTests([]);
                 setPaymentPackages([]);
+                setIsPaymentCheckoutAvailable(false);
                 setActionMessage("");
                 setErrorMessage(INVALID_STUDENT_SESSION_MESSAGE);
                 router.push("/student/login");
@@ -559,6 +565,7 @@ export default function StudentMockTestsPage() {
             }
 
             setPaymentPackages(Array.isArray(result.data) ? result.data : []);
+            setIsPaymentCheckoutAvailable(result.checkout?.available === true);
         } catch (error) {
             const message =
                 error instanceof Error
@@ -567,6 +574,7 @@ export default function StudentMockTestsPage() {
 
             setErrorMessage(message);
             setPaymentPackages([]);
+            setIsPaymentCheckoutAvailable(false);
         } finally {
             setIsLoadingPackages(false);
         }
@@ -839,6 +847,14 @@ export default function StudentMockTestsPage() {
             setErrorMessage("");
             setActionMessage(
                 paymentPackage.title + " is already purchased. Your access is active."
+            );
+            return;
+        }
+
+        if (!isPaymentCheckoutAvailable) {
+            setErrorMessage("");
+            setActionMessage(
+                "Purchases are temporarily unavailable. Please try again later."
             );
             return;
         }
@@ -1138,7 +1154,9 @@ export default function StudentMockTestsPage() {
                                 Paid Mock Test Packs
                             </h2>
                             <p className="mt-1 text-sm text-slate-600">
-                                Buy a test pack using Razorpay Test Mode. Access unlocks only after backend payment verification.
+                                {isPaymentCheckoutAvailable
+                                    ? "Secure checkout powered by Razorpay. Access unlocks only after verified payment."
+                                    : "Purchases are temporarily unavailable. Existing purchased access remains available."}
                             </p>
                         </div>
 
@@ -1209,6 +1227,7 @@ export default function StudentMockTestsPage() {
                                         type="button"
                                         onClick={() => void handleBuyPaymentPackage(paymentPackage)}
                                         disabled={
+                                            !isPaymentCheckoutAvailable ||
                                             checkoutPackageId === paymentPackage._id ||
                                             isPaymentPackageAccessActive(paymentPackage)
                                         }
@@ -1221,9 +1240,11 @@ export default function StudentMockTestsPage() {
                                     >
                                         {isPaymentPackageAccessActive(paymentPackage)
                                             ? "Purchased - Access Active"
-                                            : checkoutPackageId === paymentPackage._id
-                                              ? "Opening Checkout..."
-                                              : "Buy Now"}
+                                            : !isPaymentCheckoutAvailable
+                                              ? "Purchases Unavailable"
+                                              : checkoutPackageId === paymentPackage._id
+                                                ? "Opening Checkout..."
+                                                : "Buy Now"}
                                     </button>
                                     {paymentPackage.entitlement?.validUntil ? (
                                         <p className="mt-2 text-center text-xs font-medium text-emerald-700">
