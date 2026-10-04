@@ -834,6 +834,39 @@ export default function StudentMockTestsPage() {
 
         router.push(`/student/attempts/${attemptId}/review`);
     };
+    const handleViewPurchasedPackage = (paymentPackage: StudentPaymentPackage) => {
+        const includedMockTestIds = [
+            ...paymentPackage.includedMockTests.map(
+                (includedMockTest) => includedMockTest._id
+            ),
+            ...(paymentPackage.entitlement?.mockTestIds || []),
+        ];
+
+        const targetMockTest = mockTests.find((mockTest) =>
+            includedMockTestIds.includes(mockTest._id)
+        );
+
+        if (!targetMockTest) {
+            setErrorMessage(
+                "No included test is currently available in the student catalog. Please refresh and try again."
+            );
+            return;
+        }
+
+        setActiveTestType(targetMockTest.testType === "pyq" ? "pyq" : "mock");
+
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+                document
+                    .getElementById(`student-mock-test-${targetMockTest._id}`)
+                    ?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                    });
+            });
+        });
+    };
+
     const handleBuyPaymentPackage = async (paymentPackage: StudentPaymentPackage) => {
         const cleanToken = token.trim();
 
@@ -1225,21 +1258,30 @@ export default function StudentMockTestsPage() {
 
                                     <button
                                         type="button"
-                                        onClick={() => void handleBuyPaymentPackage(paymentPackage)}
+                                        onClick={() => {
+                                            if (isPaymentPackageAccessActive(paymentPackage)) {
+                                                handleViewPurchasedPackage(paymentPackage);
+                                                return;
+                                            }
+
+                                            void handleBuyPaymentPackage(paymentPackage);
+                                        }}
                                         disabled={
-                                            !isPaymentCheckoutAvailable ||
-                                            checkoutPackageId === paymentPackage._id ||
-                                            isPaymentPackageAccessActive(paymentPackage)
+                                            !isPaymentPackageAccessActive(paymentPackage) &&
+                                            (!isPaymentCheckoutAvailable ||
+                                                checkoutPackageId === paymentPackage._id)
                                         }
                                         className={
                                             "mt-5 w-full rounded-2xl px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed " +
                                             (isPaymentPackageAccessActive(paymentPackage)
-                                                ? "bg-emerald-600 disabled:bg-emerald-600"
+                                                ? "bg-emerald-600 hover:bg-emerald-700"
                                                 : "bg-slate-950 hover:bg-slate-800 disabled:bg-slate-400")
                                         }
                                     >
                                         {isPaymentPackageAccessActive(paymentPackage)
-                                            ? "Purchased - Access Active"
+                                            ? paymentPackage.includedMockTestCount === 1
+                                                ? "Open Included Test"
+                                                : "View Included Tests"
                                             : !isPaymentCheckoutAvailable
                                               ? "Purchases Unavailable"
                                               : checkoutPackageId === paymentPackage._id
@@ -1348,6 +1390,7 @@ export default function StudentMockTestsPage() {
                                 return (
                                     <article
                                         key={mockTest._id}
+                                        id={`student-mock-test-${mockTest._id}`}
                                         className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
                                     >
                                         <div className="mb-3 flex flex-wrap gap-2">
