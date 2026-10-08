@@ -7,15 +7,9 @@ const ExamPattern = require("../models/ExamPattern");
 const { getTenantFilter } = require("../middleware/tenantMiddleware");
 const MockTest = require("../models/MockTest");
 const MockTestVersion = require("../models/MockTestVersion");
-
-const validateSectionDuration = (totalDurationMinutes, sections) => {
-  const sectionDurationTotal = sections.reduce(
-    (total, section) => total + Number(section.durationMinutes || 0),
-    0
-  );
-
-  return sectionDurationTotal === Number(totalDurationMinutes);
-};
+const {
+  validateExamTimingPolicy,
+} = require("../utils/examTimingPolicy");
 
 // Create Exam Pattern
 const createExamPattern = async (req, res) => {
@@ -26,18 +20,20 @@ const createExamPattern = async (req, res) => {
       createdBy: req.user._id,
     };
 
-    if (
-      !validateSectionDuration(
-        examPatternData.totalDurationMinutes,
-        examPatternData.sections || []
-      )
-    ) {
+    const timingValidation = validateExamTimingPolicy({
+      timingMode: examPatternData.timingMode,
+      totalDurationMinutes: examPatternData.totalDurationMinutes,
+      sections: examPatternData.sections || [],
+    });
+
+    if (!timingValidation.valid) {
       return res.status(400).json({
         success: false,
-        message:
-          "Total duration must equal the sum of all section durations",
+        message: timingValidation.message,
       });
     }
+
+    examPatternData.timingMode = timingValidation.timingMode;
 
     const examPattern = await ExamPattern.create(examPatternData);
 
@@ -92,20 +88,41 @@ const updateExamPattern = async (req, res) => {
     delete updateData.tenantId;
     delete updateData.createdBy;
 
-    if (updateData.totalDurationMinutes && updateData.sections) {
-      if (
-        !validateSectionDuration(
-          updateData.totalDurationMinutes,
-          updateData.sections
-        )
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Total duration must equal the sum of all section durations",
-        });
-      }
+    const existingExamPattern = await ExamPattern.findOne({
+      _id: req.params.id,
+      ...tenantFilter,
+    });
+
+    if (!existingExamPattern) {
+      return res.status(404).json({
+        success: false,
+        message: "Exam pattern not found or access denied",
+      });
     }
+
+    const hasUpdateField = (field) =>
+      Object.prototype.hasOwnProperty.call(updateData, field);
+
+    const timingValidation = validateExamTimingPolicy({
+      timingMode: hasUpdateField("timingMode")
+        ? updateData.timingMode
+        : existingExamPattern.timingMode,
+      totalDurationMinutes: hasUpdateField("totalDurationMinutes")
+        ? updateData.totalDurationMinutes
+        : existingExamPattern.totalDurationMinutes,
+      sections: hasUpdateField("sections")
+        ? updateData.sections
+        : existingExamPattern.sections,
+    });
+
+    if (!timingValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        message: timingValidation.message,
+      });
+    }
+
+    updateData.timingMode = timingValidation.timingMode;
 
     const examPattern = await ExamPattern.findOneAndUpdate(
       {
