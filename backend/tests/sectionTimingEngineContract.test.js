@@ -623,3 +623,192 @@ test("SECTION-TIMER-B1 timing policy contract", async (t) => {
     }
   );
 });
+const fsForTimingSnapshot = require("node:fs");
+const pathForTimingSnapshot = require("node:path");
+
+const MockTestVersionForTimingSnapshot =
+  require("../src/models/MockTestVersion");
+
+const {
+  TIMING_POLICY_VERSIONS,
+  CURRENT_TIMING_POLICY_VERSION,
+  buildExamTimingPolicySnapshot,
+} = require("../src/utils/examTimingPolicy");
+
+test(
+  "SECTION-TIMER-B2 published timing snapshot contract",
+  async (t) => {
+    await t.test(
+      "timing policy versions preserve explicit legacy and current contracts",
+      () => {
+        assert.equal(
+          TIMING_POLICY_VERSIONS.LEGACY,
+          0
+        );
+
+        assert.equal(
+          TIMING_POLICY_VERSIONS.V1,
+          1
+        );
+
+        assert.equal(
+          CURRENT_TIMING_POLICY_VERSION,
+          1
+        );
+      }
+    );
+
+    await t.test(
+      "legacy or missing exam timing mode publishes as global V1",
+      () => {
+        const snapshot =
+          buildExamTimingPolicySnapshot({});
+
+        assert.deepEqual(
+          snapshot,
+          {
+            timingMode: "global",
+            timingPolicyVersion: 1,
+          }
+        );
+      }
+    );
+
+    await t.test(
+      "sectional exam publishes as sectional V1",
+      () => {
+        const snapshot =
+          buildExamTimingPolicySnapshot({
+            timingMode: "sectional",
+          });
+
+        assert.deepEqual(
+          snapshot,
+          {
+            timingMode: "sectional",
+            timingPolicyVersion: 1,
+          }
+        );
+      }
+    );
+
+    await t.test(
+      "unsupported timing mode cannot be frozen into a published snapshot",
+      () => {
+        assert.throws(
+          () =>
+            buildExamTimingPolicySnapshot({
+              timingMode: "hybrid",
+            }),
+          /Unsupported timingMode/
+        );
+      }
+    );
+
+    await t.test(
+      "MockTestVersion snapshot schema preserves legacy defaults",
+      () => {
+        const snapshotPath =
+          MockTestVersionForTimingSnapshot.schema.path(
+            "examPatternSnapshot"
+          );
+
+        assert.ok(snapshotPath);
+        assert.ok(snapshotPath.schema);
+
+        const snapshotSchema =
+          snapshotPath.schema;
+
+        const timingModePath =
+          snapshotSchema.path("timingMode");
+
+        const timingPolicyVersionPath =
+          snapshotSchema.path(
+            "timingPolicyVersion"
+          );
+
+        assert.ok(timingModePath);
+        assert.ok(timingPolicyVersionPath);
+
+        assert.deepEqual(
+          [...timingModePath.enumValues].sort(),
+          ["global", "sectional"]
+        );
+
+        assert.equal(
+          timingModePath.defaultValue,
+          "global"
+        );
+
+        assert.equal(
+          timingPolicyVersionPath.defaultValue,
+          0
+        );
+
+        assert.equal(
+          timingPolicyVersionPath.options.min,
+          0
+        );
+      }
+    );
+
+    await t.test(
+      "published snapshot builder is wired to timing policy snapshot helper",
+      () => {
+        const controllerPath =
+          pathForTimingSnapshot.join(
+            __dirname,
+            "../src/controllers/mockTestController.js"
+          );
+
+        const source =
+          fsForTimingSnapshot.readFileSync(
+            controllerPath,
+            "utf8"
+          );
+
+        assert.match(
+          source,
+          /const buildExamPatternSnapshot = \(examPattern\) => \{[\s\S]*?\.\.\.buildExamTimingPolicySnapshot\(examPattern\)[\s\S]*?totalDurationMinutes: examPattern\.totalDurationMinutes/
+        );
+
+        assert.match(
+          source,
+          /examPatternSnapshot:\s*buildExamPatternSnapshot\(\s*examPatternValidation\.examPattern\s*\)/
+        );
+      }
+    );
+
+    await t.test(
+      "B2 does not place timing policy fields on section snapshots",
+      () => {
+        const controllerPath =
+          pathForTimingSnapshot.join(
+            __dirname,
+            "../src/controllers/mockTestController.js"
+          );
+
+        const source =
+          fsForTimingSnapshot.readFileSync(
+            controllerPath,
+            "utf8"
+          );
+
+        const sectionBuilderMatch =
+          source.match(
+            /const buildSectionSnapshots = \(mockTest, questionMap, questionGroupMap\) => \{[\s\S]*?^};/m
+          );
+
+        assert.ok(
+          sectionBuilderMatch,
+          "buildSectionSnapshots source must be discoverable"
+        );
+
+        assert.doesNotMatch(
+          sectionBuilderMatch[0],
+          /timingPolicyVersion/
+        );
+      }
+    );
+  }
+);

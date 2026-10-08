@@ -15,6 +15,9 @@ const QuestionGroup = require("../models/QuestionGroup");
 const Category = require("../models/Category");
 
 const { getTenantFilter } = require("../middleware/tenantMiddleware");
+const {
+    buildExamTimingPolicySnapshot,
+} = require("../utils/examTimingPolicy");
 
 const hasText = (value) => {
     return typeof value === "string" && value.trim().length > 0;
@@ -481,6 +484,7 @@ const buildExamPatternSnapshot = (examPattern) => {
         examPatternId: examPattern._id,
         name: examPattern.name,
         examType: examPattern.examType,
+        ...buildExamTimingPolicySnapshot(examPattern),
         totalDurationMinutes: examPattern.totalDurationMinutes,
         allowSectionSwitching: examPattern.allowSectionSwitching,
         allowQuestionNavigation: examPattern.allowQuestionNavigation,

@@ -459,6 +459,22 @@ const examPatternSnapshotSchema = new mongoose.Schema(
       trim: true,
     },
 
+    timingMode: {
+      type: String,
+      enum: ["global", "sectional"],
+      default: "global",
+    },
+
+    timingPolicyVersion: {
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isInteger,
+        message: "timingPolicyVersion must be an integer",
+      },
+    },
+
     totalDurationMinutes: {
       type: Number,
       default: 0,

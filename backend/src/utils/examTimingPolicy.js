@@ -3,6 +3,14 @@ const TIMING_MODES = Object.freeze({
   SECTIONAL: "sectional",
 });
 
+const TIMING_POLICY_VERSIONS = Object.freeze({
+  LEGACY: 0,
+  V1: 1,
+});
+
+const CURRENT_TIMING_POLICY_VERSION =
+  TIMING_POLICY_VERSIONS.V1;
+
 const SUPPORTED_TIMING_MODES = new Set(Object.values(TIMING_MODES));
 
 const resolveTimingMode = (value) => {
@@ -11,6 +19,23 @@ const resolveTimingMode = (value) => {
   }
 
   return String(value).trim().toLowerCase();
+};
+
+const buildExamTimingPolicySnapshot = (examPattern = {}) => {
+  const timingMode =
+    resolveTimingMode(examPattern?.timingMode);
+
+  if (!SUPPORTED_TIMING_MODES.has(timingMode)) {
+    throw new Error(
+      `Unsupported timingMode for published snapshot: ${timingMode}`
+    );
+  }
+
+  return {
+    timingMode,
+    timingPolicyVersion:
+      CURRENT_TIMING_POLICY_VERSION,
+  };
 };
 
 const getSectionDurationTotal = (sections = []) => {
@@ -116,7 +141,10 @@ const validateExamTimingPolicy = ({
 
 module.exports = {
   TIMING_MODES,
+  TIMING_POLICY_VERSIONS,
+  CURRENT_TIMING_POLICY_VERSION,
   resolveTimingMode,
+  buildExamTimingPolicySnapshot,
   getSectionDurationTotal,
   validateExamTimingPolicy,
 };
