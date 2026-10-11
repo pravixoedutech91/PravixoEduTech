@@ -812,3 +812,999 @@ test(
     );
   }
 );
+const TestAttemptForTimingState =
+  require("../src/models/TestAttempt");
+
+const {
+  buildAttemptTimingState,
+  resolveAttemptTimingState,
+} = require("../src/utils/attemptTimingPolicy");
+
+test(
+  "SECTION-TIMER-B3A permanent attempt timing contract",
+  async (t) => {
+    const baseStartedAt =
+      new Date("2026-10-08T10:00:00.000Z");
+
+    const makeSectionalVersion = () => ({
+      examPatternSnapshot: {
+        timingMode: "sectional",
+        timingPolicyVersion: 1,
+        totalDurationMinutes: 60,
+      },
+
+      sections: [
+        {
+          sectionSlug: "reasoning",
+          order: 1,
+          durationMinutes: 15,
+        },
+        {
+          sectionSlug: "quantitative-aptitude",
+          order: 2,
+          durationMinutes: 15,
+        },
+        {
+          sectionSlug: "english",
+          order: 3,
+          durationMinutes: 15,
+        },
+        {
+          sectionSlug: "general-awareness",
+          order: 4,
+          durationMinutes: 15,
+        },
+      ],
+    });
+
+    await t.test(
+      "legacy TestAttempt does not materialize timingState automatically",
+      async () => {
+        const attempt =
+          new TestAttemptForTimingState({
+            tenantId: "pravixoedutech",
+            studentId:
+              "507f1f77bcf86cd799439011",
+            mockTestId:
+              "507f1f77bcf86cd799439012",
+            mockTestVersionId:
+              "507f1f77bcf86cd799439013",
+            attemptNumber: 1,
+          });
+
+        await attempt.validate();
+
+        assert.equal(
+          attempt.timingState,
+          undefined
+        );
+      }
+    );
+
+    await t.test(
+      "global V1 builds persistent mode without section windows",
+      () => {
+        const result =
+          buildAttemptTimingState({
+            startedAt:
+              baseStartedAt,
+
+            mockTestVersion: {
+              examPatternSnapshot: {
+                timingMode: "global",
+                timingPolicyVersion: 1,
+                totalDurationMinutes: 90,
+              },
+
+              sections: [
+                {
+                  sectionSlug:
+                    "general-awareness",
+                  order: 1,
+                  durationMinutes: 0,
+                },
+              ],
+            },
+          });
+
+        assert.deepEqual(
+          result,
+          {
+            mode: "global",
+            policyVersion: 1,
+            sectionWindows: [],
+          }
+        );
+      }
+    );
+
+    await t.test(
+      "legacy global snapshot builds policy version zero",
+      () => {
+        const result =
+          buildAttemptTimingState({
+            startedAt:
+              baseStartedAt,
+
+            mockTestVersion: {
+              examPatternSnapshot: {},
+              sections: [],
+            },
+          });
+
+        assert.deepEqual(
+          result,
+          {
+            mode: "global",
+            policyVersion: 0,
+            sectionWindows: [],
+          }
+        );
+      }
+    );
+
+    await t.test(
+      "sectional V1 builds contiguous absolute windows from server startedAt",
+      () => {
+        const result =
+          buildAttemptTimingState({
+            mockTestVersion:
+              makeSectionalVersion(),
+
+            startedAt:
+              baseStartedAt,
+          });
+
+        assert.equal(
+          result.mode,
+          "sectional"
+        );
+
+        assert.equal(
+          result.policyVersion,
+          1
+        );
+
+        assert.equal(
+          result.sectionWindows.length,
+          4
+        );
+
+        assert.deepEqual(
+          result.sectionWindows.map(
+            (window) => ({
+              sectionSlug:
+                window.sectionSlug,
+              order:
+                window.order,
+              startsAt:
+                window.startsAt.toISOString(),
+              expiresAt:
+                window.expiresAt.toISOString(),
+            })
+          ),
+          [
+            {
+              sectionSlug: "reasoning",
+              order: 1,
+              startsAt:
+                "2026-10-08T10:00:00.000Z",
+              expiresAt:
+                "2026-10-08T10:15:00.000Z",
+            },
+            {
+              sectionSlug:
+                "quantitative-aptitude",
+              order: 2,
+              startsAt:
+                "2026-10-08T10:15:00.000Z",
+              expiresAt:
+                "2026-10-08T10:30:00.000Z",
+            },
+            {
+              sectionSlug: "english",
+              order: 3,
+              startsAt:
+                "2026-10-08T10:30:00.000Z",
+              expiresAt:
+                "2026-10-08T10:45:00.000Z",
+            },
+            {
+              sectionSlug:
+                "general-awareness",
+              order: 4,
+              startsAt:
+                "2026-10-08T10:45:00.000Z",
+              expiresAt:
+                "2026-10-08T11:00:00.000Z",
+            },
+          ]
+        );
+      }
+    );
+
+    await t.test(
+      "sectional builder does not mutate published section ordering",
+      () => {
+        const version =
+          makeSectionalVersion();
+
+        version.sections.reverse();
+
+        const before =
+          version.sections.map(
+            (section) =>
+              section.sectionSlug
+          );
+
+        buildAttemptTimingState({
+          mockTestVersion:
+            version,
+          startedAt:
+            baseStartedAt,
+        });
+
+        assert.deepEqual(
+          version.sections.map(
+            (section) =>
+              section.sectionSlug
+          ),
+          before
+        );
+      }
+    );
+
+    await t.test(
+      "sectional builder rejects duplicate slugs",
+      () => {
+        const version =
+          makeSectionalVersion();
+
+        version.sections[1].sectionSlug =
+          "reasoning";
+
+        assert.throws(
+          () =>
+            buildAttemptTimingState({
+              mockTestVersion:
+                version,
+              startedAt:
+                baseStartedAt,
+            }),
+          /sectionSlug values must be unique/
+        );
+      }
+    );
+
+    await t.test(
+      "sectional builder rejects duplicate order values",
+      () => {
+        const version =
+          makeSectionalVersion();
+
+        version.sections[1].order = 1;
+
+        assert.throws(
+          () =>
+            buildAttemptTimingState({
+              mockTestVersion:
+                version,
+              startedAt:
+                baseStartedAt,
+            }),
+          /order values must be unique/
+        );
+      }
+    );
+
+    await t.test(
+      "sectional builder rejects duration mismatch",
+      () => {
+        const version =
+          makeSectionalVersion();
+
+        version.examPatternSnapshot
+          .totalDurationMinutes = 65;
+
+        assert.throws(
+          () =>
+            buildAttemptTimingState({
+              mockTestVersion:
+                version,
+              startedAt:
+                baseStartedAt,
+            }),
+          /duration total does not match/
+        );
+      }
+    );
+
+    await t.test(
+      "sectional mode fails closed for legacy policy version zero",
+      () => {
+        const version =
+          makeSectionalVersion();
+
+        version.examPatternSnapshot
+          .timingPolicyVersion = 0;
+
+        assert.throws(
+          () =>
+            buildAttemptTimingState({
+              mockTestVersion:
+                version,
+              startedAt:
+                baseStartedAt,
+            }),
+          /Unsupported sectional attempt timing policy version/
+        );
+      }
+    );
+
+    await t.test(
+      "legacy attempt with missing timingState resolves as global",
+      () => {
+        const resolved =
+          resolveAttemptTimingState({
+            attempt: {
+              expiresAt:
+                new Date(
+                  "2026-10-08T11:00:00.000Z"
+                ),
+            },
+
+            now:
+              new Date(
+                "2026-10-08T10:20:00.000Z"
+              ),
+          });
+
+        assert.equal(
+          resolved.mode,
+          "global"
+        );
+
+        assert.equal(
+          resolved.policyVersion,
+          0
+        );
+
+        assert.equal(
+          resolved.attemptExpired,
+          false
+        );
+
+        assert.equal(
+          resolved.overallRemainingSeconds,
+          2400
+        );
+
+        assert.equal(
+          resolved.activeSection,
+          null
+        );
+      }
+    );
+
+    await t.test(
+      "legacy global attempt still expires from overall server deadline",
+      () => {
+        const resolved =
+          resolveAttemptTimingState({
+            attempt: {
+              expiresAt:
+                new Date(
+                  "2026-10-08T11:00:00.000Z"
+                ),
+            },
+
+            now:
+              new Date(
+                "2026-10-08T11:00:00.000Z"
+              ),
+          });
+
+        assert.equal(
+          resolved.attemptExpired,
+          true
+        );
+
+        assert.equal(
+          resolved.overallRemainingSeconds,
+          0
+        );
+      }
+    );
+
+    await t.test(
+      "sectional resolver exposes only the first active window at start",
+      () => {
+        const timingState =
+          buildAttemptTimingState({
+            mockTestVersion:
+              makeSectionalVersion(),
+            startedAt:
+              baseStartedAt,
+          });
+
+        const resolved =
+          resolveAttemptTimingState({
+            attempt: {
+              timingState,
+              expiresAt:
+                new Date(
+                  "2026-10-08T11:00:00.000Z"
+                ),
+            },
+
+            now:
+              new Date(
+                "2026-10-08T10:00:00.000Z"
+              ),
+          });
+
+        assert.equal(
+          resolved.activeSection
+            .sectionSlug,
+          "reasoning"
+        );
+
+        assert.equal(
+          resolved.activeSection
+            .remainingSeconds,
+          900
+        );
+
+        assert.deepEqual(
+          resolved.expiredSectionSlugs,
+          []
+        );
+
+        assert.deepEqual(
+          resolved.lockedSectionSlugs,
+          [
+            "quantitative-aptitude",
+            "english",
+            "general-awareness",
+          ]
+        );
+      }
+    );
+
+    await t.test(
+      "exact section expiry activates next section without overlap",
+      () => {
+        const timingState =
+          buildAttemptTimingState({
+            mockTestVersion:
+              makeSectionalVersion(),
+            startedAt:
+              baseStartedAt,
+          });
+
+        const resolved =
+          resolveAttemptTimingState({
+            attempt: {
+              timingState,
+              expiresAt:
+                new Date(
+                  "2026-10-08T11:00:00.000Z"
+                ),
+            },
+
+            now:
+              new Date(
+                "2026-10-08T10:15:00.000Z"
+              ),
+          });
+
+        assert.deepEqual(
+          resolved.expiredSectionSlugs,
+          ["reasoning"]
+        );
+
+        assert.equal(
+          resolved.activeSection
+            .sectionSlug,
+          "quantitative-aptitude"
+        );
+
+        assert.equal(
+          resolved.activeSection
+            .remainingSeconds,
+          900
+        );
+      }
+    );
+
+    await t.test(
+      "resume later derives section from immutable absolute windows",
+      () => {
+        const timingState =
+          buildAttemptTimingState({
+            mockTestVersion:
+              makeSectionalVersion(),
+            startedAt:
+              baseStartedAt,
+          });
+
+        const resolved =
+          resolveAttemptTimingState({
+            attempt: {
+              timingState,
+              expiresAt:
+                new Date(
+                  "2026-10-08T11:00:00.000Z"
+                ),
+            },
+
+            now:
+              new Date(
+                "2026-10-08T10:37:00.000Z"
+              ),
+          });
+
+        assert.deepEqual(
+          resolved.expiredSectionSlugs,
+          [
+            "reasoning",
+            "quantitative-aptitude",
+          ]
+        );
+
+        assert.equal(
+          resolved.activeSection
+            .sectionSlug,
+          "english"
+        );
+
+        assert.equal(
+          resolved.activeSection
+            .remainingSeconds,
+          480
+        );
+
+        assert.deepEqual(
+          resolved.lockedSectionSlugs,
+          ["general-awareness"]
+        );
+      }
+    );
+
+    await t.test(
+      "sectional schedule is expired when final absolute window ends",
+      () => {
+        const timingState =
+          buildAttemptTimingState({
+            mockTestVersion:
+              makeSectionalVersion(),
+            startedAt:
+              baseStartedAt,
+          });
+
+        const resolved =
+          resolveAttemptTimingState({
+            attempt: {
+              timingState,
+              expiresAt:
+                new Date(
+                  "2026-10-08T11:00:00.000Z"
+                ),
+            },
+
+            now:
+              new Date(
+                "2026-10-08T11:00:00.000Z"
+              ),
+          });
+
+        assert.equal(
+          resolved.attemptExpired,
+          true
+        );
+
+        assert.equal(
+          resolved.activeSection,
+          null
+        );
+
+        assert.deepEqual(
+          resolved.expiredSectionSlugs,
+          [
+            "reasoning",
+            "quantitative-aptitude",
+            "english",
+            "general-awareness",
+          ]
+        );
+
+        assert.deepEqual(
+          resolved.lockedSectionSlugs,
+          []
+        );
+      }
+    );
+
+    await t.test(
+      "TestAttempt schema accepts valid persisted sectional timing state",
+      async () => {
+        const timingState =
+          buildAttemptTimingState({
+            mockTestVersion:
+              makeSectionalVersion(),
+            startedAt:
+              baseStartedAt,
+          });
+
+        const attempt =
+          new TestAttemptForTimingState({
+            tenantId:
+              "pravixoedutech",
+            studentId:
+              "507f1f77bcf86cd799439011",
+            mockTestId:
+              "507f1f77bcf86cd799439012",
+            mockTestVersionId:
+              "507f1f77bcf86cd799439013",
+            attemptNumber: 1,
+            startedAt:
+              baseStartedAt,
+            expiresAt:
+              new Date(
+                "2026-10-08T11:00:00.000Z"
+              ),
+            timingState,
+          });
+
+        await attempt.validate();
+
+        assert.equal(
+          attempt.timingState.mode,
+          "sectional"
+        );
+
+        assert.equal(
+          attempt.timingState
+            .sectionWindows.length,
+          4
+        );
+      }
+    );
+
+    await t.test(
+      "TestAttempt schema rejects inverted section timing window",
+      async () => {
+        const attempt =
+          new TestAttemptForTimingState({
+            tenantId:
+              "pravixoedutech",
+            studentId:
+              "507f1f77bcf86cd799439011",
+            mockTestId:
+              "507f1f77bcf86cd799439012",
+            mockTestVersionId:
+              "507f1f77bcf86cd799439013",
+            attemptNumber: 1,
+
+            // Match the intentionally malformed window boundaries
+            // so this test isolates the child invariant:
+            // expiresAt must be strictly after startsAt.
+            startedAt:
+              new Date(
+                "2026-10-08T10:15:00.000Z"
+              ),
+            expiresAt:
+              new Date(
+                "2026-10-08T10:00:00.000Z"
+              ),
+
+            timingState: {
+              mode: "sectional",
+              policyVersion: 1,
+
+              sectionWindows: [
+                {
+                  sectionSlug:
+                    "reasoning",
+                  order: 1,
+                  startsAt:
+                    new Date(
+                      "2026-10-08T10:15:00.000Z"
+                    ),
+                  expiresAt:
+                    new Date(
+                      "2026-10-08T10:00:00.000Z"
+                    ),
+                },
+              ],
+            },
+          });
+
+        await assert.rejects(
+          attempt.validate(),
+          /expire after it starts/
+        );
+      }
+    );
+  }
+);
+test(
+  "SECTION-TIMER-B3A-H1 model integrity contract",
+  async (t) => {
+    const baseAttemptData = () => ({
+      tenantId:
+        "pravixoedutech",
+      studentId:
+        "507f1f77bcf86cd799439011",
+      mockTestId:
+        "507f1f77bcf86cd799439012",
+      mockTestVersionId:
+        "507f1f77bcf86cd799439013",
+      attemptNumber: 1,
+      startedAt:
+        new Date(
+          "2026-10-08T10:00:00.000Z"
+        ),
+      expiresAt:
+        new Date(
+          "2026-10-08T10:30:00.000Z"
+        ),
+    });
+
+    const validWindows = () => [
+      {
+        sectionSlug: "reasoning",
+        order: 1,
+        startsAt:
+          new Date(
+            "2026-10-08T10:00:00.000Z"
+          ),
+        expiresAt:
+          new Date(
+            "2026-10-08T10:15:00.000Z"
+          ),
+      },
+      {
+        sectionSlug: "maths",
+        order: 2,
+        startsAt:
+          new Date(
+            "2026-10-08T10:15:00.000Z"
+          ),
+        expiresAt:
+          new Date(
+            "2026-10-08T10:30:00.000Z"
+          ),
+      },
+    ];
+
+    await t.test(
+      "timingState is immutable after creation",
+      () => {
+        const path =
+          TestAttemptForTimingState
+            .schema
+            .path("timingState");
+
+        assert.ok(path);
+
+        assert.equal(
+          path.options.immutable,
+          true
+        );
+      }
+    );
+
+    await t.test(
+      "global persisted timing state cannot contain section windows",
+      async () => {
+        const attempt =
+          new TestAttemptForTimingState({
+            ...baseAttemptData(),
+
+            timingState: {
+              mode: "global",
+              policyVersion: 1,
+              sectionWindows:
+                validWindows(),
+            },
+          });
+
+        await assert.rejects(
+          attempt.validate(),
+          /must not contain section windows/
+        );
+      }
+    );
+
+    await t.test(
+      "sectional persisted timing state requires windows",
+      async () => {
+        const attempt =
+          new TestAttemptForTimingState({
+            ...baseAttemptData(),
+
+            timingState: {
+              mode: "sectional",
+              policyVersion: 1,
+              sectionWindows: [],
+            },
+          });
+
+        await assert.rejects(
+          attempt.validate(),
+          /requires section windows/
+        );
+      }
+    );
+
+    await t.test(
+      "sectional persisted timing state rejects duplicate slugs",
+      async () => {
+        const windows =
+          validWindows();
+
+        windows[1].sectionSlug =
+          "reasoning";
+
+        const attempt =
+          new TestAttemptForTimingState({
+            ...baseAttemptData(),
+
+            timingState: {
+              mode: "sectional",
+              policyVersion: 1,
+              sectionWindows:
+                windows,
+            },
+          });
+
+        await assert.rejects(
+          attempt.validate(),
+          /slugs must be unique/
+        );
+      }
+    );
+
+    await t.test(
+      "sectional persisted timing state rejects duplicate order values",
+      async () => {
+        const windows =
+          validWindows();
+
+        windows[1].order = 1;
+
+        const attempt =
+          new TestAttemptForTimingState({
+            ...baseAttemptData(),
+
+            timingState: {
+              mode: "sectional",
+              policyVersion: 1,
+              sectionWindows:
+                windows,
+            },
+          });
+
+        await assert.rejects(
+          attempt.validate(),
+          /orders must be unique/
+        );
+      }
+    );
+
+    await t.test(
+      "sectional persisted timing state rejects gaps between windows",
+      async () => {
+        const windows =
+          validWindows();
+
+        windows[1].startsAt =
+          new Date(
+            "2026-10-08T10:16:00.000Z"
+          );
+
+        const attempt =
+          new TestAttemptForTimingState({
+            ...baseAttemptData(),
+
+            timingState: {
+              mode: "sectional",
+              policyVersion: 1,
+              sectionWindows:
+                windows,
+            },
+          });
+
+        await assert.rejects(
+          attempt.validate(),
+          /must be contiguous/
+        );
+      }
+    );
+
+    await t.test(
+      "sectional schedule must begin at attempt startedAt",
+      async () => {
+        const attemptData =
+          baseAttemptData();
+
+        attemptData.startedAt =
+          new Date(
+            "2026-10-08T09:59:00.000Z"
+          );
+
+        const attempt =
+          new TestAttemptForTimingState({
+            ...attemptData,
+
+            timingState: {
+              mode: "sectional",
+              policyVersion: 1,
+              sectionWindows:
+                validWindows(),
+            },
+          });
+
+        await assert.rejects(
+          attempt.validate(),
+          /must start at attempt startedAt/
+        );
+      }
+    );
+
+    await t.test(
+      "sectional schedule must end at attempt expiresAt",
+      async () => {
+        const attemptData =
+          baseAttemptData();
+
+        attemptData.expiresAt =
+          new Date(
+            "2026-10-08T10:31:00.000Z"
+          );
+
+        const attempt =
+          new TestAttemptForTimingState({
+            ...attemptData,
+
+            timingState: {
+              mode: "sectional",
+              policyVersion: 1,
+              sectionWindows:
+                validWindows(),
+            },
+          });
+
+        await assert.rejects(
+          attempt.validate(),
+          /must end at attempt expiresAt/
+        );
+      }
+    );
+
+    await t.test(
+      "valid sectional model contract passes all structural guards",
+      async () => {
+        const attempt =
+          new TestAttemptForTimingState({
+            ...baseAttemptData(),
+
+            timingState: {
+              mode: "sectional",
+              policyVersion: 1,
+              sectionWindows:
+                validWindows(),
+            },
+          });
+
+        await attempt.validate();
+
+        assert.equal(
+          attempt.timingState.mode,
+          "sectional"
+        );
+      }
+    );
+  }
+);
