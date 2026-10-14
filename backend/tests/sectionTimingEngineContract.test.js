@@ -1808,3 +1808,264 @@ test(
     );
   }
 );
+const fsForB3BRuntime = require("node:fs");
+const pathForB3BRuntime = require("node:path");
+
+test(
+  "SECTION-TIMER-B3B start resume integration contract",
+  async (t) => {
+    const controllerPath =
+      pathForB3BRuntime.join(
+        __dirname,
+        "../src/controllers/studentMockTestController.js"
+      );
+
+    const readControllerSource = () =>
+      fsForB3BRuntime.readFileSync(
+        controllerPath,
+        "utf8"
+      );
+
+    await t.test(
+      "student controller imports both attempt timing builder and resolver",
+      () => {
+        const source =
+          readControllerSource();
+
+        assert.match(
+          source,
+          /buildAttemptTimingState/
+        );
+
+        assert.match(
+          source,
+          /resolveAttemptTimingState/
+        );
+
+        assert.match(
+          source,
+          /require\("\.\.\/utils\/attemptTimingPolicy"\)/
+        );
+      }
+    );
+
+    await t.test(
+      "new attempt timing state is built from published version and same server now",
+      () => {
+        const source =
+          readControllerSource();
+
+        const startMatch =
+          source.match(
+            /const startMockTestAttempt = async \(req, res\) => \{[\s\S]*?^};/m
+          );
+
+        assert.ok(
+          startMatch,
+          "startMockTestAttempt source must be discoverable"
+        );
+
+        assert.match(
+          startMatch[0],
+          /const now = new Date\(\);/
+        );
+
+        assert.match(
+          startMatch[0],
+          /const timingState = buildAttemptTimingState\(\{\s*mockTestVersion,\s*startedAt: now,\s*\}\);/
+        );
+
+        assert.match(
+          startMatch[0],
+          /TestAttempt\.create\(\{[\s\S]*?startedAt: now,[\s\S]*?expiresAt,[\s\S]*?totalDurationSeconds,[\s\S]*?timingState,[\s\S]*?timeSpentSeconds: 0/
+        );
+      }
+    );
+
+    await t.test(
+      "resume expiry uses central timing resolver rather than only raw expiresAt comparison",
+      () => {
+        const source =
+          readControllerSource();
+
+        const startMatch =
+          source.match(
+            /const startMockTestAttempt = async \(req, res\) => \{[\s\S]*?^};/m
+          );
+
+        assert.ok(startMatch);
+
+        assert.match(
+          startMatch[0],
+          /const existingTimingState = resolveAttemptTimingState\(\{\s*attempt: existingAttempt,\s*now,\s*\}\);/
+        );
+
+        assert.match(
+          startMatch[0],
+          /existingTimingState\.attemptExpired/
+        );
+
+        assert.doesNotMatch(
+          startMatch[0],
+          /existingAttempt\.expiresAt\s*&&\s*existingAttempt\.expiresAt\s*<=\s*now/
+        );
+      }
+    );
+
+    await t.test(
+      "start and resume payloads use the same request server clock",
+      () => {
+        const source =
+          readControllerSource();
+
+        const startMatch =
+          source.match(
+            /const startMockTestAttempt = async \(req, res\) => \{[\s\S]*?^};/m
+          );
+
+        assert.ok(startMatch);
+
+        const payloadCalls =
+          startMatch[0].match(
+            /buildAttemptPayload\([\s\S]*?\)/g
+          ) || [];
+
+        assert.ok(
+          payloadCalls.length >= 2,
+          "start and resume must both build attempt payloads"
+        );
+
+        assert.match(
+          startMatch[0],
+          /buildAttemptPayload\(\s*existingAttempt,\s*resumeMockTestVersion,\s*true,\s*attemptDetail,\s*now\s*\)/
+        );
+
+        assert.match(
+          startMatch[0],
+          /buildAttemptPayload\(\s*attempt,\s*mockTestVersion,\s*false,\s*attemptDetail,\s*now\s*\)/
+        );
+      }
+    );
+
+    await t.test(
+      "attempt payload exposes sanitized authoritative timing state",
+      () => {
+        const source =
+          readControllerSource();
+
+        const payloadMatch =
+          source.match(
+            /const buildAttemptTimingPayload = \(attempt, serverNow\) => \{[\s\S]*?^};[\s\S]*?const buildAttemptPayload = \([\s\S]*?^};/m
+          );
+
+        assert.ok(
+          payloadMatch,
+          "attempt timing payload source must be discoverable"
+        );
+
+        assert.match(
+          payloadMatch[0],
+          /resolveAttemptTimingState\(\{\s*attempt,\s*now: serverNow,\s*\}\)/
+        );
+
+        assert.match(
+          payloadMatch[0],
+          /serverTime: serverNow/
+        );
+
+        assert.match(
+          payloadMatch[0],
+          /timing: buildAttemptTimingPayload\(attempt, serverNow\)/
+        );
+
+        for (
+          const field of [
+            "mode",
+            "policyVersion",
+            "attemptExpired",
+            "overallExpiresAt",
+            "overallRemainingSeconds",
+            "activeSection",
+            "expiredSectionSlugs",
+            "lockedSectionSlugs",
+          ]
+        ) {
+          assert.match(
+            payloadMatch[0],
+            new RegExp(
+              `${field}: timingState\\.${field}`
+            )
+          );
+        }
+
+        assert.doesNotMatch(
+          payloadMatch[0],
+          /sectionWindows: timingState\.sectionWindows/
+        );
+      }
+    );
+
+    await t.test(
+      "legacy attempts are not backfilled with mutable timing state on resume",
+      () => {
+        const source =
+          readControllerSource();
+
+        const startMatch =
+          source.match(
+            /const startMockTestAttempt = async \(req, res\) => \{[\s\S]*?^};/m
+          );
+
+        assert.ok(startMatch);
+
+        const resumeBlockMatch =
+          startMatch[0].match(
+            /if \(existingAttempt\) \{[\s\S]*?return res\.status\(200\)\.json\(\{[\s\S]*?message: "Attempt resumed successfully"[\s\S]*?\}\);\s*\}/
+          );
+
+        assert.ok(
+          resumeBlockMatch,
+          "resume block must be discoverable"
+        );
+
+        assert.doesNotMatch(
+          resumeBlockMatch[0],
+          /existingAttempt\.timingState\s*=/
+        );
+      }
+    );
+
+    await t.test(
+      "B3B does not enforce sectional access inside answer mutation yet",
+      () => {
+        const source =
+          readControllerSource();
+
+        const saveMatch =
+          source.match(
+            /const saveMockTestAnswer = async \(req, res\) => \{[\s\S]*?(?=\nconst roundToTwo =)/
+          );
+
+        assert.ok(
+          saveMatch,
+          "saveMockTestAnswer source must be discoverable"
+        );
+
+        assert.doesNotMatch(
+          saveMatch[0],
+          /resolveAttemptTimingState/
+        );
+
+        assert.doesNotMatch(
+          saveMatch[0],
+          /activeSection/
+        );
+
+        assert.doesNotMatch(
+          saveMatch[0],
+          /lockedSectionSlugs/
+        );
+      }
+    );
+  }
+);

@@ -1,4 +1,4 @@
-﻿const {
+const {
   isHostedEnvironment,
   getInternalErrorMessage,
   logRuntimeError,
@@ -11,6 +11,10 @@ const MockTest = require("../models/MockTest");
 const MockTestVersion = require("../models/MockTestVersion");
 const TestAttempt = require("../models/TestAttempt");
 const TestAttemptDetail = require("../models/TestAttemptDetail");
+const {
+    buildAttemptTimingState,
+    resolveAttemptTimingState,
+} = require("../utils/attemptTimingPolicy");
 const PaymentProduct = require("../models/PaymentProduct");
 const Purchase = require("../models/Purchase");
 const Entitlement = require("../models/Entitlement");
@@ -352,15 +356,34 @@ const buildAttemptAnswerStatePayload = (attemptDetail) => {
     }));
 };
 
+const buildAttemptTimingPayload = (attempt, serverNow) => {
+    const timingState = resolveAttemptTimingState({
+        attempt,
+        now: serverNow,
+    });
+
+    return {
+        mode: timingState.mode,
+        policyVersion: timingState.policyVersion,
+        attemptExpired: timingState.attemptExpired,
+        overallExpiresAt: timingState.overallExpiresAt,
+        overallRemainingSeconds: timingState.overallRemainingSeconds,
+        activeSection: timingState.activeSection,
+        expiredSectionSlugs: timingState.expiredSectionSlugs,
+        lockedSectionSlugs: timingState.lockedSectionSlugs,
+    };
+};
+
 const buildAttemptPayload = (
     attempt,
     mockTestVersion,
     resumed,
-    attemptDetail = null
+    attemptDetail = null,
+    serverNow = new Date()
 ) => {
     return {
         resumed,
-        serverTime: new Date(),
+        serverTime: serverNow,
         attempt: {
             _id: attempt._id,
             attemptNumber: attempt.attemptNumber,
@@ -370,6 +393,7 @@ const buildAttemptPayload = (
             expiresAt: attempt.expiresAt,
             totalDurationSeconds: attempt.totalDurationSeconds,
             timeSpentSeconds: attempt.timeSpentSeconds,
+            timing: buildAttemptTimingPayload(attempt, serverNow),
             review: buildReviewMetadataForStudent(attempt),
         },
         test: buildSanitizedTestForStudent(mockTestVersion),
@@ -1601,25 +1625,41 @@ const startMockTestAttempt = async (req, res) => {
             isActive: true,
         });
 
-        if (
-            existingAttempt &&
-            existingAttempt.expiresAt &&
-            existingAttempt.expiresAt <= now
-        ) {
-            existingAttempt.status = "expired";
-            existingAttempt.lastActivityAt = now;
-            await existingAttempt.save();
-            existingAttempt = null;
+        if (existingAttempt) {
+            const existingTimingState = resolveAttemptTimingState({
+                attempt: existingAttempt,
+                now,
+            });
+
+            if (existingTimingState.attemptExpired) {
+                existingAttempt.status = "expired";
+                existingAttempt.lastActivityAt = now;
+                await existingAttempt.save();
+                existingAttempt = null;
+            }
         }
 
         if (existingAttempt) {
+            const resumeMockTestVersion = await MockTestVersion.findOne({
+                _id: existingAttempt.mockTestVersionId,
+                tenantId,
+                mockTestId: mockTest._id,
+                isActive: true,
+            });
+
+            if (!resumeMockTestVersion) {
+                return res.status(404).json({
+                    success: false,
+                    message: "Attempt mock test version not found",
+                });
+            }
             existingAttempt.lastActivityAt = now;
             await existingAttempt.save();
 
             const attemptDetail = await getOrCreateAttemptDetail(
                 tenantId,
                 existingAttempt,
-                mockTestVersion
+                resumeMockTestVersion
             );
 
             return res.status(200).json({
@@ -1627,9 +1667,10 @@ const startMockTestAttempt = async (req, res) => {
                 message: "Attempt resumed successfully",
                 data: buildAttemptPayload(
                     existingAttempt,
-                    mockTestVersion,
+                    resumeMockTestVersion,
                     true,
-                    attemptDetail
+                    attemptDetail,
+                    now
                 ),
             });
         }
@@ -1668,6 +1709,11 @@ const startMockTestAttempt = async (req, res) => {
                 ? new Date(now.getTime() + totalDurationSeconds * 1000)
                 : null;
 
+        const timingState = buildAttemptTimingState({
+            mockTestVersion,
+            startedAt: now,
+        });
+
         let attempt = null;
         let attemptDetail = null;
 
@@ -1684,6 +1730,7 @@ const startMockTestAttempt = async (req, res) => {
                 lastActivityAt: now,
                 expiresAt,
                 totalDurationSeconds,
+                timingState,
                 timeSpentSeconds: 0,
                 scoreSummary: {
                     totalQuestions: calculateTotalQuestions(mockTestVersion),
@@ -1722,7 +1769,8 @@ const startMockTestAttempt = async (req, res) => {
                 attempt,
                 mockTestVersion,
                 false,
-                attemptDetail
+                attemptDetail,
+                now
             ),
         });
     } catch (error) {
