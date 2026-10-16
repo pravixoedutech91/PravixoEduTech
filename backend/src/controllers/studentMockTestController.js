@@ -183,7 +183,10 @@ const sanitizeSectionForStudent = (section) => {
     };
 };
 
-const buildSanitizedTestForStudent = (mockTestVersion) => {
+const buildSanitizedTestForStudent = (mockTestVersion, resolvedTiming = null) => {
+    const sectional = resolvedTiming?.mode === "sectional";
+    const activeSectionSlug = resolvedTiming?.activeSection?.sectionSlug || null;
+
     return {
         _id: mockTestVersion._id,
         mockTestId: mockTestVersion.mockTestId,
@@ -208,8 +211,28 @@ const buildSanitizedTestForStudent = (mockTestVersion) => {
             allowLanguageSwitching:
                 mockTestVersion.examPatternSnapshot?.allowLanguageSwitching,
         },
+        // Sectional attempts disclose question/group content for the active window only.
+        // Keep non-active section metadata for progress display, but never expose
+        // their passages, options, images or questions in this response.
+        contentScope: sectional ? "active_section" : "all_sections",
         sections: (mockTestVersion.sections || [])
-            .map(sanitizeSectionForStudent)
+            .map((section) => {
+                if (sectional && section.sectionSlug !== activeSectionSlug) {
+                    return {
+                        sectionSlug: section.sectionSlug,
+                        name: section.name,
+                        sectionType: section.sectionType,
+                        durationMinutes: section.durationMinutes,
+                        questionCount: section.questionCount,
+                        marksPerQuestion: section.marksPerQuestion,
+                        negativeMarks: section.negativeMarks,
+                        order: section.order,
+                        questionGroups: [],
+                        questions: [],
+                    };
+                }
+                return sanitizeSectionForStudent(section);
+            })
             .sort((a, b) => Number(a.order || 1) - Number(b.order || 1)),
         settings: {
             maxAttempts: mockTestVersion.settings?.maxAttempts,
@@ -421,7 +444,10 @@ const buildAttemptPayload = (
             timing: buildAttemptTimingPayload(attempt, serverNow),
             review: buildReviewMetadataForStudent(attempt),
         },
-        test: buildSanitizedTestForStudent(mockTestVersion),
+        test: buildSanitizedTestForStudent(
+            mockTestVersion,
+            resolveAttemptTimingState({ attempt, now: serverNow })
+        ),
         answers: buildAttemptAnswerStatePayload(attemptDetail),
     };
 };
@@ -1802,6 +1828,99 @@ const startMockTestAttempt = async (req, res) => {
         logRuntimeError("studentMockTestController error:", error);
 
         res.status(500).json({
+            success: false,
+            message: getInternalErrorMessage(error),
+        });
+    }
+};
+
+// Read-only, ownership-checked state refresh used at sectional boundaries.
+// Do not reuse POST /start: it can create attempts or change lastActivityAt.
+const getMockTestAttemptState = async (req, res) => {
+    if (typeof res.set === "function") {
+        res.set("Cache-Control", "private, no-store");
+    }
+    try {
+        const tenantId = getStudentTenantId(req);
+        const studentId = req.user._id;
+        const { attemptId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(attemptId)) {
+            return res.status(400).json({ success: false, message: "Invalid attempt ID" });
+        }
+
+        const attempt = await TestAttempt.findOne({
+            _id: attemptId,
+            tenantId,
+            studentId,
+            isActive: true,
+            status: "in_progress",
+        });
+
+        if (!attempt) {
+            return res.status(404).json({ success: false, message: "Active attempt not found" });
+        }
+
+        const mockTest = await MockTest.findOne({
+            _id: attempt.mockTestId,
+            tenantId,
+            isActive: true,
+            isPublished: true,
+        });
+
+        if (!mockTest) {
+            return res.status(404).json({ success: false, message: "Mock test unavailable" });
+        }
+
+        if (mockTest.accessType === "assigned") {
+            return res.status(403).json({ success: false, message: "Test assignment required" });
+        }
+
+        if (mockTest.accessType === "paid") {
+            const hasAccess = await hasActiveMockTestEntitlement({
+                tenantId,
+                studentId,
+                mockTestId: mockTest._id,
+            });
+            if (!hasAccess) {
+                return res.status(403).json({ success: false, message: "Purchase required" });
+            }
+        }
+
+        const version = await MockTestVersion.findOne({
+            _id: attempt.mockTestVersionId,
+            tenantId,
+            mockTestId: attempt.mockTestId,
+            isActive: true,
+        });
+
+        if (!version) {
+            return res.status(404).json({ success: false, message: "Attempt version unavailable" });
+        }
+
+        const now = new Date();
+        const resolvedTiming = resolveAttemptTimingState({ attempt, now });
+
+        if (resolvedTiming.attemptExpired) {
+            return res.status(410).json({
+                success: false,
+                message: "Attempt time is over. Submit the last saved answers.",
+            });
+        }
+
+        const attemptDetail = await TestAttemptDetail.findOne({
+            tenantId,
+            studentId,
+            attemptId: attempt._id,
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: buildAttemptPayload(attempt, version, true, attemptDetail, now),
+        });
+    } catch (error) {
+        logRuntimeError("Get student attempt state error:", error);
+        return res.status(500).json({
             success: false,
             message: getInternalErrorMessage(error),
         });
@@ -3215,6 +3334,7 @@ module.exports = {
     getPublishedMockTestsForStudent,
     getMyMockTestAttempts,
     startMockTestAttempt,
+    getMockTestAttemptState,
     saveMockTestAnswer,
     submitMockTestAttempt,
     getMockTestResult,
