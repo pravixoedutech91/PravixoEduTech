@@ -316,24 +316,38 @@ const getNextAttemptNumber = async (tenantId, studentId, mockTestId) => {
     return Number(latestAttempt.attemptNumber) + 1;
 };
 
-const getOrCreateAttemptDetail = async (tenantId, attempt, mockTestVersion) => {
-    const existingDetail = await TestAttemptDetail.findOne({
+const getOrCreateAttemptDetail = async (
+    tenantId,
+    attempt,
+    mockTestVersion,
+    session = null
+) => {
+    const query = TestAttemptDetail.findOne({
         tenantId,
         attemptId: attempt._id,
     });
+
+    const existingDetail = session
+        ? await query.session(session)
+        : await query;
 
     if (existingDetail) {
         const fallbackExpiresAt = getInProgressDetailExpiresAt(attempt.expiresAt);
 
         if (!existingDetail.expiresAt && fallbackExpiresAt) {
             existingDetail.expiresAt = fallbackExpiresAt;
-            await existingDetail.save();
+
+            if (session) {
+                await existingDetail.save({ session });
+            } else {
+                await existingDetail.save();
+            }
         }
 
         return existingDetail;
     }
 
-    return TestAttemptDetail.create({
+    const detailPayload = {
         tenantId,
         attemptId: attempt._id,
         studentId: attempt.studentId,
@@ -341,7 +355,18 @@ const getOrCreateAttemptDetail = async (tenantId, attempt, mockTestVersion) => {
         mockTestVersionId: attempt.mockTestVersionId,
         answers: buildInitialAnswersFromVersion(mockTestVersion),
         expiresAt: getInProgressDetailExpiresAt(attempt.expiresAt),
-    });
+    };
+
+    if (session) {
+        const createdDetails = await TestAttemptDetail.create(
+            [detailPayload],
+            { session }
+        );
+
+        return createdDetails[0];
+    }
+
+    return TestAttemptDetail.create(detailPayload);
 };
 
 const buildAttemptAnswerStatePayload = (attemptDetail) => {
@@ -1838,22 +1863,37 @@ const saveMockTestAnswer = async (req, res) => {
             });
         }
 
+        const session = await mongoose.startSession();
+
+        try {
+            const transactionResult = await session.withTransaction(async () => {
+                // A transaction retry reruns every authoritative
+                // read and sectional-timing validation below.
+                const transactionResponse = {
+                    status(statusCode) {
+                        return {
+                            json(body) {
+                                return { statusCode, body };
+                            },
+                        };
+                    },
+                };
         const attempt = await TestAttempt.findOne({
             _id: attemptId,
             tenantId,
             studentId,
             isActive: true,
-        });
+        }).session(session);
 
         if (!attempt) {
-            return res.status(404).json({
+            return transactionResponse.status(404).json({
                 success: false,
                 message: "Attempt not found or access denied",
             });
         }
 
         if (attempt.status !== "in_progress") {
-            return res.status(403).json({
+            return transactionResponse.status(403).json({
                 success: false,
                 message: "Only in-progress attempts can be updated",
             });
@@ -1861,12 +1901,17 @@ const saveMockTestAnswer = async (req, res) => {
 
         const now = new Date();
 
-        if (attempt.expiresAt && attempt.expiresAt <= now) {
+        const timingState = resolveAttemptTimingState({
+            attempt,
+            now,
+        });
+
+        if (timingState.attemptExpired) {
             attempt.status = "expired";
             attempt.lastActivityAt = now;
-            await attempt.save();
+            await attempt.save({ session });
 
-            return res.status(403).json({
+            return transactionResponse.status(403).json({
                 success: false,
                 message: "Attempt has expired",
             });
@@ -1879,7 +1924,7 @@ const saveMockTestAnswer = async (req, res) => {
         });
 
         if (!mockTestVersion) {
-            return res.status(404).json({
+            return transactionResponse.status(404).json({
                 success: false,
                 message: "Mock test version not found",
             });
@@ -1891,16 +1936,39 @@ const saveMockTestAnswer = async (req, res) => {
         );
 
         if (!question) {
-            return res.status(404).json({
+            return transactionResponse.status(404).json({
                 success: false,
                 message: "Question not found in this attempt version",
             });
         }
 
+        if (timingState.mode === "sectional") {
+            const questionSection = (mockTestVersion.sections || []).find(
+                (section) =>
+                    (section.questions || []).some(
+                        (sectionQuestion) =>
+                            String(sectionQuestion._id) ===
+                            String(questionSnapshotId)
+                    )
+            );
+
+            if (
+                !questionSection ||
+                !timingState.activeSection ||
+                questionSection.sectionSlug !==
+                    timingState.activeSection.sectionSlug
+            ) {
+                return transactionResponse.status(403).json({
+                    success: false,
+                    message: "Question section is not currently active",
+                });
+            }
+        }
         const attemptDetail = await getOrCreateAttemptDetail(
             tenantId,
             attempt,
-            mockTestVersion
+            mockTestVersion,
+            session
         );
 
         const answer = attemptDetail.answers.find((answerItem) => {
@@ -1908,10 +1976,70 @@ const saveMockTestAnswer = async (req, res) => {
         });
 
         if (!answer) {
-            return res.status(404).json({
+            return transactionResponse.status(404).json({
                 success: false,
                 message: "Question not found in attempt detail",
             });
+        }
+
+        // Recheck server-authoritative timing after asynchronous lookups,
+        // immediately before any answer-field mutation.
+        // An earlier attempt read may have become stale while
+        // awaiting the published version and answer detail.
+        // Check current persisted status before answer mutation.
+        const currentAttempt = await TestAttempt.findOne({
+            _id: attemptId,
+            tenantId,
+            studentId,
+            isActive: true,
+        }).session(session);
+
+        if (!currentAttempt || currentAttempt.status !== "in_progress") {
+            return transactionResponse.status(403).json({
+                success: false,
+                message: "Attempt is no longer in progress",
+            });
+        }
+
+        const mutationNow = new Date();
+        const mutationTimingState = resolveAttemptTimingState({
+            attempt,
+            now: mutationNow,
+        });
+
+        if (mutationTimingState.attemptExpired) {
+            attempt.status = "expired";
+            attempt.lastActivityAt = mutationNow;
+            await attempt.save({ session });
+
+            return transactionResponse.status(403).json({
+                success: false,
+                message: "Attempt has expired",
+            });
+        }
+
+        if (mutationTimingState.mode === "sectional") {
+            const mutationQuestionSection = (
+                mockTestVersion.sections || []
+            ).find((section) =>
+                (section.questions || []).some(
+                    (sectionQuestion) =>
+                        String(sectionQuestion._id) ===
+                        String(questionSnapshotId)
+                )
+            );
+
+            if (
+                !mutationQuestionSection ||
+                !mutationTimingState.activeSection ||
+                mutationQuestionSection.sectionSlug !==
+                    mutationTimingState.activeSection.sectionSlug
+            ) {
+                return transactionResponse.status(403).json({
+                    success: false,
+                    message: "Question section is not currently active",
+                });
+            }
         }
 
         const normalizedSelectedOptionId =
@@ -1926,7 +2054,7 @@ const saveMockTestAnswer = async (req, res) => {
             });
 
             if (!validOptionIds.includes(normalizedSelectedOptionId)) {
-                return res.status(400).json({
+                return transactionResponse.status(400).json({
                     success: false,
                     message: "Selected option does not belong to this question",
                 });
@@ -1971,7 +2099,7 @@ const saveMockTestAnswer = async (req, res) => {
 
         attemptDetail.lastSyncedAt = now;
         attemptDetail.markModified("answers");
-        await attemptDetail.save();
+        await attemptDetail.save({ session });
 
         const totalTimeSpentSeconds = sumAnswerTimeSpentSeconds(
             attemptDetail.answers
@@ -1983,14 +2111,41 @@ const saveMockTestAnswer = async (req, res) => {
                 ? Math.min(totalTimeSpentSeconds, attempt.totalDurationSeconds)
                 : totalTimeSpentSeconds;
 
-        await attempt.save();
+        await attempt.save({ session });
 
-        res.status(200).json({
+        return transactionResponse.status(200).json({
             success: true,
             message: "Answer saved successfully",
             data: buildSavedAnswerPayload(attempt, answer),
         });
+            });
+
+            if (
+                !transactionResult ||
+                !Number.isInteger(transactionResult.statusCode) ||
+                !transactionResult.body
+            ) {
+                throw new Error("Answer transaction returned no result");
+            }
+
+            return res
+                .status(transactionResult.statusCode)
+                .json(transactionResult.body);
+        } finally {
+            await session.endSession();
+        }
     } catch (error) {
+        if (
+            error?.name === "VersionError" ||
+            error?.code === 112 ||
+            error?.codeName === "WriteConflict"
+        ) {
+            return res.status(409).json({
+                success: false,
+                message: "Answer changed in another request. Refresh the attempt before retrying.",
+            });
+        }
+
         logRuntimeError("studentMockTestController error:", error);
 
         res.status(500).json({
@@ -2504,29 +2659,44 @@ const submitMockTestAttempt = async (req, res) => {
             });
         }
 
+        const session = await mongoose.startSession();
+
+        try {
+            const transactionResult = await session.withTransaction(async () => {
+                // A retry reloads attempt and detail state and
+                // recalculates scores from the fresh snapshot.
+                const transactionResponse = {
+                    status(statusCode) {
+                        return {
+                            json(body) {
+                                return { statusCode, body };
+                            },
+                        };
+                    },
+                };
         const attempt = await TestAttempt.findOne({
             _id: attemptId,
             tenantId,
             studentId,
             isActive: true,
-        });
+        }).session(session);
 
         if (!attempt) {
-            return res.status(404).json({
+            return transactionResponse.status(404).json({
                 success: false,
                 message: "Attempt not found or access denied",
             });
         }
 
         if (attempt.status === "submitted") {
-            return res.status(400).json({
+            return transactionResponse.status(400).json({
                 success: false,
                 message: "Attempt already submitted",
             });
         }
 
         if (!["in_progress", "expired"].includes(attempt.status)) {
-            return res.status(403).json({
+            return transactionResponse.status(403).json({
                 success: false,
                 message: "Only in-progress or expired attempts can be submitted",
             });
@@ -2539,7 +2709,7 @@ const submitMockTestAttempt = async (req, res) => {
         });
 
         if (!mockTestVersion) {
-            return res.status(404).json({
+            return transactionResponse.status(404).json({
                 success: false,
                 message: "Mock test version not found",
             });
@@ -2549,10 +2719,10 @@ const submitMockTestAttempt = async (req, res) => {
             tenantId,
             attemptId: attempt._id,
             studentId,
-        });
+        }).session(session);
 
         if (!attemptDetail) {
-            return res.status(404).json({
+            return transactionResponse.status(404).json({
                 success: false,
                 message: "Attempt detail not found or already expired",
             });
@@ -2610,17 +2780,44 @@ const submitMockTestAttempt = async (req, res) => {
         attemptDetail.expiresAt = detailedReviewExpiresAt;
         attemptDetail.markModified("answers");
 
-        await attemptDetail.save();
-        await attempt.save();
+        await attemptDetail.save({ session });
+        await attempt.save({ session });
 
-        res.status(200).json({
+        return transactionResponse.status(200).json({
             success: true,
             message: resultAvailableImmediately
                 ? "Attempt submitted successfully"
                 : "Attempt submitted successfully. Result will be available later",
             data: buildSubmitAttemptPayload(attempt, resultAvailableImmediately),
         });
+            });
+
+            if (
+                !transactionResult ||
+                !Number.isInteger(transactionResult.statusCode) ||
+                !transactionResult.body
+            ) {
+                throw new Error("Submission transaction returned no result");
+            }
+
+            return res
+                .status(transactionResult.statusCode)
+                .json(transactionResult.body);
+        } finally {
+            await session.endSession();
+        }
     } catch (error) {
+        if (
+            error?.name === "VersionError" ||
+            error?.code === 112 ||
+            error?.codeName === "WriteConflict"
+        ) {
+            return res.status(409).json({
+                success: false,
+                message: "Attempt answers changed during submission. Refresh and submit again.",
+            });
+        }
+
         logRuntimeError("studentMockTestController error:", error);
 
         res.status(500).json({

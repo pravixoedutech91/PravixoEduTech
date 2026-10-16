@@ -2036,34 +2036,64 @@ test(
     );
 
     await t.test(
-      "B3B does not enforce sectional access inside answer mutation yet",
+      "B4 answer mutation uses authoritative sectional access",
       () => {
-        const source =
-          readControllerSource();
+        const source = readControllerSource();
 
-        const saveMatch =
-          source.match(
-            /const saveMockTestAnswer = async \(req, res\) => \{[\s\S]*?(?=\nconst roundToTwo =)/
-          );
+        const saveMatch = source.match(
+          /const saveMockTestAnswer = async \(req, res\) => \{[\s\S]*?(?=\nconst roundToTwo =)/
+        );
 
         assert.ok(
           saveMatch,
           "saveMockTestAnswer source must be discoverable"
         );
 
-        assert.doesNotMatch(
-          saveMatch[0],
+        const saveSource = saveMatch[0];
+
+        assert.match(
+          saveSource,
           /resolveAttemptTimingState/
         );
 
-        assert.doesNotMatch(
-          saveMatch[0],
-          /activeSection/
+        assert.match(
+          saveSource,
+          /timingState\.attemptExpired/
         );
 
-        assert.doesNotMatch(
-          saveMatch[0],
-          /lockedSectionSlugs/
+        assert.match(
+          saveSource,
+          /timingState\.mode === "sectional"/
+        );
+
+        assert.match(
+          saveSource,
+          /timingState\.activeSection\.sectionSlug/
+        );
+
+        assert.match(
+          saveSource,
+          /questionSection\.sectionSlug/
+        );
+
+        assert.match(
+          saveSource,
+          /Question section is not currently active/
+        );
+
+        const sectionGuardPosition = saveSource.indexOf(
+          'if (timingState.mode === "sectional")'
+        );
+
+        const answerDetailPosition = saveSource.indexOf(
+          "const attemptDetail = await getOrCreateAttemptDetail"
+        );
+
+        assert.ok(sectionGuardPosition >= 0);
+
+        assert.ok(
+          answerDetailPosition > sectionGuardPosition,
+          "section authorization must precede answer-detail access"
         );
       }
     );

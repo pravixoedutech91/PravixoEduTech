@@ -152,7 +152,10 @@ const testAttemptDetailSchema = new mongoose.Schema(
       default: null,
     },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    optimisticConcurrency: true,
+  }
 );
 
 testAttemptDetailSchema.index(
