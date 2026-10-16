@@ -5,6 +5,8 @@ const {
   resolveTimingMode,
 } = require("./examTimingPolicy");
 
+const { resolveNewAttemptExperience } = require("./experiencePolicy");
+
 const MILLISECONDS_PER_SECOND = 1000;
 const MILLISECONDS_PER_MINUTE = 60 * MILLISECONDS_PER_SECOND;
 
@@ -152,6 +154,7 @@ const getSortedSectionDefinitions = (sections) => {
 const buildAttemptTimingState = ({
   mockTestVersion,
   startedAt,
+  experienceMode,
 } = {}) => {
   if (!mockTestVersion) {
     throw new Error(
@@ -162,8 +165,20 @@ const buildAttemptTimingState = ({
   const snapshot =
     mockTestVersion.examPatternSnapshot || {};
 
-  const mode =
-    resolveTimingMode(snapshot.timingMode);
+  // Never trust caller-provided timing rules; verify any selected experience
+  // against the immutable published version before deciding the timer.
+  if (experienceMode !== undefined) {
+    const selection = resolveNewAttemptExperience(
+      mockTestVersion.settings?.experiencePolicy, experienceMode
+    );
+    if (!selection.valid || selection.mode !== experienceMode) {
+      throw new Error("Experience mode is not permitted by published version");
+    }
+  }
+
+  const mode = experienceMode === "practice"
+    ? TIMING_MODES.GLOBAL
+    : resolveTimingMode(snapshot.timingMode);
 
   const policyVersion =
     normalizePolicyVersion(

@@ -57,6 +57,37 @@ const validateExperiencePolicy = (input) => {
   };
 };
 
+// Selected experience is accepted only from the frozen published version.
+// Missing policy and missing mode preserve legacy attempt semantics.
+const resolveNewAttemptExperience = (publishedPolicy, requestedMode) => {
+  const validation = validateExperiencePolicy(publishedPolicy);
+  if (!validation.valid) {
+    return invalid("Published experience policy is invalid");
+  }
+  if (validation.policy === undefined) {
+    if (requestedMode !== undefined) {
+      return invalid("This published test does not support experience selection");
+    }
+    return { valid: true, mode: undefined };
+  }
+  const allowed = validation.policy.allowedModes;
+  if (requestedMode === undefined && allowed.length === 1) {
+    return { valid: true, mode: allowed[0] };
+  }
+  if (typeof requestedMode !== "string" || !allowed.includes(requestedMode)) {
+    return invalid("Select a permitted experience mode before starting");
+  }
+  return { valid: true, mode: requestedMode };
+};
+
+const validateResumeExperience = (storedMode, requestedMode) => {
+  if (requestedMode === undefined) return { valid: true };
+  if (storedMode !== undefined && storedMode === requestedMode) {
+    return { valid: true };
+  }
+  return invalid("Cannot change experience mode while resuming an attempt");
+};
+
 const createExperiencePolicySchema = (mongoose) => new mongoose.Schema(
   {
     policyVersion: {
@@ -88,5 +119,7 @@ module.exports = {
   EXPERIENCE_POLICY_VERSION,
   EXPERIENCE_MODES,
   validateExperiencePolicy,
+  resolveNewAttemptExperience,
+  validateResumeExperience,
   createExperiencePolicySchema,
 };

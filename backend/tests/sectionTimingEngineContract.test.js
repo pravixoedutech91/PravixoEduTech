@@ -1872,7 +1872,7 @@ test(
 
         assert.match(
           startMatch[0],
-          /const timingState = buildAttemptTimingState\(\{\s*mockTestVersion,\s*startedAt: now,\s*\}\);/
+          /const timingState = buildAttemptTimingState\(\{\s*mockTestVersion,\s*startedAt: now,\s*experienceMode: selection\.mode,\s*\}\);/
         );
 
         assert.match(

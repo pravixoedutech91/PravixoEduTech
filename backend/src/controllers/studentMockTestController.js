@@ -15,6 +15,11 @@ const {
     buildAttemptTimingState,
     resolveAttemptTimingState,
 } = require("../utils/attemptTimingPolicy");
+const {
+    validateExperiencePolicy,
+    resolveNewAttemptExperience,
+    validateResumeExperience,
+} = require("../utils/experiencePolicy");
 const PaymentProduct = require("../models/PaymentProduct");
 const Purchase = require("../models/Purchase");
 const Entitlement = require("../models/Entitlement");
@@ -85,6 +90,12 @@ const buildStudentMockTestListItem = (
             interfaceMode: activeVersionSettings?.interfaceMode,
             showResultImmediately: activeVersionSettings?.showResultImmediately,
             solutionVisibility: activeVersionSettings?.solutionVisibility,
+            experiencePolicy: (() => {
+                // Draft settings are never an authority for student choices.
+                const frozen = mockTest.activeVersionId?.settings?.experiencePolicy;
+                const checked = validateExperiencePolicy(frozen);
+                return checked.valid ? checked.policy : undefined;
+            })(),
         },
         publishedAt: mockTest.publishedAt,
         studentAttemptSummary,
@@ -441,6 +452,7 @@ const buildAttemptPayload = (
             expiresAt: attempt.expiresAt,
             totalDurationSeconds: attempt.totalDurationSeconds,
             timeSpentSeconds: attempt.timeSpentSeconds,
+            experienceMode: attempt.experienceMode || null,
             timing: buildAttemptTimingPayload(attempt, serverNow),
             review: buildReviewMetadataForStudent(attempt),
         },
@@ -1473,7 +1485,7 @@ const getPublishedMockTestsForStudent = async (req, res) => {
             )
             .populate("categoryId", "name slug")
             .populate("examPatternId", "name examType totalDurationMinutes")
-            .populate("activeVersionId", "versionNumber publishedAt settings.maxAttempts settings.interfaceMode settings.showResultImmediately settings.solutionVisibility")
+            .populate("activeVersionId", "versionNumber publishedAt settings.maxAttempts settings.interfaceMode settings.showResultImmediately settings.solutionVisibility settings.experiencePolicy")
             .sort({ publishedAt: -1, createdAt: -1 });
 
         const mockTestIds = mockTests.map((mockTest) => mockTest._id);
@@ -1602,6 +1614,10 @@ const startMockTestAttempt = async (req, res) => {
         const tenantId = getStudentTenantId(req);
         const studentId = req.user._id;
         const { mockTestId } = req.params;
+        const hasModeRequest = Object.prototype.hasOwnProperty.call(
+            req.body || {}, "experienceMode"
+        );
+        const requestedMode = hasModeRequest ? req.body.experienceMode : undefined;
 
         if (!mongoose.Types.ObjectId.isValid(mockTestId)) {
             return res.status(400).json({
@@ -1691,6 +1707,12 @@ const startMockTestAttempt = async (req, res) => {
         }
 
         if (existingAttempt) {
+            const resumeSelection = validateResumeExperience(
+                existingAttempt.experienceMode, requestedMode
+            );
+            if (!resumeSelection.valid) {
+                return res.status(409).json({ success: false, message: resumeSelection.message });
+            }
             const resumeMockTestVersion = await MockTestVersion.findOne({
                 _id: existingAttempt.mockTestVersionId,
                 tenantId,
@@ -1724,6 +1746,13 @@ const startMockTestAttempt = async (req, res) => {
                     now
                 ),
             });
+        }
+
+        const selection = resolveNewAttemptExperience(
+            mockTestVersion.settings?.experiencePolicy, requestedMode
+        );
+        if (!selection.valid) {
+            return res.status(400).json({ success: false, message: selection.message });
         }
 
         const maxAttempts = Math.max(
@@ -1763,6 +1792,7 @@ const startMockTestAttempt = async (req, res) => {
         const timingState = buildAttemptTimingState({
             mockTestVersion,
             startedAt: now,
+            experienceMode: selection.mode,
         });
 
         let attempt = null;
@@ -1775,6 +1805,7 @@ const startMockTestAttempt = async (req, res) => {
                 mockTestId: mockTest._id,
                 mockTestVersionId: mockTestVersion._id,
                 attemptNumber,
+                experienceMode: selection.mode,
                 accessTypeAtAttempt: mockTestVersion.accessType || mockTest.accessType,
                 status: "in_progress",
                 startedAt: now,
@@ -1825,6 +1856,12 @@ const startMockTestAttempt = async (req, res) => {
             ),
         });
     } catch (error) {
+        if (error.code === 11000) {
+            return res.status(409).json({
+                success: false,
+                message: "Concurrent attempt start; refresh to resume the active attempt",
+            });
+        }
         logRuntimeError("studentMockTestController error:", error);
 
         res.status(500).json({

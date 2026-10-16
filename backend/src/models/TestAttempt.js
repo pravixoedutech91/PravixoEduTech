@@ -594,6 +594,13 @@ const testAttemptSchema = new mongoose.Schema(
       default: 1,
     },
 
+    experienceMode: {
+      type: String,
+      enum: ["exam_simulation", "practice"],
+      default: undefined,
+      immutable: true,
+    },
+
     accessTypeAtAttempt: {
       type: String,
       enum: ["free", "paid", "assigned"],
