@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { createExperiencePolicySchema } = require("../utils/experiencePolicy");
 
 const mockTestQuestionSchema = new mongoose.Schema(
   {
@@ -160,6 +161,11 @@ const mockTestSchema = new mongoose.Schema(
     },
 
     settings: {
+      experiencePolicy: {
+        type: createExperiencePolicySchema(mongoose),
+        default: undefined,
+      },
+
       maxAttempts: {
         type: Number,
         default: 1,

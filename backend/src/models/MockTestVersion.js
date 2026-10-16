@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { createExperiencePolicySchema } = require("../utils/experiencePolicy");
 
 const optionSnapshotSchema = new mongoose.Schema(
   {
@@ -601,6 +602,11 @@ const mockTestVersionSchema = new mongoose.Schema(
     },
 
     settings: {
+      experiencePolicy: {
+        type: createExperiencePolicySchema(mongoose),
+        default: undefined,
+      },
+
       maxAttempts: {
         type: Number,
         default: 1,
