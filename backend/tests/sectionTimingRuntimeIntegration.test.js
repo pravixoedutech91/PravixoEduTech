@@ -2,6 +2,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const mongoose = require("mongoose");
+const TestAttemptAdmissionGuard = require("../src/models/TestAttemptAdmissionGuard");
 
 const MockTest = require("../src/models/MockTest");
 const MockTestVersion = require("../src/models/MockTestVersion");
@@ -31,6 +33,8 @@ const originals = {
   attemptDelete: TestAttempt.deleteOne,
   detailFind: TestAttemptDetail.findOne,
   detailCreate: TestAttemptDetail.create,
+  startSession: mongoose.startSession,
+  admissionWrite: TestAttemptAdmissionGuard.updateOne,
 };
 
 let currentAttempt;
@@ -112,6 +116,14 @@ const runStart = async () => {
   return res;
 };
 
+// Preserve the old assertions while supporting session-scoped query chains.
+const queryResult = (read) => ({
+  session(session) { assert.ok(session, "transactional read requires session"); return Promise.resolve().then(read); },
+  sort() { return this; },
+  select() { return this; },
+  then(resolve, reject) { return Promise.resolve().then(read).then(resolve, reject); },
+});
+
 const instrumentAttempt = (attempt) => {
   attempt.save = async function () {
     attemptSaveCalls += 1;
@@ -130,36 +142,37 @@ const installMocks = () => {
   currentDetail = null;
   version = makeVersion();
 
-  MockTest.findOne = async () => ({
+  MockTest.findOne = () => queryResult(() => ({
     _id: IDS.test,
     tenantId,
     activeVersionId: IDS.version,
     isActive: true,
     isPublished: true,
     accessType: "free",
+  }));
+
+  MockTestVersion.findOne = () => queryResult(() => version);
+  mongoose.startSession = async () => ({
+    async withTransaction(run) { return run(); },
+    async endSession() {},
+  });
+  TestAttemptAdmissionGuard.updateOne = async (_filter, _update, options) => {
+    assert.ok(options?.session, "admission write requires session");
+    assert.equal(options.upsert, true);
+  };
+  TestAttempt.findOne = (filter) => queryResult(() => {
+    if (filter && filter.status === "in_progress") return currentAttempt;
+    return currentAttempt ? { attemptNumber: currentAttempt.attemptNumber } : null;
   });
 
-  MockTestVersion.findOne = async () => version;
+  TestAttempt.countDocuments = (filter) => queryResult(() => (
+    filter.status === "in_progress" ? Number(Boolean(currentAttempt)) : 0
+  ));
 
-  TestAttempt.findOne = (query) => {
-    if (query && query.status === "in_progress") {
-      return Promise.resolve(currentAttempt);
-    }
-
-    return {
-      sort() {
-        return this;
-      },
-
-      async select() {
-        return null;
-      },
-    };
-  };
-
-  TestAttempt.countDocuments = async () => 0;
-
-  TestAttempt.create = async (payload) => {
+  TestAttempt.create = async (docs, options) => {
+    assert.ok(Array.isArray(docs));
+    assert.ok(options?.session);
+    const payload = docs[0];
     createdAttempts.push(payload);
 
     currentAttempt = instrumentAttempt({
@@ -167,7 +180,7 @@ const installMocks = () => {
       ...payload,
     });
 
-    return currentAttempt;
+    return [currentAttempt];
   };
 
   TestAttempt.deleteOne = async (query) => {
@@ -175,9 +188,12 @@ const installMocks = () => {
     return { deletedCount: 1 };
   };
 
-  TestAttemptDetail.findOne = async () => currentDetail;
+  TestAttemptDetail.findOne = () => queryResult(() => currentDetail);
 
-  TestAttemptDetail.create = async (payload) => {
+  TestAttemptDetail.create = async (docs, options) => {
+    assert.ok(Array.isArray(docs));
+    assert.ok(options?.session);
+    const payload = docs[0];
     createdDetails.push(payload);
 
     currentDetail = {
@@ -189,7 +205,7 @@ const installMocks = () => {
       },
     };
 
-    return currentDetail;
+    return [currentDetail];
   };
 };
 
@@ -202,6 +218,8 @@ const restoreMocks = () => {
   TestAttempt.deleteOne = originals.attemptDelete;
   TestAttemptDetail.findOne = originals.detailFind;
   TestAttemptDetail.create = originals.detailCreate;
+  mongoose.startSession = originals.startSession;
+  TestAttemptAdmissionGuard.updateOne = originals.admissionWrite;
 };
 
 test(
@@ -437,18 +455,18 @@ test(
             title: "New Published V2",
           };
 
-          MockTest.findOne = async () => ({
+          MockTest.findOne = () => queryResult(() => ({
             _id: IDS.test,
             tenantId,
             activeVersionId: v2Id,
             isActive: true,
             isPublished: true,
             accessType: "free",
-          });
+          }));
 
           const lookups = [];
 
-          MockTestVersion.findOne = async (query) => {
+          MockTestVersion.findOne = (query) => queryResult(() => {
             lookups.push(query);
 
             if (
@@ -468,7 +486,7 @@ test(
             }
 
             return null;
-          };
+          });
 
           const resumed = await runStart();
 
@@ -540,18 +558,18 @@ test(
 
           const v2Id = "507f1f77bcf86cd799439016";
 
-          MockTest.findOne = async () => ({
+          MockTest.findOne = () => queryResult(() => ({
             _id: IDS.test,
             tenantId,
             activeVersionId: v2Id,
             isActive: true,
             isPublished: true,
             accessType: "free",
-          });
+          }));
 
           const lookups = [];
 
-          MockTestVersion.findOne = async (query) => {
+          MockTestVersion.findOne = (query) => queryResult(() => {
             lookups.push(query);
 
             if (
@@ -575,7 +593,7 @@ test(
             }
 
             return null;
-          };
+          });
 
           const resumed = await runStart();
 

@@ -11,6 +11,7 @@ const MockTest = require("../models/MockTest");
 const MockTestVersion = require("../models/MockTestVersion");
 const TestAttempt = require("../models/TestAttempt");
 const TestAttemptDetail = require("../models/TestAttemptDetail");
+const TestAttemptAdmissionGuard = require("../models/TestAttemptAdmissionGuard");
 const {
     buildAttemptTimingState,
     resolveAttemptTimingState,
@@ -334,14 +335,15 @@ const buildInitialAnswersFromVersion = (mockTestVersion) => {
     return answers;
 };
 
-const getNextAttemptNumber = async (tenantId, studentId, mockTestId) => {
-    const latestAttempt = await TestAttempt.findOne({
+const getNextAttemptNumber = async (tenantId, studentId, mockTestId, session = null) => {
+    const query = TestAttempt.findOne({
         tenantId,
         studentId,
         mockTestId,
     })
         .sort({ attemptNumber: -1 })
         .select("attemptNumber");
+    const latestAttempt = session ? await query.session(session) : await query;
 
     if (!latestAttempt) {
         return 1;
@@ -1610,6 +1612,11 @@ const getPublishedMockTestsForStudent = async (req, res) => {
 };
 
 const startMockTestAttempt = async (req, res) => {
+    const deny = (statusCode, message) => ({
+        statusCode,
+        body: { success: false, message },
+    });
+    let session = null;
     try {
         const tenantId = getStudentTenantId(req);
         const studentId = req.user._id;
@@ -1620,254 +1627,273 @@ const startMockTestAttempt = async (req, res) => {
         const requestedMode = hasModeRequest ? req.body.experienceMode : undefined;
 
         if (!mongoose.Types.ObjectId.isValid(mockTestId)) {
-            return res.status(400).json({
-                success: false,
-                message: "Invalid mock test ID",
-            });
+            return res.status(400).json({ success: false, message: "Invalid mock test ID" });
         }
 
-        const mockTest = await MockTest.findOne({
-            _id: mockTestId,
-            tenantId,
-            isActive: true,
-            isPublished: true,
+        // Preserve the existing access/entitlement rejection before any guard write.
+        // Every admission authority is loaded again within the transaction.
+        const published = await MockTest.findOne({
+            _id: mockTestId, tenantId, isActive: true, isPublished: true,
         });
-
-        if (!mockTest) {
+        if (!published) {
             return res.status(404).json({
                 success: false,
                 message: "Mock test not found, unpublished, or access denied",
             });
         }
-
-        if (mockTest.accessType === "paid") {
-            const hasPaidAccess = await hasActiveMockTestEntitlement({
-                tenantId,
-                studentId,
-                mockTestId: mockTest._id,
+        if (published.accessType === "paid") {
+            const entitled = await hasActiveMockTestEntitlement({
+                tenantId, studentId, mockTestId: published._id,
             });
-
-            if (!hasPaidAccess) {
+            if (!entitled) {
                 return res.status(403).json({
-                    success: false,
-                    message: "Purchase required before starting this mock test",
+                    success: false, message: "Purchase required before starting this mock test",
                 });
             }
         }
-
-        if (mockTest.accessType === "assigned") {
+        if (published.accessType === "assigned") {
             return res.status(403).json({
-                success: false,
-                message: "This mock test requires assignment before access",
+                success: false, message: "This mock test requires assignment before access",
             });
         }
-
-        if (!mockTest.activeVersionId) {
+        if (!published.activeVersionId) {
             return res.status(400).json({
-                success: false,
-                message: "Mock test has no active published version",
+                success: false, message: "Mock test has no active published version",
             });
         }
-
-        const mockTestVersion = await MockTestVersion.findOne({
-            _id: mockTest.activeVersionId,
-            tenantId,
+        const candidateVersion = await MockTestVersion.findOne({
+            _id: published.activeVersionId, tenantId, mockTestId: published._id,
             isActive: true,
         });
-
-        if (!mockTestVersion) {
+        if (!candidateVersion) {
             return res.status(404).json({
-                success: false,
-                message: "Active mock test version not found",
+                success: false, message: "Active mock test version not found",
             });
         }
 
-        const now = new Date();
-
-        let existingAttempt = await TestAttempt.findOne({
-            tenantId,
-            studentId,
-            mockTestId: mockTest._id,
-            status: "in_progress",
-            isActive: true,
+        const admissionKey = TestAttemptAdmissionGuard.makeKey({
+            tenantId, studentId, mockTestId: published._id,
         });
+        session = await mongoose.startSession();
+        let outcome = null;
 
-        if (existingAttempt) {
-            const existingTimingState = resolveAttemptTimingState({
-                attempt: existingAttempt,
-                now,
-            });
+        // Outer retries are intentionally bounded. The driver's withTransaction
+        // implementation may itself retry transient errors; do not resend HTTP here.
+        for (let round = 0; round < 3; round++) {
+            try {
+                outcome = await session.withTransaction(async () => {
+                    // The real write must occur FIRST. All competing starts for this
+                    // student and test contend on the same MongoDB _id document.
+                    await TestAttemptAdmissionGuard.updateOne(
+                        { _id: admissionKey },
+                        {
+                            $inc: { revision: 1 },
+                            $setOnInsert: {
+                                tenantId, studentId, mockTestId: published._id,
+                            },
+                        },
+                        { upsert: true, session }
+                    );
 
-            if (existingTimingState.attemptExpired) {
-                existingAttempt.status = "expired";
-                existingAttempt.lastActivityAt = now;
-                await existingAttempt.save();
-                existingAttempt = null;
-            }
-        }
+                    const now = new Date();
+                    const mockTest = await MockTest.findOne({
+                        _id: mockTestId, tenantId, isActive: true, isPublished: true,
+                    }).session(session);
+                    if (!mockTest) {
+                        return deny(404, "Mock test not found, unpublished, or access denied");
+                    }
+                    if (mockTest.accessType === "assigned") {
+                        return deny(403, "This mock test requires assignment before access");
+                    }
+                    if (mockTest.accessType === "paid") {
+                        // Paid entitlement is rechecked after the guard write so a
+                        // revoked entitlement cannot reuse an earlier authorization.
+                        const entitled = await hasActiveMockTestEntitlement({
+                            tenantId, studentId, mockTestId: mockTest._id,
+                        });
+                        if (!entitled) {
+                            return deny(403, "Purchase required before starting this mock test");
+                        }
+                    }
+                    if (!mockTest.activeVersionId) {
+                        return deny(400, "Mock test has no active published version");
+                    }
+                    const mockTestVersion = await MockTestVersion.findOne({
+                        _id: mockTest.activeVersionId,
+                        tenantId, mockTestId: mockTest._id, isActive: true,
+                    }).session(session);
+                    if (!mockTestVersion) {
+                        return deny(404, "Active mock test version not found");
+                    }
 
-        if (existingAttempt) {
-            const resumeSelection = validateResumeExperience(
-                existingAttempt.experienceMode, requestedMode
-            );
-            if (!resumeSelection.valid) {
-                return res.status(409).json({ success: false, message: resumeSelection.message });
-            }
-            const resumeMockTestVersion = await MockTestVersion.findOne({
-                _id: existingAttempt.mockTestVersionId,
-                tenantId,
-                mockTestId: mockTest._id,
-                isActive: true,
-            });
+                    // Fail closed if historical data already contains two active
+                    // attempts; never arbitrarily choose which one to resume.
+                    const activeFilter = {
+                        tenantId, studentId, mockTestId: mockTest._id,
+                        status: "in_progress", isActive: true,
+                    };
+                    const activeCount = await TestAttempt.countDocuments(
+                        activeFilter
+                    ).session(session);
+                    if (activeCount > 1) {
+                        return deny(409, "Multiple active attempts require administrative review");
+                    }
+                    let existingAttempt = activeCount === 1
+                        ? await TestAttempt.findOne(activeFilter).session(session)
+                        : null;
+                    if (existingAttempt) {
+                        const timing = resolveAttemptTimingState({
+                            attempt: existingAttempt, now,
+                        });
+                        if (timing.attemptExpired) {
+                            existingAttempt.status = "expired";
+                            existingAttempt.lastActivityAt = now;
+                            await existingAttempt.save({ session });
+                            existingAttempt = null;
+                        }
+                    }
+                    if (existingAttempt) {
+                        const resumeSelection = validateResumeExperience(
+                            existingAttempt.experienceMode, requestedMode
+                        );
+                        if (!resumeSelection.valid) {
+                            return deny(409, resumeSelection.message);
+                        }
+                        const historicalVersion = await MockTestVersion.findOne({
+                            _id: existingAttempt.mockTestVersionId,
+                            tenantId, mockTestId: mockTest._id, isActive: true,
+                        }).session(session);
+                        if (!historicalVersion) {
+                            return deny(404, "Attempt mock test version not found");
+                        }
+                        existingAttempt.lastActivityAt = now;
+                        await existingAttempt.save({ session });
+                        const attemptDetail = await getOrCreateAttemptDetail(
+                            tenantId, existingAttempt, historicalVersion, session
+                        );
+                        return {
+                            statusCode: 200,
+                            body: {
+                                success: true,
+                                message: "Attempt resumed successfully",
+                                data: buildAttemptPayload(
+                                    existingAttempt, historicalVersion, true, attemptDetail, now
+                                ),
+                            },
+                        };
+                    }
 
-            if (!resumeMockTestVersion) {
-                return res.status(404).json({
-                    success: false,
-                    message: "Attempt mock test version not found",
+                    // Both version and policy are frozen published values.
+                    const selection = resolveNewAttemptExperience(
+                        mockTestVersion.settings?.experiencePolicy, requestedMode
+                    );
+                    if (!selection.valid) {
+                        return deny(400, selection.message);
+                    }
+                    const maxAttempts = Math.max(
+                        toNumber(mockTestVersion.settings?.maxAttempts, 1), 1
+                    );
+                    const usedAttempts = await TestAttempt.countDocuments({
+                        tenantId, studentId, mockTestId: mockTest._id,
+                        status: { $in: ["in_progress", "submitted", "expired"] },
+                        isActive: true,
+                    }).session(session);
+                    if (usedAttempts >= maxAttempts) {
+                        return deny(403, "Maximum attempt limit reached for this mock test");
+                    }
+                    const attemptNumber = await getNextAttemptNumber(
+                        tenantId, studentId, mockTest._id, session
+                    );
+                    const totalDurationSeconds = calculateTotalDurationSeconds(
+                        mockTestVersion
+                    );
+                    const expiresAt = totalDurationSeconds > 0
+                        ? new Date(now.getTime() + totalDurationSeconds * 1000)
+                        : null;
+                    const timingState = buildAttemptTimingState({
+                        mockTestVersion, startedAt: now,
+                        experienceMode: selection.mode,
+                    });
+                    const [attempt] = await TestAttempt.create([{
+                        tenantId, studentId,
+                        mockTestId: mockTest._id,
+                        mockTestVersionId: mockTestVersion._id,
+                        attemptNumber,
+                        experienceMode: selection.mode,
+                        accessTypeAtAttempt: mockTestVersion.accessType || mockTest.accessType,
+                        status: "in_progress",
+                        startedAt: now,
+                        lastActivityAt: now,
+                        expiresAt,
+                        totalDurationSeconds,
+                        timingState,
+                        timeSpentSeconds: 0,
+                        scoreSummary: {
+                            totalQuestions: calculateTotalQuestions(mockTestVersion),
+                            maxScore: calculateMaxScore(mockTestVersion),
+                        },
+                        review: {
+                            isDetailedReviewAvailable: false,
+                            detailedReviewExpiresAt: null,
+                            solutionVisibility:
+                                mockTestVersion.settings?.solutionVisibility || "after_submit",
+                            reviewRetentionDays: REVIEW_RETENTION_DAYS,
+                        },
+                    }], { session });
+                    const [attemptDetail] = await TestAttemptDetail.create([{
+                        tenantId, attemptId: attempt._id, studentId,
+                        mockTestId: mockTest._id,
+                        mockTestVersionId: mockTestVersion._id,
+                        answers: buildInitialAnswersFromVersion(mockTestVersion),
+                        expiresAt: getInProgressDetailExpiresAt(expiresAt),
+                    }], { session });
+                    return {
+                        statusCode: 201,
+                        body: {
+                            success: true,
+                            message: "Attempt started successfully",
+                            data: buildAttemptPayload(
+                                attempt, mockTestVersion, false, attemptDetail, now
+                            ),
+                        },
+                    };
                 });
+                break;
+            } catch (error) {
+                // An ambiguous commit must NEVER trigger another creation attempt.
+                // The caller gets a safe retry/refresh conflict instead.
+                if (error.hasErrorLabel?.("UnknownTransactionCommitResult")) {
+                    outcome = deny(409, "Attempt start outcome is uncertain; refresh your attempts before retrying");
+                    break;
+                }
+                const transient = error.hasErrorLabel?.("TransientTransactionError") === true;
+                const firstInsertCollision = error.code === 11000;
+                if ((transient || firstInsertCollision) && round < 2) {
+                    continue;
+                }
+                if (transient || firstInsertCollision) {
+                    outcome = deny(409, "Concurrent attempt start; refresh to resume the active attempt");
+                    break;
+                }
+                throw error;
             }
-            existingAttempt.lastActivityAt = now;
-            await existingAttempt.save();
-
-            const attemptDetail = await getOrCreateAttemptDetail(
-                tenantId,
-                existingAttempt,
-                resumeMockTestVersion
-            );
-
-            return res.status(200).json({
-                success: true,
-                message: "Attempt resumed successfully",
-                data: buildAttemptPayload(
-                    existingAttempt,
-                    resumeMockTestVersion,
-                    true,
-                    attemptDetail,
-                    now
-                ),
-            });
         }
-
-        const selection = resolveNewAttemptExperience(
-            mockTestVersion.settings?.experiencePolicy, requestedMode
-        );
-        if (!selection.valid) {
-            return res.status(400).json({ success: false, message: selection.message });
-        }
-
-        const maxAttempts = Math.max(
-            toNumber(mockTestVersion.settings?.maxAttempts, 1),
-            1
-        );
-
-        const usedAttempts = await TestAttempt.countDocuments({
-            tenantId,
-            studentId,
-            mockTestId: mockTest._id,
-            status: { $in: ["in_progress", "submitted", "expired"] },
-            isActive: true,
-        });
-
-        if (usedAttempts >= maxAttempts) {
-            return res.status(403).json({
-                success: false,
-                message: "Maximum attempt limit reached for this mock test",
-            });
-        }
-
-        const attemptNumber = await getNextAttemptNumber(
-            tenantId,
-            studentId,
-            mockTest._id
-        );
-
-        const totalDurationSeconds =
-            calculateTotalDurationSeconds(mockTestVersion);
-
-        const expiresAt =
-            totalDurationSeconds > 0
-                ? new Date(now.getTime() + totalDurationSeconds * 1000)
-                : null;
-
-        const timingState = buildAttemptTimingState({
-            mockTestVersion,
-            startedAt: now,
-            experienceMode: selection.mode,
-        });
-
-        let attempt = null;
-        let attemptDetail = null;
-
-        try {
-            attempt = await TestAttempt.create({
-                tenantId,
-                studentId,
-                mockTestId: mockTest._id,
-                mockTestVersionId: mockTestVersion._id,
-                attemptNumber,
-                experienceMode: selection.mode,
-                accessTypeAtAttempt: mockTestVersion.accessType || mockTest.accessType,
-                status: "in_progress",
-                startedAt: now,
-                lastActivityAt: now,
-                expiresAt,
-                totalDurationSeconds,
-                timingState,
-                timeSpentSeconds: 0,
-                scoreSummary: {
-                    totalQuestions: calculateTotalQuestions(mockTestVersion),
-                    maxScore: calculateMaxScore(mockTestVersion),
-                },
-                review: {
-                    isDetailedReviewAvailable: false,
-                    detailedReviewExpiresAt: null,
-                    solutionVisibility:
-                        mockTestVersion.settings?.solutionVisibility || "after_submit",
-                    reviewRetentionDays: REVIEW_RETENTION_DAYS,
-                },
-            });
-
-            attemptDetail = await TestAttemptDetail.create({
-                tenantId,
-                attemptId: attempt._id,
-                studentId,
-                mockTestId: mockTest._id,
-                mockTestVersionId: mockTestVersion._id,
-                answers: buildInitialAnswersFromVersion(mockTestVersion),
-                expiresAt: getInProgressDetailExpiresAt(expiresAt),
-            });
-        } catch (createError) {
-            if (attempt) {
-                await TestAttempt.deleteOne({ _id: attempt._id });
-            }
-
-            throw createError;
-        }
-
-        res.status(201).json({
-            success: true,
-            message: "Attempt started successfully",
-            data: buildAttemptPayload(
-                attempt,
-                mockTestVersion,
-                false,
-                attemptDetail,
-                now
-            ),
-        });
+        return res.status(outcome.statusCode).json(outcome.body);
     } catch (error) {
-        if (error.code === 11000) {
+        if (error.code === 11000 || error.hasErrorLabel?.("TransientTransactionError")) {
             return res.status(409).json({
                 success: false,
                 message: "Concurrent attempt start; refresh to resume the active attempt",
             });
         }
         logRuntimeError("studentMockTestController error:", error);
-
-        res.status(500).json({
-            success: false,
-            message: getInternalErrorMessage(error),
+        return res.status(500).json({
+            success: false, message: getInternalErrorMessage(error),
         });
+    } finally {
+        if (session) {
+            await session.endSession();
+        }
     }
 };
 

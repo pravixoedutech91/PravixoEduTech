@@ -6,11 +6,12 @@ const MockTest = require("../src/models/MockTest");
 const MockTestVersion = require("../src/models/MockTestVersion");
 const TestAttempt = require("../src/models/TestAttempt");
 const TestAttemptDetail = require("../src/models/TestAttemptDetail");
+const TestAttemptAdmissionGuard = require("../src/models/TestAttemptAdmissionGuard");
 const { startMockTestAttempt } = require("../src/controllers/studentMockTestController");
 const { buildAttemptTimingState } = require("../src/utils/attemptTimingPolicy");
 const { resolveNewAttemptExperience, validateResumeExperience } = require("../src/utils/experiencePolicy");
 const ids={student:"507f1f77bcf86cd799439011",test:"507f1f77bcf86cd799439012",version:"507f1f77bcf86cd799439013",reasoning:"507f1f77bcf86cd799439021",maths:"507f1f77bcf86cd799439022"};
-const originals={m:MockTest.findOne,v:MockTestVersion.findOne,af:TestAttempt.findOne,ac:TestAttempt.create,an:TestAttempt.countDocuments,ad:TestAttempt.deleteOne,df:TestAttemptDetail.findOne,dc:TestAttemptDetail.create};
+const originals={m:MockTest.findOne,v:MockTestVersion.findOne,af:TestAttempt.findOne,ac:TestAttempt.create,an:TestAttempt.countDocuments,ad:TestAttempt.deleteOne,df:TestAttemptDetail.findOne,dc:TestAttemptDetail.create,guard:TestAttemptAdmissionGuard.updateOne,session:mongoose.startSession};
 const dual={policyVersion:1,allowedModes:["exam_simulation","practice"]};
 const reply=()=>({statusCode:200,body:null,status(s){this.statusCode=s;return this},json(b){this.body=b;return this}});
 const request=(mode,provided)=>({user:{_id:ids.student,tenantId:"pravixoedutech",role:"student"},params:{mockTestId:ids.test},...(provided?{body:{experienceMode:mode}}:{})});
@@ -22,22 +23,34 @@ function makeVersion(policy,mode="sectional") {
   {sectionSlug:"maths",name:"Maths",order:2,durationMinutes:20,questionCount:1,questions:[{_id:ids.maths,questionId:ids.maths,order:1,questionType:"mcq",questionTextEn:"MATHS_SECRET",options:[{optionId:"A",textEn:"M"}],marks:1,negativeMarks:0}]}
  ]};
 }
+// Session-aware, promise-compatible query doubles preserve the production chain shape.
+function query(value){
+ return {
+  session(session){assert.ok(session,"database query must receive the admission session");return Promise.resolve().then(value)},
+  sort(){return this}, select(){return this},
+  then(ok,bad){return Promise.resolve().then(value).then(ok,bad)}
+ };
+}
 function install(policy,patternMode="sectional"){
  const state={mock:{_id:ids.test,tenantId:"pravixoedutech",accessType:"free",activeVersionId:ids.version,isActive:true,isPublished:true,settings:{experiencePolicy:dual}},version:makeVersion(policy,patternMode),attempt:null,detail:null,createCount:0,saveCount:0,quota:0,duplicate:false};
- MockTest.findOne=async()=>state.mock;
- MockTestVersion.findOne=async()=>state.version;
- TestAttempt.findOne=(query)=>{
-   if(query.status==="in_progress") return Promise.resolve(state.attempt && state.attempt.status==="in_progress" ? state.attempt:null);
-   return {sort(){return this;},async select(){return state.attempt?{attemptNumber:state.attempt.attemptNumber}:null}};
- };
- TestAttempt.countDocuments=async()=>state.quota;
- TestAttempt.create=async data=>{state.createCount++;if(state.duplicate){const e=new Error("duplicate");e.code=11000;throw e;}state.attempt={_id:"507f1f77bcf86cd799439014",...data,async save(){state.saveCount++;return this}};return state.attempt;};
+ MockTest.findOne=()=>query(()=>state.mock);
+ MockTestVersion.findOne=()=>query(()=>state.version);
+ mongoose.startSession=async()=>({async withTransaction(run){return run()},async endSession(){}});
+ TestAttemptAdmissionGuard.updateOne=async(_filter,_update,options)=>{assert.ok(options?.session,"guard write must be transactional");assert.equal(options.upsert,true);};
+ TestAttempt.findOne=(filter)=>query(()=>{
+   if(filter.status==="in_progress") return state.attempt && state.attempt.status==="in_progress" ? state.attempt:null;
+   return state.attempt?{attemptNumber:state.attempt.attemptNumber}:null;
+ });
+ TestAttempt.countDocuments=(filter)=>query(()=>filter.status==="in_progress"
+   ? Number(Boolean(state.attempt && state.attempt.status==="in_progress"))
+   : state.quota);
+ TestAttempt.create=async (docs,options)=>{assert.ok(Array.isArray(docs));assert.ok(options?.session);const data=docs[0];state.createCount++;if(state.duplicate){const e=new Error("duplicate");e.code=11000;throw e;}state.attempt={_id:"507f1f77bcf86cd799439014",...data,async save(opts){assert.ok(opts?.session);state.saveCount++;return this}};return [state.attempt];};
  TestAttempt.deleteOne=async()=>({deletedCount:1});
- TestAttemptDetail.findOne=async()=>state.detail;
- TestAttemptDetail.create=async data=>{state.detail={_id:"507f1f77bcf86cd799439015",...data};return state.detail};
+ TestAttemptDetail.findOne=()=>query(()=>state.detail);
+ TestAttemptDetail.create=async (docs,options)=>{assert.ok(Array.isArray(docs));assert.ok(options?.session);const data=docs[0];state.detail={_id:"507f1f77bcf86cd799439015",...data};return [state.detail]};
  return state;
 }
-function restore(){MockTest.findOne=originals.m;MockTestVersion.findOne=originals.v;TestAttempt.findOne=originals.af;TestAttempt.create=originals.ac;TestAttempt.countDocuments=originals.an;TestAttempt.deleteOne=originals.ad;TestAttemptDetail.findOne=originals.df;TestAttemptDetail.create=originals.dc;}
+function restore(){MockTest.findOne=originals.m;MockTestVersion.findOne=originals.v;TestAttempt.findOne=originals.af;TestAttempt.create=originals.ac;TestAttempt.countDocuments=originals.an;TestAttempt.deleteOne=originals.ad;TestAttemptDetail.findOne=originals.df;TestAttemptDetail.create=originals.dc;TestAttemptAdmissionGuard.updateOne=originals.guard;mongoose.startSession=originals.session;}
 async function start(mode,provided=true){const res=reply();await startMockTestAttempt(request(mode,provided),res);return res}
 
 test("B5-B2-B2 published selection, server timing, immutable resume and quota",async t=>{

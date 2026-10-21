@@ -1877,7 +1877,7 @@ test(
 
         assert.match(
           startMatch[0],
-          /TestAttempt\.create\(\{[\s\S]*?startedAt: now,[\s\S]*?expiresAt,[\s\S]*?totalDurationSeconds,[\s\S]*?timingState,[\s\S]*?timeSpentSeconds: 0/
+          /TestAttempt\.create\(\[\{[\s\S]*?startedAt: now,[\s\S]*?expiresAt,[\s\S]*?totalDurationSeconds,[\s\S]*?timingState,[\s\S]*?timeSpentSeconds: 0/
         );
       }
     );
@@ -1897,12 +1897,12 @@ test(
 
         assert.match(
           startMatch[0],
-          /const existingTimingState = resolveAttemptTimingState\(\{\s*attempt: existingAttempt,\s*now,\s*\}\);/
+          /const timing = resolveAttemptTimingState\(\{\s*attempt: existingAttempt,\s*now,\s*\}\);/
         );
 
         assert.match(
           startMatch[0],
-          /existingTimingState\.attemptExpired/
+          /timing\.attemptExpired/
         );
 
         assert.doesNotMatch(
@@ -1937,7 +1937,7 @@ test(
 
         assert.match(
           startMatch[0],
-          /buildAttemptPayload\(\s*existingAttempt,\s*resumeMockTestVersion,\s*true,\s*attemptDetail,\s*now\s*\)/
+          /buildAttemptPayload\(\s*existingAttempt,\s*historicalVersion,\s*true,\s*attemptDetail,\s*now\s*\)/
         );
 
         assert.match(
@@ -2018,20 +2018,15 @@ test(
 
         assert.ok(startMatch);
 
-        const resumeBlockMatch =
-          startMatch[0].match(
-            /if \(existingAttempt\) \{[\s\S]*?return res\.status\(200\)\.json\(\{[\s\S]*?message: "Attempt resumed successfully"[\s\S]*?\}\);\s*\}/
-          );
+        const resumeStart = startMatch[0].indexOf("if (existingAttempt) {");
+        const resumeEnd = startMatch[0].indexOf("// Both version and policy", resumeStart);
 
-        assert.ok(
-          resumeBlockMatch,
-          "resume block must be discoverable"
-        );
-
-        assert.doesNotMatch(
-          resumeBlockMatch[0],
-          /existingAttempt\.timingState\s*=/
-        );
+        assert.ok(resumeStart >= 0 && resumeEnd > resumeStart,
+          "transactional resume block must be discoverable");
+        const resumeBlock = startMatch[0].slice(resumeStart, resumeEnd);
+        assert.match(resumeBlock, /statusCode: 200/);
+        assert.match(resumeBlock, /message: "Attempt resumed successfully"/);
+        assert.doesNotMatch(resumeBlock, /existingAttempt\.timingState\s*=/);
       }
     );
 

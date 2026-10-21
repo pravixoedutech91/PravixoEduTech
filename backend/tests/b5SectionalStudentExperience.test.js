@@ -2,6 +2,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const mongoose = require("mongoose");
+const TestAttemptAdmissionGuard = require("../src/models/TestAttemptAdmissionGuard");
 
 const MockTest = require("../src/models/MockTest");
 const MockTestVersion = require("../src/models/MockTestVersion");
@@ -32,6 +34,8 @@ const initialFunctions = {
   attemptDelete: TestAttempt.deleteOne,
   detailFind: TestAttemptDetail.findOne,
   detailCreate: TestAttemptDetail.create,
+  startSession: mongoose.startSession,
+  admissionWrite: TestAttemptAdmissionGuard.updateOne,
 };
 
 const response = () => ({
@@ -90,6 +94,14 @@ const req = (student = ids.student) => ({
   params: { mockTestId: ids.mockTest, attemptId: ids.attempt },
 });
 
+// Query doubles support both the preflight Promise shape and session-bound reads.
+const queryResult = (read) => ({
+  session(session) { assert.ok(session, "admission read requires session"); return Promise.resolve().then(read); },
+  sort() { return this; },
+  select() { return this; },
+  then(resolve, reject) { return Promise.resolve().then(read).then(resolve, reject); },
+});
+
 function install(mode = "sectional") {
   const state = {
     mock: { _id: ids.mockTest, tenantId: ids.tenant, accessType: "free", activeVersionId: ids.version, isActive: true, isPublished: true },
@@ -100,40 +112,52 @@ function install(mode = "sectional") {
     unauthorizedQueries: 0,
   };
 
-  MockTest.findOne = async (query) => (
-    query.tenantId === ids.tenant && String(query._id) === ids.mockTest &&
-    query.isActive === true && query.isPublished === true
-      ? state.mock : null
-  );
-  MockTestVersion.findOne = async (query) => (
-    String(query._id) === ids.version && query.tenantId === ids.tenant
+  MockTest.findOne = (filter) => queryResult(() => (
+    filter.tenantId === ids.tenant && String(filter._id) === ids.mockTest &&
+    filter.isActive === true && filter.isPublished === true ? state.mock : null
+  ));
+  MockTestVersion.findOne = (filter) => queryResult(() => (
+    String(filter._id) === ids.version && filter.tenantId === ids.tenant
       ? state.version : null
-  );
-  TestAttempt.findOne = (query) => {
-    if (query && query.status === "in_progress") {
-      if (query._id) {
-        if (query.studentId !== ids.student || query.tenantId !== ids.tenant) {
-          state.unauthorizedQueries++;
-          return Promise.resolve(null);
-        }
-        return Promise.resolve(state.attempt);
-      }
-      return Promise.resolve(state.attempt);
-    }
-    return { sort() { return this; }, async select() { return null; } };
+  ));
+  mongoose.startSession = async () => ({
+    async withTransaction(run) { return run(); },
+    async endSession() {},
+  });
+  TestAttemptAdmissionGuard.updateOne = async (_filter, _update, options) => {
+    assert.ok(options?.session, "admission write requires session");
+    assert.equal(options.upsert, true);
   };
-  TestAttempt.countDocuments = async () => 0;
-  TestAttempt.create = async (data) => {
+  TestAttempt.findOne = (filter) => queryResult(() => {
+    if (filter && filter.status === "in_progress") {
+      if (filter._id && (filter.studentId !== ids.student || filter.tenantId !== ids.tenant)) {
+        state.unauthorizedQueries++;
+        return null;
+      }
+      return state.attempt && state.attempt.status === "in_progress" ? state.attempt : null;
+    }
+    return state.attempt ? { attemptNumber: state.attempt.attemptNumber } : null;
+  });
+  TestAttempt.countDocuments = (filter) => queryResult(() => (
+    filter.status === "in_progress"
+      ? Number(Boolean(state.attempt && state.attempt.status === "in_progress"))
+      : 0
+  ));
+  TestAttempt.create = async (docs, options) => {
+    assert.ok(Array.isArray(docs));
+    assert.ok(options?.session);
     state.writes++;
-    state.attempt = { _id: ids.attempt, ...data, async save() { state.writes++; return this; } };
-    return state.attempt;
+    state.attempt = { _id: ids.attempt, ...docs[0], async save(options) { assert.ok(options?.session); state.writes++; return this; } };
+    return [state.attempt];
   };
   TestAttempt.deleteOne = async () => { state.writes++; return { deletedCount: 1 }; };
-  TestAttemptDetail.findOne = async () => state.detail;
-  TestAttemptDetail.create = async (data) => {
+  TestAttemptDetail.findOne = () => queryResult(() => state.detail);
+  TestAttemptDetail.create = async (docs, options) => {
+    assert.ok(Array.isArray(docs));
+    assert.ok(options?.session);
     state.writes++;
-    state.detail = { ...data, _id: "507f1f77bcf86cd799439015" };
-    return state.detail;
+    state.detail = { ...docs[0], _id: "507f1f77bcf86cd799439015" };
+    return [state.detail];
   };
   return state;
 }
@@ -147,6 +171,8 @@ function restore() {
   TestAttempt.deleteOne = initialFunctions.attemptDelete;
   TestAttemptDetail.findOne = initialFunctions.detailFind;
   TestAttemptDetail.create = initialFunctions.detailCreate;
+  mongoose.startSession = initialFunctions.startSession;
+  TestAttemptAdmissionGuard.updateOne = initialFunctions.admissionWrite;
 }
 
 const assertNoFutureContent = (data) => {
