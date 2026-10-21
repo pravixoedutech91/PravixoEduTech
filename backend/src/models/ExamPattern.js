@@ -1,4 +1,7 @@
 const mongoose = require("mongoose");
+const {
+  validateExamTimingPolicy,
+} = require("../utils/examTimingPolicy");
 
 const sectionSchema = new mongoose.Schema(
   {
@@ -86,6 +89,12 @@ const examPatternSchema = new mongoose.Schema(
       default: "custom",
     },
 
+    timingMode: {
+      type: String,
+      enum: ["global", "sectional"],
+      default: "global",
+    },
+
     totalDurationMinutes: {
       type: Number,
       required: true,
@@ -151,6 +160,25 @@ updatedBy: {
   },
   { timestamps: true }
 );
+
+examPatternSchema.pre("validate", function () {
+  const timingValidation = validateExamTimingPolicy({
+    timingMode: this.timingMode,
+    totalDurationMinutes: this.totalDurationMinutes,
+    sections: this.sections,
+  });
+
+  if (!timingValidation.valid) {
+    this.invalidate(
+      timingValidation.path || "timingMode",
+      timingValidation.message
+    );
+
+    return;
+  }
+
+  this.timingMode = timingValidation.timingMode;
+});
 
 examPatternSchema.index(
   { tenantId: 1, slug: 1 },

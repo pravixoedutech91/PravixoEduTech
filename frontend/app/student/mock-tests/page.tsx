@@ -1,9 +1,9 @@
-﻿"use client";
+"use client";
 
 import { secureLogout } from "../../../lib/secureLogout";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import StudentPortalShell, { type StudentPortalProfile } from "@/components/student/StudentPortalShell";
 import { useRouter } from "next/navigation";
 
@@ -16,6 +16,28 @@ type PrimaryAction =
     | "limit_reached"
     | "purchase_required"
     | "assignment_required";
+
+type ExperienceMode = "exam_simulation" | "practice";
+type PublishedExperiencePolicy = {
+    policyVersion: number;
+    allowedModes: ExperienceMode[];
+};
+
+const getPublishedModes = (test: MockTest): ExperienceMode[] | null => {
+    const policy = test.settings?.experiencePolicy;
+    if (policy === undefined) return null;
+    if (policy.policyVersion !== 1 || !Array.isArray(policy.allowedModes)) return [];
+    const modes = policy.allowedModes;
+    if (
+        modes.length < 1 || modes.length > 2 ||
+        new Set(modes).size !== modes.length ||
+        modes.some((mode) => mode !== "exam_simulation" && mode !== "practice")
+    ) return [];
+    return modes;
+};
+
+const experienceModeLabel = (mode: ExperienceMode) =>
+    mode === "practice" ? "Practice Mode" : "Exam Simulation";
 
 type StudentTestType = "mock" | "pyq";
 type StudentAccessFilter = "all" | "accessible" | "free" | "paid";
@@ -41,6 +63,7 @@ type MockTest = {
         versionNumber: number;
         publishedAt: string;
     } | null;
+    settings?: { experiencePolicy?: PublishedExperiencePolicy };
     studentAttemptSummary: {
         maxAttempts: number;
         attemptsUsed: number;
@@ -87,6 +110,7 @@ type StartAttemptResponse = {
             attemptNumber: number;
             status: string;
             expiresAt?: string;
+            experienceMode?: ExperienceMode;
         };
     };
 };
@@ -345,10 +369,6 @@ const getActionClassName = (action: PrimaryAction) => {
     return "bg-slate-900 hover:bg-slate-800";
 };
 
-const isAttemptStartAction = (action: PrimaryAction) => {
-    return action === "start" || action === "resume" || action === "retake";
-};
-
 const RAZORPAY_CHECKOUT_SCRIPT_URL = "https://checkout.razorpay.com/v1/checkout.js";
 
 const loadRazorpayCheckoutScript = () => {
@@ -481,6 +501,11 @@ export default function StudentMockTestsPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [isLoadingPackages, setIsLoadingPackages] = useState(false);
     const [checkoutPackageId, setCheckoutPackageId] = useState<string | null>(null);
+    const startRequestInFlightRef = useRef(false);
+    const [pendingModeChoice, setPendingModeChoice] = useState<{
+        mockTestId: string;
+        requestedAction: "start" | "retake";
+    } | null>(null);
     const [actionLoadingMockTestId, setActionLoadingMockTestId] = useState<
         string | null
     >(null);
@@ -875,7 +900,8 @@ export default function StudentMockTestsPage() {
 
     const startOrResumeAttempt = async (
         mockTest: MockTest,
-        requestedAction: "start" | "resume" | "retake"
+        requestedAction: "start" | "resume" | "retake",
+        experienceMode?: ExperienceMode
     ) => {
         const cleanToken = token.trim();
 
@@ -883,6 +909,9 @@ export default function StudentMockTestsPage() {
             setErrorMessage("Please login as a student first.");
             return;
         }
+        // A synchronous guard prevents accidental double starts from two clicks.
+        if (startRequestInFlightRef.current) return;
+        startRequestInFlightRef.current = true;
 
         setActionLoadingMockTestId(mockTest._id);
         setErrorMessage("");
@@ -895,7 +924,9 @@ export default function StudentMockTestsPage() {
                     method: "POST",
                     headers: {
                         Authorization: `Bearer ${cleanToken}`,
+                        ...(experienceMode ? { "Content-Type": "application/json" } : {}),
                     },
+                    ...(experienceMode ? { body: JSON.stringify({ experienceMode }) } : {}),
                 }
             );
 
@@ -924,6 +955,7 @@ export default function StudentMockTestsPage() {
                     mockTestId: mockTest._id,
                     mockTestTitle: mockTest.title,
                     requestedAction,
+                    experienceMode: result.data.attempt.experienceMode ?? experienceMode ?? null,
                     resumed: result.data.resumed,
                     attemptId: attempt._id,
                     attemptNumber: attempt.attemptNumber,
@@ -957,6 +989,7 @@ export default function StudentMockTestsPage() {
 
             setErrorMessage(message);
         } finally {
+            startRequestInFlightRef.current = false;
             setActionLoadingMockTestId(null);
         }
     };
@@ -1212,11 +1245,29 @@ export default function StudentMockTestsPage() {
         }
     };
 
+    const beginNewAttempt = (mockTest: MockTest, action: "start" | "retake") => {
+        const modes = getPublishedModes(mockTest);
+        if (modes && modes.length === 0) {
+            setErrorMessage("Published experience configuration is invalid. Please contact your institute.");
+            return;
+        }
+        if (modes && modes.length === 2) {
+            setPendingModeChoice({ mockTestId: mockTest._id, requestedAction: action });
+            return;
+        }
+        void startOrResumeAttempt(mockTest, action, modes?.[0]);
+    };
+
     const handlePrimaryAction = (mockTest: MockTest) => {
         const action = mockTest.studentAttemptSummary.primaryAction;
 
-        if (isAttemptStartAction(action)) {
-            void startOrResumeAttempt(mockTest, action);
+        if (action === "start" || action === "retake") {
+            beginNewAttempt(mockTest, action);
+            return;
+        }
+        if (action === "resume") {
+            // Resume sends no override; the server retains immutable attempt mode.
+            void startOrResumeAttempt(mockTest, "resume");
             return;
         }
 
@@ -1336,6 +1387,40 @@ export default function StudentMockTestsPage() {
                         </div>
                     </div>
                 </section>
+
+                {pendingModeChoice ? (() => {
+                    const selectedTest = mockTests.find((test) => test._id === pendingModeChoice.mockTestId);
+                    const modes = selectedTest ? getPublishedModes(selectedTest) : null;
+                    return selectedTest && modes?.length === 2 ? (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4" role="presentation">
+                            <div role="dialog" aria-modal="true" aria-labelledby="experience-mode-title" className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+                                <h2 id="experience-mode-title" className="text-xl font-black text-slate-950">Choose your test experience</h2>
+                                <p className="mt-2 text-sm text-slate-600">{selectedTest.title}</p>
+                                <p className="mt-1 text-xs text-slate-500">One attempt is used in either mode. You cannot change mode after starting.</p>
+                                <div className="mt-5 grid gap-3">
+                                    {modes.map((mode) => (
+                                        <button
+                                            key={mode}
+                                            type="button"
+                                            disabled={Boolean(actionLoadingMockTestId)}
+                                            onClick={() => {
+                                                setPendingModeChoice(null);
+                                                void startOrResumeAttempt(selectedTest, pendingModeChoice.requestedAction, mode);
+                                            }}
+                                            className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-left hover:bg-indigo-100 disabled:cursor-wait disabled:opacity-60"
+                                        >
+                                            <span className="block font-bold text-indigo-950">{experienceModeLabel(mode)}</span>
+                                            <span className="mt-1 block text-xs text-indigo-700">
+                                                {mode === "practice" ? "Flexible navigation with an overall timer." : "Follow the published examination timing and section rules."}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                                <button type="button" onClick={() => setPendingModeChoice(null)} className="mt-4 w-full rounded-xl border border-slate-300 py-2.5 text-sm font-semibold text-slate-700">Cancel</button>
+                            </div>
+                        </div>
+                    ) : null;
+                })() : null}
 
                 {errorMessage ? (
                     <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
@@ -1610,6 +1695,12 @@ export default function StudentMockTestsPage() {
                                                 {mockTest.accessType}
                                             </span>
 
+                                            {getPublishedModes(mockTest)?.length ? (
+                                                <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black text-indigo-700">
+                                                    {getPublishedModes(mockTest)?.map(experienceModeLabel).join(" + ")}
+                                                </span>
+                                            ) : null}
+
                                             {accessReason ? (
                                                 <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-black text-amber-700">
                                                     {accessReason ===
@@ -1769,7 +1860,7 @@ export default function StudentMockTestsPage() {
                                                             <button
                                                                 type="button"
                                                                 onClick={() =>
-                                                                    void startOrResumeAttempt(
+                                                                    beginNewAttempt(
                                                                         mockTest,
                                                                         "retake"
                                                                     )

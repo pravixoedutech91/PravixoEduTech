@@ -26,6 +26,19 @@ type AttemptPayload = {
         expiresAt?: string;
         totalDurationSeconds?: number;
         timeSpentSeconds?: number;
+        timing?: {
+            mode: "global" | "sectional";
+            attemptExpired: boolean;
+            activeSection?: {
+                sectionSlug: string;
+                order: number;
+                startsAt: string;
+                expiresAt: string;
+                remainingSeconds: number;
+            } | null;
+            expiredSectionSlugs?: string[];
+            lockedSectionSlugs?: string[];
+        };
     };
     test: {
         _id: string;
@@ -36,6 +49,7 @@ type AttemptPayload = {
         description?: string;
         testType: string;
         accessType: string;
+        contentScope?: "all_sections" | "active_section";
         instructionsEn?: string;
         instructionsHi?: string;
         examPatternSnapshot: {
@@ -149,6 +163,12 @@ type SaveAnswerResponse = {
             lastActivityAt?: string;
         };
     };
+};
+
+type RefreshedAttemptResponse = {
+    success: boolean;
+    message?: string;
+    data?: AttemptPayload;
 };
 
 type SubmitAttemptResponse = {
@@ -370,10 +390,15 @@ export default function StudentAttemptPage() {
         getPayloadSnapshot,
         getServerPayloadSnapshot
     );
-    const payload = useMemo(
+    const storedPayload = useMemo(
         () => parsePayloadSnapshot(payloadSnapshot),
         [payloadSnapshot]
     );
+    const [refreshedPayload, setRefreshedPayload] = useState<AttemptPayload | null>(null);
+    const payload =
+        refreshedPayload?.attempt._id === storedPayload?.attempt._id
+            ? refreshedPayload
+            : storedPayload;
     const storedStudentToken = useSyncExternalStore(
         subscribeToPayloadStorage,
         getStudentTokenSnapshot,
@@ -386,6 +411,12 @@ export default function StudentAttemptPage() {
         return parts[parts.length - 1] || "";
     }, [pathname]);
     const [now, setNow] = useState(() => Date.now());
+    const [sectionalStateVerified, setSectionalStateVerified] = useState(false);
+    const [sectionClockOffsetMs, setSectionClockOffsetMs] = useState(0);
+    const [sectionalRefreshError, setSectionalRefreshError] = useState("");
+    const sectionalRefreshRunning = useRef(false);
+    const lastSectionalRefreshAt = useRef(0);
+    const verifiedAttemptIdRef = useRef("");
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [selectedAnswers, setSelectedAnswers] = useState<
         Record<string, string>
@@ -460,8 +491,118 @@ export default function StudentAttemptPage() {
         );
     }, [payload]);
 
+    // A cached start payload is not authoritative after a sectional boundary.
+    // Fetch current state through the owner-checked GET endpoint, never POST /start.
+    const isSectional = payload?.attempt.timing?.mode === "sectional";
+    const activeSectionSlug = payload?.attempt.timing?.activeSection?.sectionSlug || "";
+    const activeSectionExpiresAt = payload?.attempt.timing?.activeSection?.expiresAt;
+    // Clock delta is refreshed from authenticated serverTime with each GET response.
+    // Server-side timing enforcement remains authoritative if the device clock changes.
+    const sectionServerNow = now + sectionClockOffsetMs;
+    const sectionWindowIsOpen = Boolean(
+        isSectional && activeSectionSlug && activeSectionExpiresAt &&
+        Date.parse(activeSectionExpiresAt) > sectionServerNow && sectionalStateVerified &&
+        verifiedAttemptIdRef.current === payload?.attempt._id &&
+        payload?.test.contentScope === "active_section"
+    );
+
+    useEffect(() => {
+        if (!isSectional || !payload?.attempt._id || !hasStudentToken ||
+            attemptIdFromPath !== payload.attempt._id ||
+            payload.attempt.status !== "in_progress" ||
+            submitSummaryMessage) {
+            return;
+        }
+
+        const deadlinePassed = Boolean(
+            activeSectionExpiresAt && Date.parse(activeSectionExpiresAt) <= sectionServerNow
+        );
+        const needsRefresh =
+            !sectionalStateVerified ||
+            verifiedAttemptIdRef.current !== payload.attempt._id ||
+            deadlinePassed;
+
+        if (!needsRefresh || sectionalRefreshRunning.current ||
+            now - lastSectionalRefreshAt.current < 5000) {
+            return;
+        }
+
+        sectionalRefreshRunning.current = true;
+        lastSectionalRefreshAt.current = now;
+        const attemptId = payload.attempt._id;
+        const token = storedStudentToken.trim();
+
+        void (async () => {
+            try {
+                const response = await fetch(
+                    `${API_BASE_URL}/api/student/attempts/${attemptId}/state`,
+                    {
+                        method: "GET",
+                        headers: { Authorization: `Bearer ${token}` },
+                        cache: "no-store",
+                    }
+                );
+                const result = (await response.json()) as RefreshedAttemptResponse;
+
+                if (isInvalidStudentSessionResponse(response, result.message)) {
+                    clearStudentSessionStorage();
+                    router.push("/student/login");
+                    return;
+                }
+
+                if (response.status === 410) {
+                    setSectionalRefreshError("Time is over. Submit your last saved answers.");
+                    setSectionalStateVerified(false);
+                    verifiedAttemptIdRef.current = "";
+                    return;
+                }
+
+                if (!response.ok || !result.success || !result.data ||
+                    result.data.attempt._id !== attemptId ||
+                    result.data.attempt.timing?.mode !== "sectional" ||
+                    result.data.test.contentScope !== "active_section") {
+                    throw new Error(result.message || "Unable to load the active section.");
+                }
+
+                // Do not let a late response overwrite a newly opened attempt.
+                if (window.localStorage.getItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY)) {
+                    const latestStored = parsePayloadSnapshot(
+                        window.localStorage.getItem(ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY) || ""
+                    );
+                    if (latestStored?.attempt._id !== attemptId) return;
+                }
+
+                setSectionClockOffsetMs(Date.parse(result.data.serverTime) - Date.now());
+                setRefreshedPayload(result.data);
+                window.localStorage.setItem(
+                    ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY,
+                    JSON.stringify(result.data)
+                );
+                verifiedAttemptIdRef.current = attemptId;
+                setSectionalStateVerified(true);
+                setSectionalRefreshError("");
+                setNow(Date.now());
+            } catch (error) {
+                setSectionalStateVerified(false);
+                setSectionalRefreshError(
+                    error instanceof Error ? error.message : "Unable to refresh the active section."
+                );
+            } finally {
+                sectionalRefreshRunning.current = false;
+            }
+        })();
+    }, [
+        isSectional, payload?.attempt._id, payload?.attempt.status,
+        activeSectionExpiresAt, sectionalStateVerified, now, sectionServerNow,
+        hasStudentToken, attemptIdFromPath, storedStudentToken, submitSummaryMessage, router,
+    ]);
+
     const questions = useMemo<TestQuestionWithSectionContext[]>(() => {
         return sections.flatMap((testSection) => {
+            if (isSectional &&
+                (!sectionWindowIsOpen || testSection.sectionSlug !== activeSectionSlug)) {
+                return [];
+            }
             return [...(testSection.questions || [])]
                 .sort(
                     (firstQuestion, secondQuestion) =>
@@ -477,14 +618,16 @@ export default function StudentAttemptPage() {
                     questionGroups: testSection.questionGroups || [],
                 }));
         });
-    }, [sections]);
+    }, [sections, isSectional, sectionWindowIsOpen, activeSectionSlug]);
 
     const currentQuestion = questions[currentQuestionIndex] || null;
     const currentQuestionNumber = currentQuestionIndex + 1;
 
     const section = useMemo(() => {
         if (!currentQuestion) {
-            return sections[0] || null;
+            return isSectional
+                ? (sections.find((candidate) => candidate.sectionSlug === activeSectionSlug) || null)
+                : (sections[0] || null);
         }
 
         return (
@@ -495,7 +638,11 @@ export default function StudentAttemptPage() {
             sections[0] ||
             null
         );
-    }, [currentQuestion, sections]);
+    }, [currentQuestion, sections, isSectional, activeSectionSlug]);
+
+    useEffect(() => {
+        setCurrentQuestionIndex(0);
+    }, [activeSectionSlug, payload?.attempt._id]);
 
     useEffect(() => {
         if (currentQuestionIndex > 0 && currentQuestionIndex >= questions.length) {
@@ -508,6 +655,7 @@ export default function StudentAttemptPage() {
             hasRestoredQuestionPosition ||
             !payload?.attempt._id ||
             questions.length === 0 ||
+            (isSectional && !sectionWindowIsOpen) ||
             typeof window === "undefined"
         ) {
             return;
@@ -557,6 +705,8 @@ export default function StudentAttemptPage() {
         payload?.attempt._id,
         questions,
         questions.length,
+        isSectional,
+        sectionWindowIsOpen,
     ]);
 
     useEffect(() => {
@@ -600,9 +750,10 @@ export default function StudentAttemptPage() {
         }
 
         return Math.floor(
-            (new Date(payload.attempt.expiresAt).getTime() - now) / 1000
+            (new Date(payload.attempt.expiresAt).getTime() -
+                (isSectional ? sectionServerNow : now)) / 1000
         );
-    }, [now, payload]);
+    }, [now, payload, isSectional, sectionServerNow]);
 
     const answeredCount = questions.filter((question) => {
         return Boolean(selectedAnswers[question._id]);
@@ -620,7 +771,8 @@ export default function StudentAttemptPage() {
         !payload ||
         Boolean(submitSummaryMessage) ||
         remainingSeconds <= 0 ||
-        payload.attempt.status !== "in_progress";
+        payload.attempt.status !== "in_progress" ||
+        (isSectional && !sectionWindowIsOpen);
 
     const isAttemptMismatch =
         Boolean(attemptIdFromPath && payload?.attempt._id) &&
@@ -1139,6 +1291,18 @@ export default function StudentAttemptPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-3">
+                        {isSectional ? (
+                            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2 text-center">
+                                <p className="text-xs font-semibold uppercase text-blue-700">
+                                    {section?.name || "Section"} Time Left
+                                </p>
+                                <p className="font-mono text-xl font-bold text-blue-950">
+                                    {formatDuration(activeSectionExpiresAt
+                                        ? Math.max(0, Math.floor((Date.parse(activeSectionExpiresAt) - sectionServerNow) / 1000))
+                                        : 0)}
+                                </p>
+                            </div>
+                        ) : null}
                         <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-center">
                             <p className="text-xs font-semibold uppercase text-slate-500">
                                 Time Left
@@ -1229,6 +1393,17 @@ export default function StudentAttemptPage() {
                             ) || "Read all instructions carefully before answering."}
                         </p>
                     </div>
+
+                    {isSectional ? (
+                        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-950" role="status" aria-live="polite">
+                            <p className="font-semibold">Strict section timing</p>
+                            <p className="mt-1">
+                                {sectionWindowIsOpen
+                                    ? `Current section: ${section?.name || activeSectionSlug}. Previous and upcoming sections are locked.`
+                                    : sectionalRefreshError || "Checking the active section with the server. Please wait..."}
+                            </p>
+                        </div>
+                    ) : null}
 
                     {currentQuestionGroup ? (
                         <div className="sticky top-20 z-10 max-h-[38vh] overflow-y-auto rounded-2xl bg-white p-4 shadow-sm ring-1 ring-slate-200">
@@ -1340,10 +1515,9 @@ export default function StudentAttemptPage() {
                         </div>
 
                         <h2 className="text-base font-semibold leading-7 text-slate-950 md:text-lg">
-                            {getBestText(
-                                currentQuestion?.questionTextEn,
-                                currentQuestion?.questionTextHi
-                            ) || "Question text not available."}
+                            {currentQuestion
+                                ? (getBestText(currentQuestion.questionTextEn, currentQuestion.questionTextHi) || "Question text not available.")
+                                : (isSectional ? "Section questions are locked until verified by the server." : "Question text not available.")}
                         </h2>
 
                         {currentQuestion &&
@@ -1438,8 +1612,25 @@ export default function StudentAttemptPage() {
                         </p>
 
                         <p className="mt-1 text-xs text-slate-500">
-                            Total Sections: {sections.length} | Questions: {questions.length}
+                            Total Sections: {sections.length} | {isSectional ? "Current Section Questions" : "Questions"}: {questions.length}
                         </p>
+
+                        {isSectional ? (
+                            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                                {sections.map((item) => (
+                                    <span key={item.sectionSlug} className={`rounded-lg px-2 py-1 font-semibold ${
+                                        item.sectionSlug === activeSectionSlug && sectionWindowIsOpen
+                                            ? "bg-blue-100 text-blue-800"
+                                            : "bg-slate-100 text-slate-600"
+                                    }`}>
+                                        {item.name} — {item.sectionSlug === activeSectionSlug && sectionWindowIsOpen
+                                            ? "Active"
+                                            : (payload.attempt.timing?.expiredSectionSlugs || []).includes(item.sectionSlug)
+                                                ? "Expired" : "Locked"}
+                                    </span>
+                                ))}
+                            </div>
+                        ) : null}
 
                         <div className="mt-3 grid grid-cols-5 gap-1.5">
                             {questions.map((question, index) => {

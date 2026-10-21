@@ -8,6 +8,7 @@ const {
   verifyPaymentPackagePaymentForStudent,
   getMyMockTestAttempts,
   startMockTestAttempt,
+  getMockTestAttemptState,
   saveMockTestAnswer,
   submitMockTestAttempt,
   getMockTestResult,
@@ -44,6 +45,15 @@ router.post(
   authorize("student"),
   checkFeatureAccess("mockTests"),
   startMockTestAttempt
+);
+
+// Student: Read-only, authenticated refresh of an existing attempt's active section
+router.get(
+  "/attempts/:attemptId/state",
+  protect,
+  authorize("student"),
+  checkFeatureAccess("mockTests"),
+  getMockTestAttemptState
 );
 
 // Student: Save or update answer during attempt
