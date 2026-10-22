@@ -30,7 +30,9 @@ type PromotionPlacement =
   | "study_notes_hero"
   | "current_affairs_hero"
   | "jobs_hero"
-  | "mock_tests_hero";
+  | "mock_tests_hero"
+  | "student_dashboard_primary"
+  | "student_dashboard_secondary";
 
 type PromotionStatus =
   | "draft"
@@ -129,6 +131,14 @@ const placementOptions: Array<{
   {
     value: "mock_tests_hero",
     label: "Mock Tests Hero",
+  },
+  {
+    value: "student_dashboard_primary",
+    label: "Student Dashboard — Primary",
+  },
+  {
+    value: "student_dashboard_secondary",
+    label: "Student Dashboard — Secondary",
   },
 ];
 
@@ -908,15 +918,15 @@ export default function AdminPromotionsPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-sm font-bold uppercase tracking-[0.2em] text-blue-700">
-                Public Marketing
+                Promotions & Campaigns
               </p>
 
               <h1 className="mt-2 text-3xl font-bold tracking-tight">
-                Site Promotions
+                Campaign Management
               </h1>
 
               <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                Create scheduled promotional cards for public hero areas.
+                Create and schedule promotional campaigns across public pages and Student Portal placements.
                 The highest-priority eligible active promotion is selected for each placement.
               </p>
             </div>
@@ -1409,7 +1419,7 @@ export default function AdminPromotionsPage() {
 
               <p className="mt-2 text-sm leading-6 text-slate-600">
                 Create the first campaign above.
-                Public pages will continue using their fallback hero until an active campaign is available.
+                Placements remain empty or continue using their existing fallback experience until an eligible campaign is available.
               </p>
             </div>
           ) : (

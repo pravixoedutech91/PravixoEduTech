@@ -1,5 +1,6 @@
 "use client";
 
+import { secureLogout } from "../../../lib/secureLogout";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -127,12 +128,21 @@ export default function AdminDashboardPage() {
 
     const roleLabel = getAdminRoleLabel(profile?.role);
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
         const shouldLogout = window.confirm(
             "Are you sure you want to logout? Your saved admin session will be cleared."
         );
 
         if (!shouldLogout) {
+            return;
+        }
+
+        const logoutResult = await secureLogout(token);
+
+        if (!logoutResult.shouldClearLocalSession) {
+            setMessage(
+                "Secure logout could not be confirmed. Please check your connection and try again."
+            );
             return;
         }
 

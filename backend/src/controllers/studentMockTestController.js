@@ -1,4 +1,4 @@
-﻿const {
+const {
   isHostedEnvironment,
   getInternalErrorMessage,
   logRuntimeError,
@@ -11,6 +11,16 @@ const MockTest = require("../models/MockTest");
 const MockTestVersion = require("../models/MockTestVersion");
 const TestAttempt = require("../models/TestAttempt");
 const TestAttemptDetail = require("../models/TestAttemptDetail");
+const TestAttemptAdmissionGuard = require("../models/TestAttemptAdmissionGuard");
+const {
+    buildAttemptTimingState,
+    resolveAttemptTimingState,
+} = require("../utils/attemptTimingPolicy");
+const {
+    validateExperiencePolicy,
+    resolveNewAttemptExperience,
+    validateResumeExperience,
+} = require("../utils/experiencePolicy");
 const PaymentProduct = require("../models/PaymentProduct");
 const Purchase = require("../models/Purchase");
 const Entitlement = require("../models/Entitlement");
@@ -81,6 +91,12 @@ const buildStudentMockTestListItem = (
             interfaceMode: activeVersionSettings?.interfaceMode,
             showResultImmediately: activeVersionSettings?.showResultImmediately,
             solutionVisibility: activeVersionSettings?.solutionVisibility,
+            experiencePolicy: (() => {
+                // Draft settings are never an authority for student choices.
+                const frozen = mockTest.activeVersionId?.settings?.experiencePolicy;
+                const checked = validateExperiencePolicy(frozen);
+                return checked.valid ? checked.policy : undefined;
+            })(),
         },
         publishedAt: mockTest.publishedAt,
         studentAttemptSummary,
@@ -179,7 +195,10 @@ const sanitizeSectionForStudent = (section) => {
     };
 };
 
-const buildSanitizedTestForStudent = (mockTestVersion) => {
+const buildSanitizedTestForStudent = (mockTestVersion, resolvedTiming = null) => {
+    const sectional = resolvedTiming?.mode === "sectional";
+    const activeSectionSlug = resolvedTiming?.activeSection?.sectionSlug || null;
+
     return {
         _id: mockTestVersion._id,
         mockTestId: mockTestVersion.mockTestId,
@@ -204,8 +223,28 @@ const buildSanitizedTestForStudent = (mockTestVersion) => {
             allowLanguageSwitching:
                 mockTestVersion.examPatternSnapshot?.allowLanguageSwitching,
         },
+        // Sectional attempts disclose question/group content for the active window only.
+        // Keep non-active section metadata for progress display, but never expose
+        // their passages, options, images or questions in this response.
+        contentScope: sectional ? "active_section" : "all_sections",
         sections: (mockTestVersion.sections || [])
-            .map(sanitizeSectionForStudent)
+            .map((section) => {
+                if (sectional && section.sectionSlug !== activeSectionSlug) {
+                    return {
+                        sectionSlug: section.sectionSlug,
+                        name: section.name,
+                        sectionType: section.sectionType,
+                        durationMinutes: section.durationMinutes,
+                        questionCount: section.questionCount,
+                        marksPerQuestion: section.marksPerQuestion,
+                        negativeMarks: section.negativeMarks,
+                        order: section.order,
+                        questionGroups: [],
+                        questions: [],
+                    };
+                }
+                return sanitizeSectionForStudent(section);
+            })
             .sort((a, b) => Number(a.order || 1) - Number(b.order || 1)),
         settings: {
             maxAttempts: mockTestVersion.settings?.maxAttempts,
@@ -296,14 +335,15 @@ const buildInitialAnswersFromVersion = (mockTestVersion) => {
     return answers;
 };
 
-const getNextAttemptNumber = async (tenantId, studentId, mockTestId) => {
-    const latestAttempt = await TestAttempt.findOne({
+const getNextAttemptNumber = async (tenantId, studentId, mockTestId, session = null) => {
+    const query = TestAttempt.findOne({
         tenantId,
         studentId,
         mockTestId,
     })
         .sort({ attemptNumber: -1 })
         .select("attemptNumber");
+    const latestAttempt = session ? await query.session(session) : await query;
 
     if (!latestAttempt) {
         return 1;
@@ -312,24 +352,38 @@ const getNextAttemptNumber = async (tenantId, studentId, mockTestId) => {
     return Number(latestAttempt.attemptNumber) + 1;
 };
 
-const getOrCreateAttemptDetail = async (tenantId, attempt, mockTestVersion) => {
-    const existingDetail = await TestAttemptDetail.findOne({
+const getOrCreateAttemptDetail = async (
+    tenantId,
+    attempt,
+    mockTestVersion,
+    session = null
+) => {
+    const query = TestAttemptDetail.findOne({
         tenantId,
         attemptId: attempt._id,
     });
+
+    const existingDetail = session
+        ? await query.session(session)
+        : await query;
 
     if (existingDetail) {
         const fallbackExpiresAt = getInProgressDetailExpiresAt(attempt.expiresAt);
 
         if (!existingDetail.expiresAt && fallbackExpiresAt) {
             existingDetail.expiresAt = fallbackExpiresAt;
-            await existingDetail.save();
+
+            if (session) {
+                await existingDetail.save({ session });
+            } else {
+                await existingDetail.save();
+            }
         }
 
         return existingDetail;
     }
 
-    return TestAttemptDetail.create({
+    const detailPayload = {
         tenantId,
         attemptId: attempt._id,
         studentId: attempt.studentId,
@@ -337,7 +391,18 @@ const getOrCreateAttemptDetail = async (tenantId, attempt, mockTestVersion) => {
         mockTestVersionId: attempt.mockTestVersionId,
         answers: buildInitialAnswersFromVersion(mockTestVersion),
         expiresAt: getInProgressDetailExpiresAt(attempt.expiresAt),
-    });
+    };
+
+    if (session) {
+        const createdDetails = await TestAttemptDetail.create(
+            [detailPayload],
+            { session }
+        );
+
+        return createdDetails[0];
+    }
+
+    return TestAttemptDetail.create(detailPayload);
 };
 
 const buildAttemptAnswerStatePayload = (attemptDetail) => {
@@ -352,15 +417,34 @@ const buildAttemptAnswerStatePayload = (attemptDetail) => {
     }));
 };
 
+const buildAttemptTimingPayload = (attempt, serverNow) => {
+    const timingState = resolveAttemptTimingState({
+        attempt,
+        now: serverNow,
+    });
+
+    return {
+        mode: timingState.mode,
+        policyVersion: timingState.policyVersion,
+        attemptExpired: timingState.attemptExpired,
+        overallExpiresAt: timingState.overallExpiresAt,
+        overallRemainingSeconds: timingState.overallRemainingSeconds,
+        activeSection: timingState.activeSection,
+        expiredSectionSlugs: timingState.expiredSectionSlugs,
+        lockedSectionSlugs: timingState.lockedSectionSlugs,
+    };
+};
+
 const buildAttemptPayload = (
     attempt,
     mockTestVersion,
     resumed,
-    attemptDetail = null
+    attemptDetail = null,
+    serverNow = new Date()
 ) => {
     return {
         resumed,
-        serverTime: new Date(),
+        serverTime: serverNow,
         attempt: {
             _id: attempt._id,
             attemptNumber: attempt.attemptNumber,
@@ -370,9 +454,14 @@ const buildAttemptPayload = (
             expiresAt: attempt.expiresAt,
             totalDurationSeconds: attempt.totalDurationSeconds,
             timeSpentSeconds: attempt.timeSpentSeconds,
+            experienceMode: attempt.experienceMode || null,
+            timing: buildAttemptTimingPayload(attempt, serverNow),
             review: buildReviewMetadataForStudent(attempt),
         },
-        test: buildSanitizedTestForStudent(mockTestVersion),
+        test: buildSanitizedTestForStudent(
+            mockTestVersion,
+            resolveAttemptTimingState({ attempt, now: serverNow })
+        ),
         answers: buildAttemptAnswerStatePayload(attemptDetail),
     };
 };
@@ -1398,7 +1487,7 @@ const getPublishedMockTestsForStudent = async (req, res) => {
             )
             .populate("categoryId", "name slug")
             .populate("examPatternId", "name examType totalDurationMinutes")
-            .populate("activeVersionId", "versionNumber publishedAt settings.maxAttempts settings.interfaceMode settings.showResultImmediately settings.solutionVisibility")
+            .populate("activeVersionId", "versionNumber publishedAt settings.maxAttempts settings.interfaceMode settings.showResultImmediately settings.solutionVisibility settings.experiencePolicy")
             .sort({ publishedAt: -1, createdAt: -1 });
 
         const mockTestIds = mockTests.map((mockTest) => mockTest._id);
@@ -1523,212 +1612,378 @@ const getPublishedMockTestsForStudent = async (req, res) => {
 };
 
 const startMockTestAttempt = async (req, res) => {
+    const deny = (statusCode, message) => ({
+        statusCode,
+        body: { success: false, message },
+    });
+    let session = null;
     try {
         const tenantId = getStudentTenantId(req);
         const studentId = req.user._id;
         const { mockTestId } = req.params;
+        const hasModeRequest = Object.prototype.hasOwnProperty.call(
+            req.body || {}, "experienceMode"
+        );
+        const requestedMode = hasModeRequest ? req.body.experienceMode : undefined;
 
         if (!mongoose.Types.ObjectId.isValid(mockTestId)) {
-            return res.status(400).json({
+            return res.status(400).json({ success: false, message: "Invalid mock test ID" });
+        }
+
+        // Preserve the existing access/entitlement rejection before any guard write.
+        // Every admission authority is loaded again within the transaction.
+        const published = await MockTest.findOne({
+            _id: mockTestId, tenantId, isActive: true, isPublished: true,
+        });
+        if (!published) {
+            return res.status(404).json({
                 success: false,
-                message: "Invalid mock test ID",
+                message: "Mock test not found, unpublished, or access denied",
+            });
+        }
+        if (published.accessType === "paid") {
+            const entitled = await hasActiveMockTestEntitlement({
+                tenantId, studentId, mockTestId: published._id,
+            });
+            if (!entitled) {
+                return res.status(403).json({
+                    success: false, message: "Purchase required before starting this mock test",
+                });
+            }
+        }
+        if (published.accessType === "assigned") {
+            return res.status(403).json({
+                success: false, message: "This mock test requires assignment before access",
+            });
+        }
+        if (!published.activeVersionId) {
+            return res.status(400).json({
+                success: false, message: "Mock test has no active published version",
+            });
+        }
+        const candidateVersion = await MockTestVersion.findOne({
+            _id: published.activeVersionId, tenantId, mockTestId: published._id,
+            isActive: true,
+        });
+        if (!candidateVersion) {
+            return res.status(404).json({
+                success: false, message: "Active mock test version not found",
             });
         }
 
+        const admissionKey = TestAttemptAdmissionGuard.makeKey({
+            tenantId, studentId, mockTestId: published._id,
+        });
+        session = await mongoose.startSession();
+        let outcome = null;
+
+        // Outer retries are intentionally bounded. The driver's withTransaction
+        // implementation may itself retry transient errors; do not resend HTTP here.
+        for (let round = 0; round < 3; round++) {
+            try {
+                outcome = await session.withTransaction(async () => {
+                    // The real write must occur FIRST. All competing starts for this
+                    // student and test contend on the same MongoDB _id document.
+                    await TestAttemptAdmissionGuard.updateOne(
+                        { _id: admissionKey },
+                        {
+                            $inc: { revision: 1 },
+                            $setOnInsert: {
+                                tenantId, studentId, mockTestId: published._id,
+                            },
+                        },
+                        { upsert: true, session }
+                    );
+
+                    const now = new Date();
+                    const mockTest = await MockTest.findOne({
+                        _id: mockTestId, tenantId, isActive: true, isPublished: true,
+                    }).session(session);
+                    if (!mockTest) {
+                        return deny(404, "Mock test not found, unpublished, or access denied");
+                    }
+                    if (mockTest.accessType === "assigned") {
+                        return deny(403, "This mock test requires assignment before access");
+                    }
+                    if (mockTest.accessType === "paid") {
+                        // Paid entitlement is rechecked after the guard write so a
+                        // revoked entitlement cannot reuse an earlier authorization.
+                        const entitled = await hasActiveMockTestEntitlement({
+                            tenantId, studentId, mockTestId: mockTest._id,
+                        });
+                        if (!entitled) {
+                            return deny(403, "Purchase required before starting this mock test");
+                        }
+                    }
+                    if (!mockTest.activeVersionId) {
+                        return deny(400, "Mock test has no active published version");
+                    }
+                    const mockTestVersion = await MockTestVersion.findOne({
+                        _id: mockTest.activeVersionId,
+                        tenantId, mockTestId: mockTest._id, isActive: true,
+                    }).session(session);
+                    if (!mockTestVersion) {
+                        return deny(404, "Active mock test version not found");
+                    }
+
+                    // Fail closed if historical data already contains two active
+                    // attempts; never arbitrarily choose which one to resume.
+                    const activeFilter = {
+                        tenantId, studentId, mockTestId: mockTest._id,
+                        status: "in_progress", isActive: true,
+                    };
+                    const activeCount = await TestAttempt.countDocuments(
+                        activeFilter
+                    ).session(session);
+                    if (activeCount > 1) {
+                        return deny(409, "Multiple active attempts require administrative review");
+                    }
+                    let existingAttempt = activeCount === 1
+                        ? await TestAttempt.findOne(activeFilter).session(session)
+                        : null;
+                    if (existingAttempt) {
+                        const timing = resolveAttemptTimingState({
+                            attempt: existingAttempt, now,
+                        });
+                        if (timing.attemptExpired) {
+                            existingAttempt.status = "expired";
+                            existingAttempt.lastActivityAt = now;
+                            await existingAttempt.save({ session });
+                            existingAttempt = null;
+                        }
+                    }
+                    if (existingAttempt) {
+                        const resumeSelection = validateResumeExperience(
+                            existingAttempt.experienceMode, requestedMode
+                        );
+                        if (!resumeSelection.valid) {
+                            return deny(409, resumeSelection.message);
+                        }
+                        const historicalVersion = await MockTestVersion.findOne({
+                            _id: existingAttempt.mockTestVersionId,
+                            tenantId, mockTestId: mockTest._id, isActive: true,
+                        }).session(session);
+                        if (!historicalVersion) {
+                            return deny(404, "Attempt mock test version not found");
+                        }
+                        existingAttempt.lastActivityAt = now;
+                        await existingAttempt.save({ session });
+                        const attemptDetail = await getOrCreateAttemptDetail(
+                            tenantId, existingAttempt, historicalVersion, session
+                        );
+                        return {
+                            statusCode: 200,
+                            body: {
+                                success: true,
+                                message: "Attempt resumed successfully",
+                                data: buildAttemptPayload(
+                                    existingAttempt, historicalVersion, true, attemptDetail, now
+                                ),
+                            },
+                        };
+                    }
+
+                    // Both version and policy are frozen published values.
+                    const selection = resolveNewAttemptExperience(
+                        mockTestVersion.settings?.experiencePolicy, requestedMode
+                    );
+                    if (!selection.valid) {
+                        return deny(400, selection.message);
+                    }
+                    const maxAttempts = Math.max(
+                        toNumber(mockTestVersion.settings?.maxAttempts, 1), 1
+                    );
+                    const usedAttempts = await TestAttempt.countDocuments({
+                        tenantId, studentId, mockTestId: mockTest._id,
+                        status: { $in: ["in_progress", "submitted", "expired"] },
+                        isActive: true,
+                    }).session(session);
+                    if (usedAttempts >= maxAttempts) {
+                        return deny(403, "Maximum attempt limit reached for this mock test");
+                    }
+                    const attemptNumber = await getNextAttemptNumber(
+                        tenantId, studentId, mockTest._id, session
+                    );
+                    const totalDurationSeconds = calculateTotalDurationSeconds(
+                        mockTestVersion
+                    );
+                    const expiresAt = totalDurationSeconds > 0
+                        ? new Date(now.getTime() + totalDurationSeconds * 1000)
+                        : null;
+                    const timingState = buildAttemptTimingState({
+                        mockTestVersion, startedAt: now,
+                        experienceMode: selection.mode,
+                    });
+                    const [attempt] = await TestAttempt.create([{
+                        tenantId, studentId,
+                        mockTestId: mockTest._id,
+                        mockTestVersionId: mockTestVersion._id,
+                        attemptNumber,
+                        experienceMode: selection.mode,
+                        accessTypeAtAttempt: mockTestVersion.accessType || mockTest.accessType,
+                        status: "in_progress",
+                        startedAt: now,
+                        lastActivityAt: now,
+                        expiresAt,
+                        totalDurationSeconds,
+                        timingState,
+                        timeSpentSeconds: 0,
+                        scoreSummary: {
+                            totalQuestions: calculateTotalQuestions(mockTestVersion),
+                            maxScore: calculateMaxScore(mockTestVersion),
+                        },
+                        review: {
+                            isDetailedReviewAvailable: false,
+                            detailedReviewExpiresAt: null,
+                            solutionVisibility:
+                                mockTestVersion.settings?.solutionVisibility || "after_submit",
+                            reviewRetentionDays: REVIEW_RETENTION_DAYS,
+                        },
+                    }], { session });
+                    const [attemptDetail] = await TestAttemptDetail.create([{
+                        tenantId, attemptId: attempt._id, studentId,
+                        mockTestId: mockTest._id,
+                        mockTestVersionId: mockTestVersion._id,
+                        answers: buildInitialAnswersFromVersion(mockTestVersion),
+                        expiresAt: getInProgressDetailExpiresAt(expiresAt),
+                    }], { session });
+                    return {
+                        statusCode: 201,
+                        body: {
+                            success: true,
+                            message: "Attempt started successfully",
+                            data: buildAttemptPayload(
+                                attempt, mockTestVersion, false, attemptDetail, now
+                            ),
+                        },
+                    };
+                });
+                break;
+            } catch (error) {
+                // An ambiguous commit must NEVER trigger another creation attempt.
+                // The caller gets a safe retry/refresh conflict instead.
+                if (error.hasErrorLabel?.("UnknownTransactionCommitResult")) {
+                    outcome = deny(409, "Attempt start outcome is uncertain; refresh your attempts before retrying");
+                    break;
+                }
+                const transient = error.hasErrorLabel?.("TransientTransactionError") === true;
+                const firstInsertCollision = error.code === 11000;
+                if ((transient || firstInsertCollision) && round < 2) {
+                    continue;
+                }
+                if (transient || firstInsertCollision) {
+                    outcome = deny(409, "Concurrent attempt start; refresh to resume the active attempt");
+                    break;
+                }
+                throw error;
+            }
+        }
+        return res.status(outcome.statusCode).json(outcome.body);
+    } catch (error) {
+        if (error.code === 11000 || error.hasErrorLabel?.("TransientTransactionError")) {
+            return res.status(409).json({
+                success: false,
+                message: "Concurrent attempt start; refresh to resume the active attempt",
+            });
+        }
+        logRuntimeError("studentMockTestController error:", error);
+        return res.status(500).json({
+            success: false, message: getInternalErrorMessage(error),
+        });
+    } finally {
+        if (session) {
+            await session.endSession();
+        }
+    }
+};
+
+// Read-only, ownership-checked state refresh used at sectional boundaries.
+// Do not reuse POST /start: it can create attempts or change lastActivityAt.
+const getMockTestAttemptState = async (req, res) => {
+    if (typeof res.set === "function") {
+        res.set("Cache-Control", "private, no-store");
+    }
+    try {
+        const tenantId = getStudentTenantId(req);
+        const studentId = req.user._id;
+        const { attemptId } = req.params;
+
+        if (!mongoose.Types.ObjectId.isValid(attemptId)) {
+            return res.status(400).json({ success: false, message: "Invalid attempt ID" });
+        }
+
+        const attempt = await TestAttempt.findOne({
+            _id: attemptId,
+            tenantId,
+            studentId,
+            isActive: true,
+            status: "in_progress",
+        });
+
+        if (!attempt) {
+            return res.status(404).json({ success: false, message: "Active attempt not found" });
+        }
+
         const mockTest = await MockTest.findOne({
-            _id: mockTestId,
+            _id: attempt.mockTestId,
             tenantId,
             isActive: true,
             isPublished: true,
         });
 
         if (!mockTest) {
-            return res.status(404).json({
-                success: false,
-                message: "Mock test not found, unpublished, or access denied",
-            });
-        }
-
-        if (mockTest.accessType === "paid") {
-            const hasPaidAccess = await hasActiveMockTestEntitlement({
-                tenantId,
-                studentId,
-                mockTestId: mockTest._id,
-            });
-
-            if (!hasPaidAccess) {
-                return res.status(403).json({
-                    success: false,
-                    message: "Purchase required before starting this mock test",
-                });
-            }
+            return res.status(404).json({ success: false, message: "Mock test unavailable" });
         }
 
         if (mockTest.accessType === "assigned") {
-            return res.status(403).json({
-                success: false,
-                message: "This mock test requires assignment before access",
-            });
+            return res.status(403).json({ success: false, message: "Test assignment required" });
         }
 
-        if (!mockTest.activeVersionId) {
-            return res.status(400).json({
-                success: false,
-                message: "Mock test has no active published version",
+        if (mockTest.accessType === "paid") {
+            const hasAccess = await hasActiveMockTestEntitlement({
+                tenantId,
+                studentId,
+                mockTestId: mockTest._id,
             });
+            if (!hasAccess) {
+                return res.status(403).json({ success: false, message: "Purchase required" });
+            }
         }
 
-        const mockTestVersion = await MockTestVersion.findOne({
-            _id: mockTest.activeVersionId,
+        const version = await MockTestVersion.findOne({
+            _id: attempt.mockTestVersionId,
             tenantId,
+            mockTestId: attempt.mockTestId,
             isActive: true,
         });
 
-        if (!mockTestVersion) {
-            return res.status(404).json({
-                success: false,
-                message: "Active mock test version not found",
-            });
+        if (!version) {
+            return res.status(404).json({ success: false, message: "Attempt version unavailable" });
         }
 
         const now = new Date();
+        const resolvedTiming = resolveAttemptTimingState({ attempt, now });
 
-        let existingAttempt = await TestAttempt.findOne({
-            tenantId,
-            studentId,
-            mockTestId: mockTest._id,
-            status: "in_progress",
-            isActive: true,
-        });
-
-        if (
-            existingAttempt &&
-            existingAttempt.expiresAt &&
-            existingAttempt.expiresAt <= now
-        ) {
-            existingAttempt.status = "expired";
-            existingAttempt.lastActivityAt = now;
-            await existingAttempt.save();
-            existingAttempt = null;
-        }
-
-        if (existingAttempt) {
-            existingAttempt.lastActivityAt = now;
-            await existingAttempt.save();
-
-            const attemptDetail = await getOrCreateAttemptDetail(
-                tenantId,
-                existingAttempt,
-                mockTestVersion
-            );
-
-            return res.status(200).json({
-                success: true,
-                message: "Attempt resumed successfully",
-                data: buildAttemptPayload(
-                    existingAttempt,
-                    mockTestVersion,
-                    true,
-                    attemptDetail
-                ),
-            });
-        }
-
-        const maxAttempts = Math.max(
-            toNumber(mockTestVersion.settings?.maxAttempts, 1),
-            1
-        );
-
-        const usedAttempts = await TestAttempt.countDocuments({
-            tenantId,
-            studentId,
-            mockTestId: mockTest._id,
-            status: { $in: ["in_progress", "submitted", "expired"] },
-            isActive: true,
-        });
-
-        if (usedAttempts >= maxAttempts) {
-            return res.status(403).json({
+        if (resolvedTiming.attemptExpired) {
+            return res.status(410).json({
                 success: false,
-                message: "Maximum attempt limit reached for this mock test",
+                message: "Attempt time is over. Submit the last saved answers.",
             });
         }
 
-        const attemptNumber = await getNextAttemptNumber(
+        const attemptDetail = await TestAttemptDetail.findOne({
             tenantId,
             studentId,
-            mockTest._id
-        );
+            attemptId: attempt._id,
+        });
 
-        const totalDurationSeconds =
-            calculateTotalDurationSeconds(mockTestVersion);
-
-        const expiresAt =
-            totalDurationSeconds > 0
-                ? new Date(now.getTime() + totalDurationSeconds * 1000)
-                : null;
-
-        let attempt = null;
-        let attemptDetail = null;
-
-        try {
-            attempt = await TestAttempt.create({
-                tenantId,
-                studentId,
-                mockTestId: mockTest._id,
-                mockTestVersionId: mockTestVersion._id,
-                attemptNumber,
-                accessTypeAtAttempt: mockTestVersion.accessType || mockTest.accessType,
-                status: "in_progress",
-                startedAt: now,
-                lastActivityAt: now,
-                expiresAt,
-                totalDurationSeconds,
-                timeSpentSeconds: 0,
-                scoreSummary: {
-                    totalQuestions: calculateTotalQuestions(mockTestVersion),
-                    maxScore: calculateMaxScore(mockTestVersion),
-                },
-                review: {
-                    isDetailedReviewAvailable: false,
-                    detailedReviewExpiresAt: null,
-                    solutionVisibility:
-                        mockTestVersion.settings?.solutionVisibility || "after_submit",
-                    reviewRetentionDays: REVIEW_RETENTION_DAYS,
-                },
-            });
-
-            attemptDetail = await TestAttemptDetail.create({
-                tenantId,
-                attemptId: attempt._id,
-                studentId,
-                mockTestId: mockTest._id,
-                mockTestVersionId: mockTestVersion._id,
-                answers: buildInitialAnswersFromVersion(mockTestVersion),
-                expiresAt: getInProgressDetailExpiresAt(expiresAt),
-            });
-        } catch (createError) {
-            if (attempt) {
-                await TestAttempt.deleteOne({ _id: attempt._id });
-            }
-
-            throw createError;
-        }
-
-        res.status(201).json({
+        return res.status(200).json({
             success: true,
-            message: "Attempt started successfully",
-            data: buildAttemptPayload(
-                attempt,
-                mockTestVersion,
-                false,
-                attemptDetail
-            ),
+            data: buildAttemptPayload(attempt, version, true, attemptDetail, now),
         });
     } catch (error) {
-        logRuntimeError("studentMockTestController error:", error);
-
-        res.status(500).json({
+        logRuntimeError("Get student attempt state error:", error);
+        return res.status(500).json({
             success: false,
             message: getInternalErrorMessage(error),
         });
@@ -1790,22 +2045,37 @@ const saveMockTestAnswer = async (req, res) => {
             });
         }
 
+        const session = await mongoose.startSession();
+
+        try {
+            const transactionResult = await session.withTransaction(async () => {
+                // A transaction retry reruns every authoritative
+                // read and sectional-timing validation below.
+                const transactionResponse = {
+                    status(statusCode) {
+                        return {
+                            json(body) {
+                                return { statusCode, body };
+                            },
+                        };
+                    },
+                };
         const attempt = await TestAttempt.findOne({
             _id: attemptId,
             tenantId,
             studentId,
             isActive: true,
-        });
+        }).session(session);
 
         if (!attempt) {
-            return res.status(404).json({
+            return transactionResponse.status(404).json({
                 success: false,
                 message: "Attempt not found or access denied",
             });
         }
 
         if (attempt.status !== "in_progress") {
-            return res.status(403).json({
+            return transactionResponse.status(403).json({
                 success: false,
                 message: "Only in-progress attempts can be updated",
             });
@@ -1813,12 +2083,17 @@ const saveMockTestAnswer = async (req, res) => {
 
         const now = new Date();
 
-        if (attempt.expiresAt && attempt.expiresAt <= now) {
+        const timingState = resolveAttemptTimingState({
+            attempt,
+            now,
+        });
+
+        if (timingState.attemptExpired) {
             attempt.status = "expired";
             attempt.lastActivityAt = now;
-            await attempt.save();
+            await attempt.save({ session });
 
-            return res.status(403).json({
+            return transactionResponse.status(403).json({
                 success: false,
                 message: "Attempt has expired",
             });
@@ -1831,7 +2106,7 @@ const saveMockTestAnswer = async (req, res) => {
         });
 
         if (!mockTestVersion) {
-            return res.status(404).json({
+            return transactionResponse.status(404).json({
                 success: false,
                 message: "Mock test version not found",
             });
@@ -1843,16 +2118,39 @@ const saveMockTestAnswer = async (req, res) => {
         );
 
         if (!question) {
-            return res.status(404).json({
+            return transactionResponse.status(404).json({
                 success: false,
                 message: "Question not found in this attempt version",
             });
         }
 
+        if (timingState.mode === "sectional") {
+            const questionSection = (mockTestVersion.sections || []).find(
+                (section) =>
+                    (section.questions || []).some(
+                        (sectionQuestion) =>
+                            String(sectionQuestion._id) ===
+                            String(questionSnapshotId)
+                    )
+            );
+
+            if (
+                !questionSection ||
+                !timingState.activeSection ||
+                questionSection.sectionSlug !==
+                    timingState.activeSection.sectionSlug
+            ) {
+                return transactionResponse.status(403).json({
+                    success: false,
+                    message: "Question section is not currently active",
+                });
+            }
+        }
         const attemptDetail = await getOrCreateAttemptDetail(
             tenantId,
             attempt,
-            mockTestVersion
+            mockTestVersion,
+            session
         );
 
         const answer = attemptDetail.answers.find((answerItem) => {
@@ -1860,10 +2158,70 @@ const saveMockTestAnswer = async (req, res) => {
         });
 
         if (!answer) {
-            return res.status(404).json({
+            return transactionResponse.status(404).json({
                 success: false,
                 message: "Question not found in attempt detail",
             });
+        }
+
+        // Recheck server-authoritative timing after asynchronous lookups,
+        // immediately before any answer-field mutation.
+        // An earlier attempt read may have become stale while
+        // awaiting the published version and answer detail.
+        // Check current persisted status before answer mutation.
+        const currentAttempt = await TestAttempt.findOne({
+            _id: attemptId,
+            tenantId,
+            studentId,
+            isActive: true,
+        }).session(session);
+
+        if (!currentAttempt || currentAttempt.status !== "in_progress") {
+            return transactionResponse.status(403).json({
+                success: false,
+                message: "Attempt is no longer in progress",
+            });
+        }
+
+        const mutationNow = new Date();
+        const mutationTimingState = resolveAttemptTimingState({
+            attempt,
+            now: mutationNow,
+        });
+
+        if (mutationTimingState.attemptExpired) {
+            attempt.status = "expired";
+            attempt.lastActivityAt = mutationNow;
+            await attempt.save({ session });
+
+            return transactionResponse.status(403).json({
+                success: false,
+                message: "Attempt has expired",
+            });
+        }
+
+        if (mutationTimingState.mode === "sectional") {
+            const mutationQuestionSection = (
+                mockTestVersion.sections || []
+            ).find((section) =>
+                (section.questions || []).some(
+                    (sectionQuestion) =>
+                        String(sectionQuestion._id) ===
+                        String(questionSnapshotId)
+                )
+            );
+
+            if (
+                !mutationQuestionSection ||
+                !mutationTimingState.activeSection ||
+                mutationQuestionSection.sectionSlug !==
+                    mutationTimingState.activeSection.sectionSlug
+            ) {
+                return transactionResponse.status(403).json({
+                    success: false,
+                    message: "Question section is not currently active",
+                });
+            }
         }
 
         const normalizedSelectedOptionId =
@@ -1878,7 +2236,7 @@ const saveMockTestAnswer = async (req, res) => {
             });
 
             if (!validOptionIds.includes(normalizedSelectedOptionId)) {
-                return res.status(400).json({
+                return transactionResponse.status(400).json({
                     success: false,
                     message: "Selected option does not belong to this question",
                 });
@@ -1923,7 +2281,7 @@ const saveMockTestAnswer = async (req, res) => {
 
         attemptDetail.lastSyncedAt = now;
         attemptDetail.markModified("answers");
-        await attemptDetail.save();
+        await attemptDetail.save({ session });
 
         const totalTimeSpentSeconds = sumAnswerTimeSpentSeconds(
             attemptDetail.answers
@@ -1935,14 +2293,41 @@ const saveMockTestAnswer = async (req, res) => {
                 ? Math.min(totalTimeSpentSeconds, attempt.totalDurationSeconds)
                 : totalTimeSpentSeconds;
 
-        await attempt.save();
+        await attempt.save({ session });
 
-        res.status(200).json({
+        return transactionResponse.status(200).json({
             success: true,
             message: "Answer saved successfully",
             data: buildSavedAnswerPayload(attempt, answer),
         });
+            });
+
+            if (
+                !transactionResult ||
+                !Number.isInteger(transactionResult.statusCode) ||
+                !transactionResult.body
+            ) {
+                throw new Error("Answer transaction returned no result");
+            }
+
+            return res
+                .status(transactionResult.statusCode)
+                .json(transactionResult.body);
+        } finally {
+            await session.endSession();
+        }
     } catch (error) {
+        if (
+            error?.name === "VersionError" ||
+            error?.code === 112 ||
+            error?.codeName === "WriteConflict"
+        ) {
+            return res.status(409).json({
+                success: false,
+                message: "Answer changed in another request. Refresh the attempt before retrying.",
+            });
+        }
+
         logRuntimeError("studentMockTestController error:", error);
 
         res.status(500).json({
@@ -2456,29 +2841,44 @@ const submitMockTestAttempt = async (req, res) => {
             });
         }
 
+        const session = await mongoose.startSession();
+
+        try {
+            const transactionResult = await session.withTransaction(async () => {
+                // A retry reloads attempt and detail state and
+                // recalculates scores from the fresh snapshot.
+                const transactionResponse = {
+                    status(statusCode) {
+                        return {
+                            json(body) {
+                                return { statusCode, body };
+                            },
+                        };
+                    },
+                };
         const attempt = await TestAttempt.findOne({
             _id: attemptId,
             tenantId,
             studentId,
             isActive: true,
-        });
+        }).session(session);
 
         if (!attempt) {
-            return res.status(404).json({
+            return transactionResponse.status(404).json({
                 success: false,
                 message: "Attempt not found or access denied",
             });
         }
 
         if (attempt.status === "submitted") {
-            return res.status(400).json({
+            return transactionResponse.status(400).json({
                 success: false,
                 message: "Attempt already submitted",
             });
         }
 
         if (!["in_progress", "expired"].includes(attempt.status)) {
-            return res.status(403).json({
+            return transactionResponse.status(403).json({
                 success: false,
                 message: "Only in-progress or expired attempts can be submitted",
             });
@@ -2491,7 +2891,7 @@ const submitMockTestAttempt = async (req, res) => {
         });
 
         if (!mockTestVersion) {
-            return res.status(404).json({
+            return transactionResponse.status(404).json({
                 success: false,
                 message: "Mock test version not found",
             });
@@ -2501,10 +2901,10 @@ const submitMockTestAttempt = async (req, res) => {
             tenantId,
             attemptId: attempt._id,
             studentId,
-        });
+        }).session(session);
 
         if (!attemptDetail) {
-            return res.status(404).json({
+            return transactionResponse.status(404).json({
                 success: false,
                 message: "Attempt detail not found or already expired",
             });
@@ -2562,17 +2962,44 @@ const submitMockTestAttempt = async (req, res) => {
         attemptDetail.expiresAt = detailedReviewExpiresAt;
         attemptDetail.markModified("answers");
 
-        await attemptDetail.save();
-        await attempt.save();
+        await attemptDetail.save({ session });
+        await attempt.save({ session });
 
-        res.status(200).json({
+        return transactionResponse.status(200).json({
             success: true,
             message: resultAvailableImmediately
                 ? "Attempt submitted successfully"
                 : "Attempt submitted successfully. Result will be available later",
             data: buildSubmitAttemptPayload(attempt, resultAvailableImmediately),
         });
+            });
+
+            if (
+                !transactionResult ||
+                !Number.isInteger(transactionResult.statusCode) ||
+                !transactionResult.body
+            ) {
+                throw new Error("Submission transaction returned no result");
+            }
+
+            return res
+                .status(transactionResult.statusCode)
+                .json(transactionResult.body);
+        } finally {
+            await session.endSession();
+        }
     } catch (error) {
+        if (
+            error?.name === "VersionError" ||
+            error?.code === 112 ||
+            error?.codeName === "WriteConflict"
+        ) {
+            return res.status(409).json({
+                success: false,
+                message: "Attempt answers changed during submission. Refresh and submit again.",
+            });
+        }
+
         logRuntimeError("studentMockTestController error:", error);
 
         res.status(500).json({
@@ -2970,6 +3397,7 @@ module.exports = {
     getPublishedMockTestsForStudent,
     getMyMockTestAttempts,
     startMockTestAttempt,
+    getMockTestAttemptState,
     saveMockTestAnswer,
     submitMockTestAttempt,
     getMockTestResult,

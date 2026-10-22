@@ -1,8 +1,10 @@
-﻿"use client";
+"use client";
 
+import { secureLogout } from "../../../lib/secureLogout";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import StudentPortalShell, { type StudentPortalProfile } from "@/components/student/StudentPortalShell";
 import { useRouter } from "next/navigation";
 
 type PrimaryAction =
@@ -15,6 +17,31 @@ type PrimaryAction =
     | "purchase_required"
     | "assignment_required";
 
+type ExperienceMode = "exam_simulation" | "practice";
+type PublishedExperiencePolicy = {
+    policyVersion: number;
+    allowedModes: ExperienceMode[];
+};
+
+const getPublishedModes = (test: MockTest): ExperienceMode[] | null => {
+    const policy = test.settings?.experiencePolicy;
+    if (policy === undefined) return null;
+    if (policy.policyVersion !== 1 || !Array.isArray(policy.allowedModes)) return [];
+    const modes = policy.allowedModes;
+    if (
+        modes.length < 1 || modes.length > 2 ||
+        new Set(modes).size !== modes.length ||
+        modes.some((mode) => mode !== "exam_simulation" && mode !== "practice")
+    ) return [];
+    return modes;
+};
+
+const experienceModeLabel = (mode: ExperienceMode) =>
+    mode === "practice" ? "Practice Mode" : "Exam Simulation";
+
+type StudentTestType = "mock" | "pyq";
+type StudentAccessFilter = "all" | "accessible" | "free" | "paid";
+
 type MockTest = {
     _id: string;
     title: string;
@@ -22,6 +49,11 @@ type MockTest = {
     description?: string;
     testType: string;
     accessType: string;
+    category: {
+        _id: string;
+        name: string;
+        slug: string;
+    } | null;
     examPattern: {
         name: string;
         examType: string;
@@ -31,6 +63,7 @@ type MockTest = {
         versionNumber: number;
         publishedAt: string;
     } | null;
+    settings?: { experiencePolicy?: PublishedExperiencePolicy };
     studentAttemptSummary: {
         maxAttempts: number;
         attemptsUsed: number;
@@ -77,6 +110,7 @@ type StartAttemptResponse = {
             attemptNumber: number;
             status: string;
             expiresAt?: string;
+            experienceMode?: ExperienceMode;
         };
     };
 };
@@ -240,6 +274,32 @@ const STUDENT_TOKEN_STORAGE_KEY = "pravixoStudentToken";
 const ACTIVE_ATTEMPT_STORAGE_KEY = "pravixoActiveAttempt";
 const ACTIVE_ATTEMPT_PAYLOAD_STORAGE_KEY = "pravixoActiveAttemptPayload";
 const STUDENT_PROFILE_STORAGE_KEY = "pravixoStudentProfile";
+const getStoredStudentPortalProfile = (): StudentPortalProfile | null => {
+    if (typeof window === "undefined") {
+        return null;
+    }
+
+    const rawProfile = window.localStorage.getItem(
+        STUDENT_PROFILE_STORAGE_KEY
+    );
+
+    if (!rawProfile) {
+        return null;
+    }
+
+    try {
+        const parsedProfile = JSON.parse(
+            rawProfile
+        ) as StudentPortalProfile;
+
+        return parsedProfile &&
+            typeof parsedProfile === "object"
+            ? parsedProfile
+            : null;
+    } catch {
+        return null;
+    }
+};
 
 const INVALID_STUDENT_SESSION_MESSAGE =
     "Your student session has expired or was invalidated. Please login again.";
@@ -307,10 +367,6 @@ const getActionClassName = (action: PrimaryAction) => {
     }
 
     return "bg-slate-900 hover:bg-slate-800";
-};
-
-const isAttemptStartAction = (action: PrimaryAction) => {
-    return action === "start" || action === "resume" || action === "retake";
 };
 
 const RAZORPAY_CHECKOUT_SCRIPT_URL = "https://checkout.razorpay.com/v1/checkout.js";
@@ -394,21 +450,196 @@ const formatPrice = (priceInPaise?: number) => {
     }).format(Number(priceInPaise || 0) / 100);
 };
 
+const EXAM_TYPE_LABELS: Record<string, string> = {
+    ssc: "SSC",
+    railway: "Railway",
+    banking: "Banking",
+    upsc: "UPSC",
+    state_exam: "State Exams",
+    cpct: "CPCT",
+    custom: "Other / Unclassified",
+};
+
+const getStudentExamGroup = (mockTest: MockTest) => {
+    const categoryName =
+        mockTest.category?.name?.trim();
+
+    if (categoryName) {
+        return {
+            key: `category:${
+                mockTest.category?._id ||
+                mockTest.category?.slug ||
+                categoryName
+            }`,
+            label: categoryName,
+            source: "category" as const,
+        };
+    }
+
+    const examType =
+        (mockTest.examPattern?.examType || "custom")
+            .trim()
+            .toLowerCase();
+
+    return {
+        key: `exam-type:${examType || "custom"}`,
+        label:
+            EXAM_TYPE_LABELS[examType] ||
+            EXAM_TYPE_LABELS.custom,
+        source: "examType" as const,
+    };
+};
+
 export default function StudentMockTestsPage() {
     const router = useRouter();
     const [token, setToken] = useState("");
     const [isClientReady, setIsClientReady] = useState(false);
     const [mockTests, setMockTests] = useState<MockTest[]>([]);
+    const [activeTestType, setActiveTestType] = useState<StudentTestType>("mock");
     const [paymentPackages, setPaymentPackages] = useState<StudentPaymentPackage[]>([]);
     const [isPaymentCheckoutAvailable, setIsPaymentCheckoutAvailable] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [isLoadingPackages, setIsLoadingPackages] = useState(false);
     const [checkoutPackageId, setCheckoutPackageId] = useState<string | null>(null);
+    const startRequestInFlightRef = useRef(false);
+    const [pendingModeChoice, setPendingModeChoice] = useState<{
+        mockTestId: string;
+        requestedAction: "start" | "retake";
+    } | null>(null);
     const [actionLoadingMockTestId, setActionLoadingMockTestId] = useState<
         string | null
     >(null);
     const [errorMessage, setErrorMessage] = useState("");
     const [actionMessage, setActionMessage] = useState("");
+    const [searchQuery, setSearchQuery] = useState("");
+    const [selectedCategory, setSelectedCategory] = useState("all");
+    const [accessFilter, setAccessFilter] =
+        useState<StudentAccessFilter>("all");
+
+    const mockTestCount = mockTests.filter(
+        (mockTest) => mockTest.testType === "mock"
+    ).length;
+
+    const pyqTestCount = mockTests.filter(
+        (mockTest) => mockTest.testType === "pyq"
+    ).length;
+
+    const studentCatalogTestCount = mockTestCount + pyqTestCount;
+
+    const inProgressCount = mockTests.filter(
+        (mockTest) =>
+            mockTest.studentAttemptSummary.latestAttemptStatus === "in_progress"
+    ).length;
+
+    const categoryOptions = Array.from(
+        new Map(
+            mockTests
+                .filter(
+                    (mockTest) =>
+                        mockTest.testType === activeTestType
+                )
+                .map((mockTest) => {
+                    const examGroup =
+                        getStudentExamGroup(mockTest);
+
+                    return [
+                        examGroup.key,
+                        examGroup,
+                    ];
+                })
+        ).values()
+    ).sort((left, right) =>
+        left.label.localeCompare(right.label)
+    );
+
+    const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+
+    const visibleTests = mockTests.filter((mockTest) => {
+        if (mockTest.testType !== activeTestType) {
+            return false;
+        }
+
+        if (
+            selectedCategory !== "all" &&
+            getStudentExamGroup(mockTest).key !==
+                selectedCategory
+        ) {
+            return false;
+        }
+
+        const searchableText = [
+            mockTest.title,
+            mockTest.description || "",
+            mockTest.category?.name || "",
+            mockTest.examPattern?.name || "",
+            mockTest.examPattern?.examType || "",
+            getStudentExamGroup(mockTest).label,
+            mockTest.accessType || "",
+        ]
+            .join(" ")
+            .toLowerCase();
+
+        if (
+            normalizedSearchQuery &&
+            !searchableText.includes(normalizedSearchQuery)
+        ) {
+            return false;
+        }
+
+        const normalizedAccessType =
+            (mockTest.accessType || "").trim().toLowerCase();
+
+        if (
+            accessFilter === "free" &&
+            normalizedAccessType !== "free"
+        ) {
+            return false;
+        }
+
+        if (
+            accessFilter === "paid" &&
+            normalizedAccessType !== "paid"
+        ) {
+            return false;
+        }
+
+        if (accessFilter === "accessible") {
+            const accessReason =
+                mockTest.studentAttemptSummary.access?.reason;
+
+            if (
+                accessReason === "purchase_required" ||
+                accessReason === "assignment_required"
+            ) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+
+    const sortedVisibleTests = [...visibleTests].sort(
+        (left, right) => {
+            const leftGroup =
+                getStudentExamGroup(left);
+
+            const rightGroup =
+                getStudentExamGroup(right);
+
+            const groupComparison =
+                leftGroup.label.localeCompare(
+                    rightGroup.label
+                );
+
+            if (groupComparison !== 0) {
+                return groupComparison;
+            }
+
+            return left.title.localeCompare(
+                right.title
+            );
+        }
+    );
 
     useEffect(() => {
         if (!actionMessage) {
@@ -593,7 +824,7 @@ export default function StudentMockTestsPage() {
         };
     }, [isClientReady, loadMockTests, loadPaymentPackages, token]);
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
         const shouldLogout = window.confirm(
             "Are you sure you want to logout? Your saved student session will be cleared."
         );
@@ -602,6 +833,15 @@ export default function StudentMockTestsPage() {
             return;
         }
 
+        const logoutResult = await secureLogout(token);
+
+        if (!logoutResult.shouldClearLocalSession) {
+            setActionMessage("");
+            setErrorMessage(
+                "Secure logout could not be confirmed. Please check your connection and try again."
+            );
+            return;
+        }
         clearStudentSessionStorage();
 
         setToken("");
@@ -660,7 +900,8 @@ export default function StudentMockTestsPage() {
 
     const startOrResumeAttempt = async (
         mockTest: MockTest,
-        requestedAction: "start" | "resume" | "retake"
+        requestedAction: "start" | "resume" | "retake",
+        experienceMode?: ExperienceMode
     ) => {
         const cleanToken = token.trim();
 
@@ -668,6 +909,9 @@ export default function StudentMockTestsPage() {
             setErrorMessage("Please login as a student first.");
             return;
         }
+        // A synchronous guard prevents accidental double starts from two clicks.
+        if (startRequestInFlightRef.current) return;
+        startRequestInFlightRef.current = true;
 
         setActionLoadingMockTestId(mockTest._id);
         setErrorMessage("");
@@ -680,7 +924,9 @@ export default function StudentMockTestsPage() {
                     method: "POST",
                     headers: {
                         Authorization: `Bearer ${cleanToken}`,
+                        ...(experienceMode ? { "Content-Type": "application/json" } : {}),
                     },
+                    ...(experienceMode ? { body: JSON.stringify({ experienceMode }) } : {}),
                 }
             );
 
@@ -709,6 +955,7 @@ export default function StudentMockTestsPage() {
                     mockTestId: mockTest._id,
                     mockTestTitle: mockTest.title,
                     requestedAction,
+                    experienceMode: result.data.attempt.experienceMode ?? experienceMode ?? null,
                     resumed: result.data.resumed,
                     attemptId: attempt._id,
                     attemptNumber: attempt.attemptNumber,
@@ -742,6 +989,7 @@ export default function StudentMockTestsPage() {
 
             setErrorMessage(message);
         } finally {
+            startRequestInFlightRef.current = false;
             setActionLoadingMockTestId(null);
         }
     };
@@ -775,6 +1023,42 @@ export default function StudentMockTestsPage() {
 
         router.push(`/student/attempts/${attemptId}/review`);
     };
+    const handleViewPurchasedPackage = (paymentPackage: StudentPaymentPackage) => {
+        const includedMockTestIds = [
+            ...paymentPackage.includedMockTests.map(
+                (includedMockTest) => includedMockTest._id
+            ),
+            ...(paymentPackage.entitlement?.mockTestIds || []),
+        ];
+
+        const targetMockTest = mockTests.find((mockTest) =>
+            includedMockTestIds.includes(mockTest._id)
+        );
+
+        if (!targetMockTest) {
+            setErrorMessage(
+                "No included test is currently available in the student catalog. Please refresh and try again."
+            );
+            return;
+        }
+
+        setSearchQuery("");
+        setSelectedCategory("all");
+        setAccessFilter("all");
+        setActiveTestType(targetMockTest.testType === "pyq" ? "pyq" : "mock");
+
+        window.requestAnimationFrame(() => {
+            window.requestAnimationFrame(() => {
+                document
+                    .getElementById(`student-mock-test-${targetMockTest._id}`)
+                    ?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                    });
+            });
+        });
+    };
+
     const handleBuyPaymentPackage = async (paymentPackage: StudentPaymentPackage) => {
         const cleanToken = token.trim();
 
@@ -961,11 +1245,29 @@ export default function StudentMockTestsPage() {
         }
     };
 
+    const beginNewAttempt = (mockTest: MockTest, action: "start" | "retake") => {
+        const modes = getPublishedModes(mockTest);
+        if (modes && modes.length === 0) {
+            setErrorMessage("Published experience configuration is invalid. Please contact your institute.");
+            return;
+        }
+        if (modes && modes.length === 2) {
+            setPendingModeChoice({ mockTestId: mockTest._id, requestedAction: action });
+            return;
+        }
+        void startOrResumeAttempt(mockTest, action, modes?.[0]);
+    };
+
     const handlePrimaryAction = (mockTest: MockTest) => {
         const action = mockTest.studentAttemptSummary.primaryAction;
 
-        if (isAttemptStartAction(action)) {
-            void startOrResumeAttempt(mockTest, action);
+        if (action === "start" || action === "retake") {
+            beginNewAttempt(mockTest, action);
+            return;
+        }
+        if (action === "resume") {
+            // Resume sends no override; the server retains immutable attempt mode.
+            void startOrResumeAttempt(mockTest, "resume");
             return;
         }
 
@@ -982,421 +1284,831 @@ export default function StudentMockTestsPage() {
         showPendingActionMessage(mockTest);
     };
     return (
-        <main className="min-h-screen bg-slate-50 px-4 py-8 text-slate-950">
-            <div className="mx-auto max-w-5xl">
-                <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                    <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
-                        PravixoEduTech Student Panel
-                    </p>
+        <StudentPortalShell
+            profile={
+                isClientReady && token.trim()
+                    ? getStoredStudentPortalProfile()
+                    : null
+            }
+            isSyncing={isLoading || isLoadingPackages}
+            onLogout={handleLogout}
+        >
+            <div className="text-slate-950">
+            <div className="mx-auto max-w-6xl">
+                <section className="relative mb-6 overflow-hidden rounded-[2rem] bg-slate-950 p-6 text-white shadow-xl md:p-8">
+                    <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-blue-500/20 blur-3xl" />
+                    <div className="pointer-events-none absolute -bottom-24 left-1/3 h-56 w-56 rounded-full bg-indigo-500/15 blur-3xl" />
 
-                    <h1 className="mt-2 text-3xl font-bold">
-                        Mock Tests
-                    </h1>
+                    <div className="relative">
+                        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="max-w-2xl">
+                                <p className="text-xs font-black uppercase tracking-[0.22em] text-blue-300">
+                                    Practice Centre
+                                </p>
 
-                    <p className="mt-2 text-sm text-slate-600">
-                        Student mock test listing page using backend dashboard
-                        action summary.
-                    </p>
-                </section>
+                                <h1 className="mt-3 text-3xl font-black tracking-tight md:text-4xl">
+                                    Mock Tests &amp; PYQs
+                                </h1>
 
-                <section className="mb-6 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div>
-                            <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
-                                Student Session
-                            </p>
+                                <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300 md:text-base">
+                                    Find the right test quickly, continue unfinished attempts,
+                                    review performance and keep your exam preparation moving.
+                                </p>
+                            </div>
 
-                            <h2 className="mt-2 text-2xl font-bold">
-                                Mock Test Access
-                            </h2>
+                            <div className="flex flex-wrap gap-2">
+                                {token.trim() ? (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            void loadMockTests();
+                                            void loadPaymentPackages();
+                                        }}
+                                        disabled={
+                                            isLoading ||
+                                            isLoadingPackages ||
+                                            !isClientReady
+                                        }
+                                        className="min-h-11 rounded-xl bg-white px-4 text-sm font-bold text-slate-950 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-300"
+                                    >
+                                        {isLoading || isLoadingPackages
+                                            ? "Refreshing..."
+                                            : "Refresh"}
+                                    </button>
+                                ) : (
+                                    <Link
+                                        href="/student/login"
+                                        className="flex min-h-11 items-center rounded-xl bg-white px-4 text-sm font-bold text-slate-950 hover:bg-slate-100"
+                                    >
+                                        Login
+                                    </Link>
+                                )}
 
-                            <p className="mt-2 max-w-2xl text-sm text-slate-600">
-                                {token.trim()
-                                    ? "You are logged in. Your mock tests load automatically from your saved student session."
-                                    : "Please login first to access your assigned mock tests."}
-                            </p>
+                                <Link
+                                    href="/student/attempts"
+                                    className="flex min-h-11 items-center rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-bold text-white transition hover:bg-white/15"
+                                >
+                                    My Attempts
+                                </Link>
+                            </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-3">
-                            {token.trim() ? (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        void loadMockTests();
-                                        void loadPaymentPackages();
-                                    }}
-                                    disabled={isLoading || isLoadingPackages || !isClientReady}
-                                    className="min-h-12 rounded-2xl bg-blue-700 px-6 text-sm font-semibold text-white disabled:bg-slate-400"
+                        <div className="mt-7 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                            {[
+                                {
+                                    label: "All Tests",
+                                    value: studentCatalogTestCount,
+                                },
+                                {
+                                    label: "Mock Tests",
+                                    value: mockTestCount,
+                                },
+                                {
+                                    label: "PYQs",
+                                    value: pyqTestCount,
+                                },
+                                {
+                                    label: "In Progress",
+                                    value: inProgressCount,
+                                },
+                            ].map((stat) => (
+                                <div
+                                    key={stat.label}
+                                    className="rounded-2xl border border-white/10 bg-white/[0.07] px-4 py-4 backdrop-blur"
                                 >
-                                    {isLoading || isLoadingPackages ? "Loading..." : "Refresh"}
-                                </button>
-                            ) : (
-                                <Link
-                                    href="/student/login"
-                                    className="flex min-h-12 items-center justify-center rounded-2xl bg-blue-700 px-6 text-sm font-semibold text-white hover:bg-blue-800"
-                                >
-                                    Login
-                                </Link>
-                            )}
-
-                            <Link
-                                href="/student/attempts"
-                                className="flex min-h-12 items-center justify-center rounded-2xl border border-slate-300 bg-white px-6 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                            >
-                                My Attempts
-                            </Link>
-
-                            {token.trim() ? (
-                                <button
-                                    type="button"
-                                    onClick={handleLogout}
-                                    className="min-h-12 rounded-2xl border border-red-200 bg-red-50 px-6 text-sm font-semibold text-red-700 hover:bg-red-100"
-                                >
-                                    Logout
-                                </button>
-                            ) : null}
+                                    <p className="text-2xl font-black">
+                                        {stat.value}
+                                    </p>
+                                    <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-300">
+                                        {stat.label}
+                                    </p>
+                                </div>
+                            ))}
                         </div>
                     </div>
-
-                    {errorMessage ? (
-                        <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                            {errorMessage}
-                        </div>
-                    ) : null}
-
-                    {actionMessage ? (
-                        <div
-                            role="status"
-                            aria-live="polite"
-                            aria-atomic="true"
-                            className="fixed inset-x-4 top-4 z-50 mx-auto max-w-md rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-medium text-blue-700 shadow-lg"
-                        >
-                            {actionMessage}
-                        </div>
-                    ) : null}
                 </section>
 
-                <section className="mb-8">
-                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                {pendingModeChoice ? (() => {
+                    const selectedTest = mockTests.find((test) => test._id === pendingModeChoice.mockTestId);
+                    const modes = selectedTest ? getPublishedModes(selectedTest) : null;
+                    return selectedTest && modes?.length === 2 ? (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4" role="presentation">
+                            <div role="dialog" aria-modal="true" aria-labelledby="experience-mode-title" className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+                                <h2 id="experience-mode-title" className="text-xl font-black text-slate-950">Choose your test experience</h2>
+                                <p className="mt-2 text-sm text-slate-600">{selectedTest.title}</p>
+                                <p className="mt-1 text-xs text-slate-500">One attempt is used in either mode. You cannot change mode after starting.</p>
+                                <div className="mt-5 grid gap-3">
+                                    {modes.map((mode) => (
+                                        <button
+                                            key={mode}
+                                            type="button"
+                                            disabled={Boolean(actionLoadingMockTestId)}
+                                            onClick={() => {
+                                                setPendingModeChoice(null);
+                                                void startOrResumeAttempt(selectedTest, pendingModeChoice.requestedAction, mode);
+                                            }}
+                                            className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-left hover:bg-indigo-100 disabled:cursor-wait disabled:opacity-60"
+                                        >
+                                            <span className="block font-bold text-indigo-950">{experienceModeLabel(mode)}</span>
+                                            <span className="mt-1 block text-xs text-indigo-700">
+                                                {mode === "practice" ? "Flexible navigation with an overall timer." : "Follow the published examination timing and section rules."}
+                                            </span>
+                                        </button>
+                                    ))}
+                                </div>
+                                <button type="button" onClick={() => setPendingModeChoice(null)} className="mt-4 w-full rounded-xl border border-slate-300 py-2.5 text-sm font-semibold text-slate-700">Cancel</button>
+                            </div>
+                        </div>
+                    ) : null;
+                })() : null}
+
+                {errorMessage ? (
+                    <div className="mb-5 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700">
+                        {errorMessage}
+                    </div>
+                ) : null}
+
+                {actionMessage ? (
+                    <div
+                        role="status"
+                        aria-live="polite"
+                        aria-atomic="true"
+                        className="fixed inset-x-4 top-4 z-50 mx-auto max-w-md rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm font-medium text-blue-700 shadow-lg"
+                    >
+                        {actionMessage}
+                    </div>
+                ) : null}
+
+                <section id="student-test-catalog" className="scroll-mt-24">
+                    <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                         <div>
-                            <p className="text-sm font-semibold uppercase tracking-wide text-blue-700">
-                                Payments
+                            <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-700">
+                                Practice Tests
                             </p>
-                            <h2 className="text-xl font-bold">
-                                Paid Mock Test Packs
+
+                            <h2 className="mt-1 text-2xl font-black tracking-tight">
+                                Available Tests
                             </h2>
+
                             <p className="mt-1 text-sm text-slate-600">
-                                {isPaymentCheckoutAvailable
-                                    ? "Secure checkout powered by Razorpay. Access unlocks only after verified payment."
-                                    : "Purchases are temporarily unavailable. Existing purchased access remains available."}
+                                Choose a test by exam, access type or test format.
                             </p>
                         </div>
 
-                        <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
+                        <span className="w-fit rounded-full bg-slate-900 px-3 py-1.5 text-xs font-bold text-white">
+                            {visibleTests.length} shown
+                        </span>
+                    </div>
+
+                    <div
+                        role="tablist"
+                        aria-label="Test type"
+                        className="mb-4 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1.5"
+                    >
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTestType === "mock"}
+                            onClick={() => {
+                                setActiveTestType("mock");
+                                setSelectedCategory("all");
+                            }}
+                            className={
+                                "rounded-xl px-4 py-3 text-sm font-bold transition " +
+                                (activeTestType === "mock"
+                                    ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200"
+                                    : "text-slate-600 hover:bg-white/70")
+                            }
+                        >
+                            Mock Tests
+                            <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs">
+                                {mockTestCount}
+                            </span>
+                        </button>
+
+                        <button
+                            type="button"
+                            role="tab"
+                            aria-selected={activeTestType === "pyq"}
+                            onClick={() => {
+                                setActiveTestType("pyq");
+                                setSelectedCategory("all");
+                            }}
+                            className={
+                                "rounded-xl px-4 py-3 text-sm font-bold transition " +
+                                (activeTestType === "pyq"
+                                    ? "bg-white text-blue-700 shadow-sm ring-1 ring-slate-200"
+                                    : "text-slate-600 hover:bg-white/70")
+                            }
+                        >
+                            PYQ Tests
+                            <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs">
+                                {pyqTestCount}
+                            </span>
+                        </button>
+                    </div>
+
+                    <div className="mb-5 grid gap-3 rounded-3xl bg-white p-4 shadow-sm ring-1 ring-slate-200 lg:grid-cols-[minmax(0,1fr)_220px_190px_auto]">
+                        <label className="block">
+                            <span className="sr-only">Search tests</span>
+                            <input
+                                type="search"
+                                value={searchQuery}
+                                onChange={(event) =>
+                                    setSearchQuery(event.target.value)
+                                }
+                                placeholder="Search test, exam, pattern..."
+                                className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm font-medium text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                            />
+                        </label>
+
+                        <label className="block">
+                            <span className="sr-only">Exam category</span>
+                            <select
+                                value={selectedCategory}
+                                onChange={(event) =>
+                                    setSelectedCategory(event.target.value)
+                                }
+                                className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                            >
+                                <option value="all">All Exams</option>
+                                {categoryOptions.map((examGroup) => (
+                                    <option
+                                        key={examGroup.key}
+                                        value={examGroup.key}
+                                    >
+                                        {examGroup.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+
+                        <label className="block">
+                            <span className="sr-only">Access filter</span>
+                            <select
+                                value={accessFilter}
+                                onChange={(event) =>
+                                    setAccessFilter(
+                                        event.target.value as StudentAccessFilter
+                                    )
+                                }
+                                className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                            >
+                                <option value="all">All Access</option>
+                                <option value="accessible">Accessible</option>
+                                <option value="free">Free</option>
+                                <option value="paid">Paid</option>
+                            </select>
+                        </label>
+
+                        <button
+                            type="button"
+                            onClick={() => {
+                                setSearchQuery("");
+                                setSelectedCategory("all");
+                                setAccessFilter("all");
+                            }}
+                            disabled={
+                                !searchQuery &&
+                                selectedCategory === "all" &&
+                                accessFilter === "all"
+                            }
+                            className="h-12 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                        >
+                            Clear
+                        </button>
+                    </div>
+
+                    {isLoading ? (
+                        <div className="rounded-3xl border border-slate-200 bg-white p-8 text-center text-sm font-semibold text-slate-500 shadow-sm">
+                            Refreshing your test catalogue...
+                        </div>
+                    ) : studentCatalogTestCount === 0 ? (
+                        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center">
+                            <p className="font-bold text-slate-800">
+                                No tests are available yet.
+                            </p>
+                            <p className="mt-2 text-sm text-slate-500">
+                                Published Mock Tests and PYQs will appear here automatically.
+                            </p>
+                        </div>
+                    ) : visibleTests.length === 0 ? (
+                        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center">
+                            <p className="font-bold text-slate-800">
+                                No tests match these filters.
+                            </p>
+                            <p className="mt-2 text-sm text-slate-500">
+                                Try another search, exam category or access filter.
+                            </p>
+
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSearchQuery("");
+                                    setSelectedCategory("all");
+                                    setAccessFilter("all");
+                                }}
+                                className="mt-4 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-slate-800"
+                            >
+                                Clear Filters
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                            {sortedVisibleTests.map((mockTest, index) => {
+                                const summary =
+                                    mockTest.studentAttemptSummary;
+
+                                const action =
+                                    summary.primaryAction;
+
+                                const isActionLoading =
+                                    actionLoadingMockTestId === mockTest._id;
+
+                                const accessReason =
+                                    summary.access?.reason;
+
+                                const examGroup =
+                                    getStudentExamGroup(mockTest);
+
+                                const previousExamGroup =
+                                    index > 0
+                                        ? getStudentExamGroup(
+                                              sortedVisibleTests[index - 1]
+                                          )
+                                        : null;
+
+                                const showExamGroupHeader =
+                                    !previousExamGroup ||
+                                    previousExamGroup.key !==
+                                        examGroup.key;
+
+                                const examGroupTestCount =
+                                    sortedVisibleTests.filter(
+                                        (candidate) =>
+                                            getStudentExamGroup(candidate)
+                                                .key === examGroup.key
+                                    ).length;
+
+                                return (
+                                    <div
+                                        key={mockTest._id}
+                                        className="contents"
+                                    >
+                                        {showExamGroupHeader ? (
+                                            <div className="col-span-full mt-2 flex items-center gap-3">
+                                                <p className="shrink-0 text-sm font-black uppercase tracking-[0.14em] text-slate-900">
+                                                    {examGroup.label}
+                                                </p>
+
+                                                <div className="h-px flex-1 bg-slate-200" />
+
+                                                <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-black text-slate-600">
+                                                    {examGroupTestCount}{" "}
+                                                    {examGroupTestCount === 1
+                                                        ? "test"
+                                                        : "tests"}
+                                                </span>
+                                            </div>
+                                        ) : null}
+
+                                    <article
+                                        id={`student-mock-test-${mockTest._id}`}
+                                        className="scroll-mt-28 flex h-full flex-col rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-md"
+                                    >
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">
+                                                {mockTest.testType === "pyq"
+                                                    ? "PYQ"
+                                                    : "Mock Test"}
+                                            </span>
+
+                                            <span
+                                                className={
+                                                    "rounded-full px-2.5 py-1 text-[10px] font-black " +
+                                                    ((mockTest.accessType || "")
+                                                        .toLowerCase() === "free"
+                                                        ? "bg-emerald-50 text-emerald-700"
+                                                        : "bg-violet-50 text-violet-700")
+                                                }
+                                            >
+                                                {mockTest.accessType}
+                                            </span>
+
+                                            {getPublishedModes(mockTest)?.length ? (
+                                                <span className="rounded-full bg-indigo-50 px-2.5 py-1 text-[10px] font-black text-indigo-700">
+                                                    {getPublishedModes(mockTest)?.map(experienceModeLabel).join(" + ")}
+                                                </span>
+                                            ) : null}
+
+                                            {accessReason ? (
+                                                <span className="rounded-full bg-amber-50 px-2.5 py-1 text-[10px] font-black text-amber-700">
+                                                    {accessReason ===
+                                                    "purchase_required"
+                                                        ? "Locked"
+                                                        : "Assigned"}
+                                                </span>
+                                            ) : null}
+                                        </div>
+
+                                        <h3 className="mt-2.5 line-clamp-2 min-h-[2.5rem] text-[15px] font-black leading-5 tracking-tight text-slate-950">
+                                            {mockTest.title}
+                                        </h3>
+
+                                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-slate-500">
+                                            <span>
+                                                {mockTest.examPattern
+                                                    ?.totalDurationMinutes ||
+                                                    "-"}{" "}
+                                                min
+                                            </span>
+
+                                            <span aria-hidden="true">
+                                                •
+                                            </span>
+
+                                            <span>
+                                                {summary.attemptsUsed}/
+                                                {summary.maxAttempts} attempts
+                                            </span>
+                                        </div>
+
+                                        <div className="mt-3">
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    handlePrimaryAction(
+                                                        mockTest
+                                                    )
+                                                }
+                                                disabled={
+                                                    action ===
+                                                        "limit_reached" ||
+                                                    isActionLoading
+                                                }
+                                                className={`min-h-9 w-full rounded-lg px-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400 ${getActionClassName(
+                                                    action
+                                                )}`}
+                                            >
+                                                {isActionLoading
+                                                    ? "Please wait..."
+                                                    : actionLabels[action]}
+                                            </button>
+                                        </div>
+
+                                        <details className="group mt-1.5">
+                                            <summary className="cursor-pointer list-none rounded-lg py-1.5 text-center text-[11px] font-bold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800">
+                                                <span className="group-open:hidden">
+                                                    View details
+                                                </span>
+                                                <span className="hidden group-open:inline">
+                                                    Hide details
+                                                </span>
+                                            </summary>
+
+                                            <div className="mt-2 border-t border-slate-100 pt-3">
+                                                {mockTest.description ? (
+                                                    <p className="text-xs leading-5 text-slate-600">
+                                                        {
+                                                            mockTest.description
+                                                        }
+                                                    </p>
+                                                ) : null}
+
+                                                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                                                    <div className="col-span-2">
+                                                        <dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                                                            Pattern
+                                                        </dt>
+                                                        <dd className="mt-0.5 font-bold text-slate-700">
+                                                            {mockTest
+                                                                .examPattern
+                                                                ?.name ||
+                                                                "Not assigned"}
+                                                        </dd>
+                                                    </div>
+
+                                                    <div>
+                                                        <dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                                                            Remaining
+                                                        </dt>
+                                                        <dd className="mt-0.5 font-bold text-slate-700">
+                                                            {
+                                                                summary.attemptsRemaining
+                                                            }
+                                                        </dd>
+                                                    </div>
+
+                                                    <div>
+                                                        <dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                                                            Latest
+                                                        </dt>
+                                                        <dd className="mt-0.5 font-bold text-slate-700">
+                                                            {summary.latestAttemptNumber
+                                                                ? `#${summary.latestAttemptNumber} · ${summary.latestAttemptStatus}`
+                                                                : "No attempt"}
+                                                        </dd>
+                                                    </div>
+                                                </dl>
+
+                                                <div className="mt-3 flex flex-wrap gap-2">
+                                                    {summary.result
+                                                        .isResultVisible &&
+                                                    action !==
+                                                        "view_result" ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                openAttemptResult(
+                                                                    mockTest
+                                                                )
+                                                            }
+                                                            disabled={
+                                                                isActionLoading
+                                                            }
+                                                            className="min-h-9 flex-1 rounded-lg border border-blue-200 bg-blue-50 px-3 text-xs font-bold text-blue-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                        >
+                                                            Result
+                                                        </button>
+                                                    ) : null}
+
+                                                    {summary.review
+                                                        .isDetailedReviewAvailable &&
+                                                    action !==
+                                                        "view_review" ? (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() =>
+                                                                openAttemptReview(
+                                                                    mockTest
+                                                                )
+                                                            }
+                                                            disabled={
+                                                                isActionLoading
+                                                            }
+                                                            className="min-h-9 flex-1 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-xs font-bold text-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                        >
+                                                            Review
+                                                        </button>
+                                                    ) : null}
+
+                                                    {summary.canRetake &&
+                                                    action !== "retake" ? (
+                                                        summary.access
+                                                            ?.canAttempt !==
+                                                        false ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    beginNewAttempt(
+                                                                        mockTest,
+                                                                        "retake"
+                                                                    )
+                                                                }
+                                                                disabled={
+                                                                    isActionLoading
+                                                                }
+                                                                className="min-h-9 flex-1 rounded-lg border border-violet-200 bg-violet-50 px-3 text-xs font-bold text-violet-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                                            >
+                                                                Retake
+                                                            </button>
+                                                        ) : (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() =>
+                                                                    showAccessRequiredMessage(
+                                                                        mockTest
+                                                                    )
+                                                                }
+                                                                disabled={
+                                                                    isActionLoading
+                                                                }
+                                                                className="min-h-9 flex-1 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-bold text-amber-700 disabled:cursor-not-allowed disabled:bg-slate-100"
+                                                            >
+                                                                Access Required
+                                                            </button>
+                                                        )
+                                                    ) : null}
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </article>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </section>
+
+                <section
+                    id="student-test-packs"
+                    className="mt-10 scroll-mt-24 border-t border-slate-200 pt-8"
+                >
+                    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                        <div>
+                            <p className="text-xs font-black uppercase tracking-[0.2em] text-violet-700">
+                                Test Packs &amp; Access
+                            </p>
+
+                            <h2 className="mt-1 text-2xl font-black tracking-tight">
+                                Test Packages
+                            </h2>
+
+                            <p className="mt-1 max-w-2xl text-sm text-slate-600">
+                                {isPaymentCheckoutAvailable
+                                    ? "Choose a pack when you need paid access. Your entitlement unlocks only after verified payment."
+                                    : "New purchases are temporarily unavailable. Existing purchased access remains available."}
+                            </p>
+                        </div>
+
+                        <span className="w-fit rounded-full bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700">
                             {paymentPackages.length} pack(s)
                         </span>
                     </div>
 
                     {!token.trim() ? (
                         <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-                            Login as a student to view paid packages.
+                            Login as a student to view paid test packs.
                         </div>
                     ) : isLoadingPackages ? (
                         <div className="rounded-3xl bg-white p-6 text-sm font-semibold text-slate-600 shadow-sm ring-1 ring-slate-200">
-                            Loading payment packages...
+                            Loading test packs...
                         </div>
                     ) : paymentPackages.length === 0 ? (
                         <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-                            No active paid mock test pack is available right now.
+                            No active paid test pack is available right now.
                         </div>
                     ) : (
-                        <div className="grid gap-5 md:grid-cols-2">
-                            {paymentPackages.map((paymentPackage) => (
-                                <article
-                                    key={paymentPackage._id}
-                                    className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
-                                >
-                                    <div className="flex flex-wrap gap-2">
-                                        <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
-                                            {formatPrice(paymentPackage.priceInPaise)}
-                                        </span>
-                                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-                                            {paymentPackage.validityDays} days
-                                        </span>
-                                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
-                                            {paymentPackage.includedMockTestCount} test(s)
-                                        </span>
-                                        {isPaymentPackageAccessActive(paymentPackage) ? (
-                                            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700">
-                                                Access Active
-                                            </span>
-                                        ) : null}
-                                    </div>
-
-                                    <h3 className="mt-4 text-xl font-bold">
-                                        {paymentPackage.title}
-                                    </h3>
-
-                                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                                        {paymentPackage.description || "Paid mock test package for exam preparation."}
-                                    </p>
-
-                                    <div className="mt-4 rounded-2xl bg-slate-50 p-4">
-                                        <p className="text-xs font-semibold uppercase text-slate-500">
-                                            Included tests
-                                        </p>
-
-                                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-                                            {paymentPackage.includedMockTests.map((mockTest) => (
-                                                <li key={mockTest._id}>
-                                                    {mockTest.title || mockTest.slug || "Mock Test"}
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleBuyPaymentPackage(paymentPackage)}
-                                        disabled={
-                                            !isPaymentCheckoutAvailable ||
-                                            checkoutPackageId === paymentPackage._id ||
-                                            isPaymentPackageAccessActive(paymentPackage)
-                                        }
-                                        className={
-                                            "mt-5 w-full rounded-2xl px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed " +
-                                            (isPaymentPackageAccessActive(paymentPackage)
-                                                ? "bg-emerald-600 disabled:bg-emerald-600"
-                                                : "bg-slate-950 hover:bg-slate-800 disabled:bg-slate-400")
-                                        }
-                                    >
-                                        {isPaymentPackageAccessActive(paymentPackage)
-                                            ? "Purchased - Access Active"
-                                            : !isPaymentCheckoutAvailable
-                                              ? "Purchases Unavailable"
-                                              : checkoutPackageId === paymentPackage._id
-                                                ? "Opening Checkout..."
-                                                : "Buy Now"}
-                                    </button>
-                                    {paymentPackage.entitlement?.validUntil ? (
-                                        <p className="mt-2 text-center text-xs font-medium text-emerald-700">
-                                            Access valid until{" "}
-                                            {new Date(
-                                                paymentPackage.entitlement.validUntil
-                                            ).toLocaleDateString("en-IN", {
-                                                day: "2-digit",
-                                                month: "short",
-                                                year: "numeric",
-                                            })}
-                                        </p>
-                                    ) : null}
-                                </article>
-                            ))}
-                        </div>
-                    )}
-                </section>
-
-                <section>
-                    <div className="mb-4 flex items-center justify-between">
-                        <h2 className="text-xl font-bold">
-                            Available Tests
-                        </h2>
-
-                        <span className="rounded-full bg-slate-200 px-3 py-1 text-sm font-semibold">
-                            {mockTests.length} test(s)
-                        </span>
-                    </div>
-
-                    {mockTests.length === 0 ? (
-                        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-                            No mock tests loaded yet.
-                        </div>
-                    ) : (
-                        <div className="grid gap-5">
-                            {mockTests.map((mockTest) => {
-                                const summary = mockTest.studentAttemptSummary;
-                                const action = summary.primaryAction;
-                                const isActionLoading =
-                                    actionLoadingMockTestId === mockTest._id;
+                        <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                            {paymentPackages.map((paymentPackage) => {
+                                const hasActiveAccess =
+                                    isPaymentPackageAccessActive(
+                                        paymentPackage
+                                    );
 
                                 return (
                                     <article
-                                        key={mockTest._id}
-                                        className="rounded-3xl bg-white p-6 shadow-sm ring-1 ring-slate-200"
+                                        key={paymentPackage._id}
+                                        className="flex h-full flex-col rounded-2xl bg-white p-3.5 shadow-sm ring-1 ring-slate-200 transition hover:-translate-y-0.5 hover:shadow-md"
                                     >
-                                        <div className="mb-3 flex flex-wrap gap-2">
-                                            <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700">
-                                                {mockTest.testType}
+                                        <div className="flex flex-wrap items-center gap-1.5">
+                                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">
+                                                {formatPrice(
+                                                    paymentPackage.priceInPaise
+                                                )}
                                             </span>
 
-                                            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                                                {mockTest.accessType}
-                                            </span>
-
-                                            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                                                Version {mockTest.activeVersion?.versionNumber || "-"}
-                                            </span>
+                                            {hasActiveAccess ? (
+                                                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black text-emerald-700">
+                                                    Access Active
+                                                </span>
+                                            ) : !isPaymentCheckoutAvailable ? (
+                                                <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-black text-slate-500">
+                                                    Purchases Paused
+                                                </span>
+                                            ) : null}
                                         </div>
 
-                                        <h3 className="text-xl font-bold">
-                                            {mockTest.title}
+                                        <h3 className="mt-2.5 line-clamp-2 min-h-[2.5rem] text-[15px] font-black leading-5 tracking-tight text-slate-950">
+                                            {paymentPackage.title}
                                         </h3>
 
-                                        <p className="mt-2 text-sm text-slate-600">
-                                            {mockTest.description || "No description available."}
-                                        </p>
+                                        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] font-semibold text-slate-500">
+                                            <span>
+                                                {
+                                                    paymentPackage.validityDays
+                                                }{" "}
+                                                days
+                                            </span>
 
-                                        <div className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-4 text-sm md:grid-cols-4">
-                                            <div>
-                                                <p className="text-xs font-semibold uppercase text-slate-500">
-                                                    Pattern
-                                                </p>
-                                                <p className="mt-1 font-semibold">
-                                                    {mockTest.examPattern?.name || "Not assigned"}
-                                                </p>
-                                            </div>
+                                            <span aria-hidden="true">
+                                                •
+                                            </span>
 
-                                            <div>
-                                                <p className="text-xs font-semibold uppercase text-slate-500">
-                                                    Duration
-                                                </p>
-                                                <p className="mt-1 font-semibold">
-                                                    {mockTest.examPattern?.totalDurationMinutes || "-"} min
-                                                </p>
-                                            </div>
-
-                                            <div>
-                                                <p className="text-xs font-semibold uppercase text-slate-500">
-                                                    Attempts
-                                                </p>
-                                                <p className="mt-1 font-semibold">
-                                                    {summary.attemptsUsed}/{summary.maxAttempts}
-                                                </p>
-                                            </div>
-
-                                            <div>
-                                                <p className="text-xs font-semibold uppercase text-slate-500">
-                                                    Remaining
-                                                </p>
-                                                <p className="mt-1 font-semibold">
-                                                    {summary.attemptsRemaining}
-                                                </p>
-                                            </div>
+                                            <span>
+                                                {
+                                                    paymentPackage.includedMockTestCount
+                                                }{" "}
+                                                {paymentPackage.includedMockTestCount ===
+                                                1
+                                                    ? "test"
+                                                    : "tests"}
+                                            </span>
                                         </div>
 
-                                        <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-slate-200 p-4 md:flex-row md:items-center md:justify-between">
-                                            <div>
-                                                <p className="text-xs font-semibold uppercase text-slate-500">
-                                                    Current Action
-                                                </p>
-
-                                                <p className="mt-1 font-semibold">
-                                                    {actionLabels[action]}
-                                                </p>
-
-                                                <p className="mt-1 text-xs text-slate-500">
-                                                    Latest attempt:{" "}
-                                                    {summary.latestAttemptNumber
-                                                        ? `#${summary.latestAttemptNumber} - ${summary.latestAttemptStatus}`
-                                                        : "No attempt yet"}
-                                                </p>
-
-                                                <p className="mt-1 text-xs text-slate-500">
-                                                    Result:{" "}
-                                                    {summary.result.isResultVisible
-                                                        ? "Visible"
-                                                        : "Hidden"}{" "}
-                                                    | Review:{" "}
-                                                    {summary.review.isDetailedReviewAvailable
-                                                        ? "Available"
-                                                        : "Not available"}{" "}
-                                                    | Limit:{" "}
-                                                    {summary.isAttemptLimitReached
-                                                        ? "Reached"
-                                                        : "Available"}
-                                                </p>
-                                            </div>
-
-                                            <div className="flex flex-col gap-2 sm:flex-row">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handlePrimaryAction(mockTest)}
-                                                    disabled={
-                                                        action === "limit_reached" ||
-                                                        isActionLoading
+                                        <div className="mt-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (hasActiveAccess) {
+                                                        handleViewPurchasedPackage(
+                                                            paymentPackage
+                                                        );
+                                                        return;
                                                     }
-                                                    className={`rounded-2xl px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400 ${getActionClassName(
-                                                        action
-                                                    )}`}
-                                                >
-                                                    {isActionLoading
-                                                        ? "Please wait..."
-                                                        : actionLabels[action]}
-                                                </button>
 
-                                                {summary.result.isResultVisible && action !== "view_result" ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openAttemptResult(mockTest)}
-                                                        disabled={isActionLoading}
-                                                        className="rounded-2xl border border-blue-200 bg-blue-50 px-5 py-3 text-sm font-semibold text-blue-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                                                    >
-                                                        View Result
-                                                    </button>
+                                                    void handleBuyPaymentPackage(
+                                                        paymentPackage
+                                                    );
+                                                }}
+                                                disabled={
+                                                    !hasActiveAccess &&
+                                                    (!isPaymentCheckoutAvailable ||
+                                                        checkoutPackageId ===
+                                                            paymentPackage._id)
+                                                }
+                                                className={
+                                                    "min-h-9 w-full rounded-lg px-3 text-xs font-black text-white transition disabled:cursor-not-allowed " +
+                                                    (hasActiveAccess
+                                                        ? "bg-emerald-600 hover:bg-emerald-700"
+                                                        : "bg-slate-950 hover:bg-slate-800 disabled:bg-slate-400")
+                                                }
+                                            >
+                                                {hasActiveAccess
+                                                    ? paymentPackage.includedMockTestCount ===
+                                                      1
+                                                        ? "Open Included Test"
+                                                        : "View Included Tests"
+                                                    : !isPaymentCheckoutAvailable
+                                                      ? "Purchases Unavailable"
+                                                      : checkoutPackageId ===
+                                                          paymentPackage._id
+                                                        ? "Opening Checkout..."
+                                                        : "Buy Now"}
+                                            </button>
+                                        </div>
+
+                                        <details className="group mt-1.5">
+                                            <summary className="cursor-pointer list-none rounded-lg py-1.5 text-center text-[11px] font-bold text-slate-500 transition hover:bg-slate-50 hover:text-slate-800">
+                                                <span className="group-open:hidden">
+                                                    View package details
+                                                </span>
+
+                                                <span className="hidden group-open:inline">
+                                                    Hide package details
+                                                </span>
+                                            </summary>
+
+                                            <div className="mt-2 border-t border-slate-100 pt-3">
+                                                {paymentPackage.description ? (
+                                                    <p className="text-xs leading-5 text-slate-600">
+                                                        {
+                                                            paymentPackage.description
+                                                        }
+                                                    </p>
                                                 ) : null}
 
-                                                {summary.review.isDetailedReviewAvailable && action !== "view_review" ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openAttemptReview(mockTest)}
-                                                        disabled={isActionLoading}
-                                                        className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3 text-sm font-semibold text-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                                                    >
-                                                        View Review
-                                                    </button>
-                                                ) : null}
+                                                <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                                                    <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                                                        Included Tests
+                                                    </p>
 
-                                                {summary.canRetake &&
-                                                    action !== "retake" ? (
-                                                    summary.access?.canAttempt !== false ? (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                void startOrResumeAttempt(
-                                                                    mockTest,
-                                                                    "retake"
-                                                                )
+                                                    <ul className="mt-2 space-y-1.5 text-xs font-semibold text-slate-700">
+                                                        {paymentPackage.includedMockTests.map(
+                                                            (
+                                                                includedMockTest
+                                                            ) => (
+                                                                <li
+                                                                    key={
+                                                                        includedMockTest._id
+                                                                    }
+                                                                    className="flex gap-2"
+                                                                >
+                                                                    <span className="text-blue-600">
+                                                                        •
+                                                                    </span>
+
+                                                                    <span>
+                                                                        {includedMockTest.title ||
+                                                                            includedMockTest.slug ||
+                                                                            "Mock Test"}
+                                                                    </span>
+                                                                </li>
+                                                            )
+                                                        )}
+                                                    </ul>
+                                                </div>
+
+                                                {paymentPackage.entitlement
+                                                    ?.validUntil ? (
+                                                    <p className="mt-3 text-center text-[11px] font-bold text-emerald-700">
+                                                        Access valid until{" "}
+                                                        {new Date(
+                                                            paymentPackage
+                                                                .entitlement
+                                                                .validUntil
+                                                        ).toLocaleDateString(
+                                                            "en-IN",
+                                                            {
+                                                                day: "2-digit",
+                                                                month: "short",
+                                                                year: "numeric",
                                                             }
-                                                            disabled={isActionLoading}
-                                                            className="rounded-2xl border border-purple-200 bg-purple-50 px-5 py-3 text-sm font-semibold text-purple-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                                                        >
-                                                            Retake Test
-                                                        </button>
-                                                    ) : (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() =>
-                                                                showAccessRequiredMessage(
-                                                                    mockTest
-                                                                )
-                                                            }
-                                                            disabled={isActionLoading}
-                                                            className={
-                                                                summary.access?.reason ===
-                                                                "purchase_required"
-                                                                    ? "rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-sm font-semibold text-amber-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                                                                    : "rounded-2xl border border-slate-300 bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
-                                                            }
-                                                        >
-                                                            {summary.access?.reason ===
-                                                            "purchase_required"
-                                                                ? "Purchase Required"
-                                                                : "Assignment Required"}
-                                                        </button>
-                                                    )
+                                                        )}
+                                                    </p>
                                                 ) : null}
                                             </div>
-                                        </div>
+                                        </details>
                                     </article>
                                 );
                             })}
@@ -1404,6 +2116,7 @@ export default function StudentMockTestsPage() {
                     )}
                 </section>
             </div>
-        </main>
+        </div>
+        </StudentPortalShell>
     );
 }

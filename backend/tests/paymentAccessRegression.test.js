@@ -550,6 +550,9 @@ serialTest(
         tenantId:
           TENANT_ID,
 
+        mockTestId:
+          MOCK_TEST_ID,
+
         isActive:
           true,
       }

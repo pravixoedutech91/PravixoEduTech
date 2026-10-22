@@ -15,6 +15,10 @@ const QuestionGroup = require("../models/QuestionGroup");
 const Category = require("../models/Category");
 
 const { getTenantFilter } = require("../middleware/tenantMiddleware");
+const {
+    buildExamTimingPolicySnapshot,
+} = require("../utils/examTimingPolicy");
+const { validateExperiencePolicy } = require("../utils/experiencePolicy");
 
 const hasText = (value) => {
     return typeof value === "string" && value.trim().length > 0;
@@ -114,6 +118,13 @@ const validateBasicMockTestData = (mockTestData) => {
             return "Paid mock test must have price or sale price greater than 0";
         }
     }
+    const experiencePolicyValidation = validateExperiencePolicy(
+        mockTestData.settings?.experiencePolicy
+    );
+    if (!experiencePolicyValidation.valid) {
+        return experiencePolicyValidation.message;
+    }
+
     return null;
 };
 
@@ -481,6 +492,7 @@ const buildExamPatternSnapshot = (examPattern) => {
         examPatternId: examPattern._id,
         name: examPattern.name,
         examType: examPattern.examType,
+        ...buildExamTimingPolicySnapshot(examPattern),
         totalDurationMinutes: examPattern.totalDurationMinutes,
         allowSectionSwitching: examPattern.allowSectionSwitching,
         allowQuestionNavigation: examPattern.allowQuestionNavigation,
@@ -1172,6 +1184,18 @@ const publishMockTest = async (req, res) => {
         }
 
         const settings = JSON.parse(JSON.stringify(mockTest.settings || {}));
+        const publicationPolicy = validateExperiencePolicy(settings.experiencePolicy);
+        if (!publicationPolicy.valid) {
+            return res.status(400).json({
+                success: false,
+                message: publicationPolicy.message,
+            });
+        }
+        if (publicationPolicy.policy === undefined) {
+            delete settings.experiencePolicy;
+        } else {
+            settings.experiencePolicy = publicationPolicy.policy;
+        }
 
         if (mockTest.testType === "pyq") {
             settings.shuffleQuestions = false;

@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { createExperiencePolicySchema } = require("../utils/experiencePolicy");
 
 const optionSnapshotSchema = new mongoose.Schema(
   {
@@ -459,6 +460,22 @@ const examPatternSnapshotSchema = new mongoose.Schema(
       trim: true,
     },
 
+    timingMode: {
+      type: String,
+      enum: ["global", "sectional"],
+      default: "global",
+    },
+
+    timingPolicyVersion: {
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isInteger,
+        message: "timingPolicyVersion must be an integer",
+      },
+    },
+
     totalDurationMinutes: {
       type: Number,
       default: 0,
@@ -585,6 +602,11 @@ const mockTestVersionSchema = new mongoose.Schema(
     },
 
     settings: {
+      experiencePolicy: {
+        type: createExperiencePolicySchema(mongoose),
+        default: undefined,
+      },
+
       maxAttempts: {
         type: Number,
         default: 1,

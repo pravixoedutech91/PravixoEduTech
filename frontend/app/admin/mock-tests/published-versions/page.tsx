@@ -94,6 +94,10 @@ type MockTestVersion = {
         solutionVisibility?: string;
         allowResume?: boolean;
         interfaceMode?: string;
+        experiencePolicy?: {
+            policyVersion: number;
+            allowedModes: string[];
+        };
     };
     publishedBy?: PublishedBySummary | string | null;
     publishedAt?: string;
@@ -940,6 +944,17 @@ export default function AdminPublishedVersionsPage() {
                                                             version.settings
                                                                 ?.solutionVisibility
                                                         )}
+                                                    </p>
+
+                                                    <p>
+                                                        <span className="font-semibold text-slate-800">
+                                                            Student Experiences:
+                                                        </span>{" "}
+                                                        {!version.settings?.experiencePolicy
+                                                            ? "Legacy (no mode selection)"
+                                                            : version.settings.experiencePolicy.allowedModes?.map((mode) =>
+                                                                mode === "exam_simulation" ? "Exam Simulation" : mode === "practice" ? "Practice Mode" : "Unknown mode"
+                                                            ).join(" + ") || "Invalid published policy"}
                                                     </p>
 
                                                     <p>

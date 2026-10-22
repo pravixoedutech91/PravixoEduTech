@@ -109,6 +109,7 @@ type MockTest = {
         maxAttempts?: number;
         solutionVisibility?: string;
         interfaceMode?: string;
+        experiencePolicy?: ExperiencePolicy;
     };
     isPublished?: boolean;
     activeVersionId?: ActiveVersionSummary | string | null;
@@ -170,6 +171,30 @@ type AssignmentSectionForm = Omit<MockTestSection, "questions"> & {
     questionSlots: AssignmentQuestionSlot[];
 };
 
+type ExperienceModeSetting = "legacy" | "exam_simulation" | "practice" | "both";
+
+type ExperiencePolicy = {
+    policyVersion: 1;
+    allowedModes: Array<"exam_simulation" | "practice">;
+};
+
+const getExperienceModeSetting = (policy?: ExperiencePolicy): ExperienceModeSetting => {
+    if (!policy || policy.policyVersion !== 1) return "legacy";
+    const modes = policy.allowedModes || [];
+    if (modes.length === 2 && modes.includes("exam_simulation") && modes.includes("practice")) return "both";
+    if (modes.length === 1 && modes[0] === "exam_simulation") return "exam_simulation";
+    if (modes.length === 1 && modes[0] === "practice") return "practice";
+    return "legacy";
+};
+
+const buildExperiencePolicy = (setting: ExperienceModeSetting): ExperiencePolicy | undefined => {
+    if (setting === "legacy") return undefined;
+    return {
+        policyVersion: 1,
+        allowedModes: setting === "both" ? ["exam_simulation", "practice"] : [setting],
+    };
+};
+
 type CreateMockTestForm = {
     title: string;
     slug: string;
@@ -184,6 +209,7 @@ type CreateMockTestForm = {
     maxAttempts: string;
     solutionVisibility: "after_submit" | "after_test_end" | "never";
     interfaceMode: "default" | "ssc" | "banking" | "railway" | "cpct";
+    experienceAvailability: ExperienceModeSetting;
 };
 
 type ToastState = {
@@ -205,6 +231,7 @@ const initialCreateMockTestForm: CreateMockTestForm = {
     maxAttempts: "1",
     solutionVisibility: "after_submit",
     interfaceMode: "default",
+    experienceAvailability: "legacy",
 };
 
 const isAllowedAdminRole = (role?: string) => {
@@ -532,6 +559,7 @@ export default function AdminMockTestsPage() {
                 mockTest.settings?.interfaceMode === "cpct"
                     ? mockTest.settings.interfaceMode
                     : "default",
+            experienceAvailability: getExperienceModeSetting(mockTest.settings?.experiencePolicy),
         });
         setIsCreateFormOpen(true);
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -841,6 +869,12 @@ export default function AdminMockTestsPage() {
         if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
             return "Max attempts must be a positive integer.";
         }
+        if (
+            editingMockTest?.settings?.experiencePolicy &&
+            createMockTestForm.experienceAvailability === "legacy"
+        ) {
+            return "An enabled experience policy cannot be removed by this metadata form.";
+        }
 
         return "";
     };
@@ -881,6 +915,9 @@ export default function AdminMockTestsPage() {
                 showDifficultyAnalysis: true,
                 showTimeAnalysis: true,
                 interfaceMode: createMockTestForm.interfaceMode,
+                ...(buildExperiencePolicy(createMockTestForm.experienceAvailability)
+                    ? { experiencePolicy: buildExperiencePolicy(createMockTestForm.experienceAvailability) }
+                    : {}),
             },
         };
     };
@@ -905,6 +942,9 @@ export default function AdminMockTestsPage() {
                 maxAttempts,
                 solutionVisibility: createMockTestForm.solutionVisibility,
                 interfaceMode: createMockTestForm.interfaceMode,
+                ...(buildExperiencePolicy(createMockTestForm.experienceAvailability)
+                    ? { experiencePolicy: buildExperiencePolicy(createMockTestForm.experienceAvailability) }
+                    : {}),
             },
         };
     };
@@ -1707,6 +1747,31 @@ export default function AdminMockTestsPage() {
                                 </label>
                             </div>
 
+                            <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4">
+                                <label className="grid gap-2 text-sm font-semibold text-slate-800">
+                                    Permitted student experiences
+                                    <select
+                                        value={createMockTestForm.experienceAvailability}
+                                        onChange={(event) => updateCreateMockTestForm("experienceAvailability", event.target.value)}
+                                        className="rounded-xl border border-indigo-200 bg-white px-4 py-3 text-sm font-medium outline-none focus:border-indigo-500"
+                                    >
+                                        <option value="legacy" disabled={Boolean(editingMockTest?.settings?.experiencePolicy)}>
+                                            Legacy exam behavior (no selection)
+                                        </option>
+                                        <option value="exam_simulation">Exam Simulation only</option>
+                                        <option value="practice">Practice Mode only</option>
+                                        <option value="both">Practice + Exam Simulation (student chooses)</option>
+                                    </select>
+                                </label>
+                                <p className="mt-2 text-xs leading-5 text-indigo-800">
+                                    This is separate from Test Type. Practice uses a global timer; Exam Simulation follows the exam pattern.
+                                    Existing published versions remain frozen until a new publication.
+                                    {editingMockTest?.settings?.experiencePolicy
+                                        ? " Enabled policies cannot be removed using this form."
+                                        : " Legacy is the default for existing and new tests."}
+                                </p>
+                            </div>
+
                             <label className="grid gap-2 text-sm font-semibold text-slate-700">
                                 Solution Visibility
                                 <select
@@ -2216,6 +2281,15 @@ export default function AdminMockTestsPage() {
 
                                                 <p className="mt-1 text-sm text-slate-500">
                                                     Slug: {mockTest.slug || "-"}
+                                                </p>
+                                                <p className="mt-2 text-xs font-semibold text-indigo-700">
+                                                    Student experiences: {getExperienceModeSetting(mockTest.settings?.experiencePolicy) === "legacy"
+                                                        ? "Legacy (no selection)"
+                                                        : getExperienceModeSetting(mockTest.settings?.experiencePolicy) === "both"
+                                                            ? "Practice + Exam Simulation"
+                                                            : getExperienceModeSetting(mockTest.settings?.experiencePolicy) === "practice"
+                                                                ? "Practice Mode"
+                                                                : "Exam Simulation"}
                                                 </p>
 
                                                 {mockTest.description ? (
