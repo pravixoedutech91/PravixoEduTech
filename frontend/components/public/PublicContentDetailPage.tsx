@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import localFont from "next/font/local";
 import Footer from "@/components/layout/Footer";
 import Navbar from "@/components/layout/Navbar";
 import PublicContentBody from "@/components/public/PublicContentBody";
@@ -9,6 +10,23 @@ import {
   type PublicContentItem,
   type PublicContentType,
 } from "@/lib/publicContent";
+import {
+  PUBLIC_SITE_URL,
+  getAbsoluteFeaturedImageUrl,
+  getPublicContentDescription,
+  getPublicContentLanguage,
+  getPublicContentTitle,
+  getPublicContentUrl,
+  toIsoDate,
+} from "@/lib/publicContentSeo";
+import { formatPublicContentDate, getPublicContentCopy } from "@/lib/publicContentPresentation";
+
+const devanagari = localFont({
+  src: "../../fonts/NotoSansDevanagari.woff2",
+  display: "swap",
+  preload: false,
+  weight: "100 900",
+});
 
 type PublicContentDetailPageProps = {
   slug: string;
@@ -17,20 +35,7 @@ type PublicContentDetailPageProps = {
   backLabel: string;
 };
 
-const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-
-const typeLabels: Record<PublicContentType, string> = {
-  article: "Article",
-  study_note: "Study Note",
-  notification: "Notification",
-  current_affairs: "Current Affairs",
-  vacancy: "Vacancy",
-  admit_card: "Admit Card",
-  result: "Result",
-  syllabus: "Syllabus",
-  exam_page: "Exam Page",
-};
+const SITE_URL = PUBLIC_SITE_URL;
 
 const articleLikeTypes: PublicContentType[] = [
   "article",
@@ -39,36 +44,6 @@ const articleLikeTypes: PublicContentType[] = [
   "syllabus",
   "exam_page",
 ];
-
-const formatDate = (value?: string) => {
-  if (!value) {
-    return "Recently updated";
-  }
-
-  try {
-    return new Intl.DateTimeFormat("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    }).format(new Date(value));
-  } catch {
-    return "Recently updated";
-  }
-};
-
-const toIsoDate = (value?: string) => {
-  if (!value) {
-    return undefined;
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return undefined;
-  }
-
-  return date.toISOString();
-};
 
 const getParagraphs = (content?: string) => {
   if (!content) {
@@ -88,10 +63,6 @@ const getParagraphs = (content?: string) => {
 
 const getPlainText = (content?: string) => {
   return getParagraphs(content).join(" ");
-};
-
-const getContentTypeLabel = (type: PublicContentType) => {
-  return typeLabels[type] || "Public Content";
 };
 
 const getSafeFeaturedImageUrl = (value?: string) => {
@@ -121,23 +92,6 @@ const getSafeFeaturedImageUrl = (value?: string) => {
   return "";
 };
 
-const getAbsoluteFeaturedImageUrl = (value?: string) => {
-  const safeUrl = getSafeFeaturedImageUrl(value);
-
-  if (!safeUrl) {
-    return undefined;
-  }
-
-  if (!safeUrl.startsWith("/")) {
-    return safeUrl;
-  }
-
-  try {
-    return new URL(safeUrl, SITE_URL).toString();
-  } catch {
-    return undefined;
-  }
-};
 const getJsonLdType = (type: PublicContentType) => {
   if (type === "current_affairs" || type === "notification") {
     return "NewsArticle";
@@ -153,17 +107,17 @@ const getJsonLdType = (type: PublicContentType) => {
 const buildJsonLd = ({
   item,
   backHref,
+  backLabel,
 }: {
   item: PublicContentItem;
   backHref: string;
+  backLabel: string;
 }) => {
-  const pageUrl = `${SITE_URL}${backHref}/${item.slug}`;
-  const publishedDate = toIsoDate(item.publishedAt || item.createdAt);
-  const modifiedDate = toIsoDate(item.updatedAt || item.publishedAt || item.createdAt);
-  const description =
-    item.seoDescription ||
-    item.summary ||
-    `Read ${item.title} on PravixoEduTech.`;
+  const pageUrl = getPublicContentUrl(item);
+  const publishedDate = toIsoDate(item.publishedAt) || toIsoDate(item.createdAt);
+  const modifiedDate = toIsoDate(item.updatedAt) || toIsoDate(item.publishedAt) || toIsoDate(item.createdAt);
+  const description = getPublicContentDescription(item);
+  const language = getPublicContentLanguage(item);
   const plainText = getPlainText(item.content);
 
   const articleSchema = {
@@ -173,12 +127,12 @@ const buildJsonLd = ({
       "@type": "WebPage",
       "@id": pageUrl,
     },
-    headline: item.seoTitle || item.title,
+    headline: item.title,
     name: item.title,
     description,
     datePublished: publishedDate,
     dateModified: modifiedDate,
-    articleSection: item.category?.name || getContentTypeLabel(item.type),
+    articleSection: item.category?.name || getPublicContentCopy(language).types[item.type],
     keywords: item.tags || [],
     author: {
       "@type": "Organization",
@@ -190,7 +144,7 @@ const buildJsonLd = ({
       name: "PravixoEduTech",
       url: SITE_URL,
     },
-    inLanguage: "en-IN",
+    inLanguage: language,
     isAccessibleForFree: true,
     text: plainText || undefined,
   };
@@ -208,7 +162,7 @@ const buildJsonLd = ({
       {
         "@type": "ListItem",
         position: 2,
-        name: item.category?.name || getContentTypeLabel(item.type),
+        name: backLabel,
         item: `${SITE_URL}${backHref}`,
       },
       {
@@ -224,7 +178,7 @@ const buildJsonLd = ({
     "@type": "WebPage",
     "@id": pageUrl,
     url: pageUrl,
-    name: item.seoTitle || item.title,
+    name: getPublicContentTitle(item),
     description,
     isPartOf: {
       "@type": "WebSite",
@@ -237,7 +191,7 @@ const buildJsonLd = ({
     primaryImageOfPage: getAbsoluteFeaturedImageUrl(item.featuredImage),
     datePublished: publishedDate,
     dateModified: modifiedDate,
-    inLanguage: "en-IN",
+    inLanguage: language,
   };
 
   return {
@@ -259,13 +213,18 @@ export default async function PublicContentDetailPage({
   }
 
   const hasContent = Boolean(item.content?.trim());
-  const typeLabel = getContentTypeLabel(item.type);
-  const updatedDate = formatDate(item.updatedAt || item.publishedAt || item.createdAt);
+  const language = getPublicContentLanguage(item);
+  const isHindi = language === "hi-IN";
+  const copy = getPublicContentCopy(language);
+  const typeLabel = copy.types[item.type];
+  const listLabel = copy.lists[item.type];
+  const isStudyMaterial = item.type === "study_note" || item.type === "article";
+  const updatedDate = formatPublicContentDate(item.updatedAt || item.publishedAt || item.createdAt, language);
   const featuredImageUrl =
     item.type === "exam_page"
       ? getSafeFeaturedImageUrl(item.featuredImage)
       : "";
-  const jsonLd = buildJsonLd({ item, backHref });
+  const jsonLd = buildJsonLd({ item, backHref, backLabel });
 
   return (
     <>
@@ -279,7 +238,7 @@ export default async function PublicContentDetailPage({
       <Navbar />
 
       <main>
-        <article className="bg-white">
+        <article lang={language} className={`bg-white ${isHindi ? devanagari.className : ""}`}>
           <header className="border-b border-slate-200">
             <div className="mx-auto max-w-4xl px-4 py-12">
               <div className="flex items-center justify-between gap-3">
@@ -288,16 +247,17 @@ export default async function PublicContentDetailPage({
                     href={backHref}
                     className="text-sm font-black text-blue-700 hover:text-blue-900"
                   >
-                    &lt; Back to {backLabel}
+                    &lt; {copy.back} {listLabel}
                   </Link>
                 </nav>
 
                 <PublicShareButton
                   title={item.title}
+                  language={language}
                   text={
                     item.summary ||
                     item.seoDescription ||
-                    `Read ${item.title} on PravixoEduTech.`
+                    (isHindi ? `${item.title} की जानकारी PravixoEduTech पर पढ़ें।` : `Read ${item.title} on PravixoEduTech.`)
                   }
                 />
               </div>
@@ -314,24 +274,24 @@ export default async function PublicContentDetailPage({
                 ) : null}
 
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                  Updated {updatedDate}
+                  {copy.updated} {updatedDate}
                 </span>
               </div>
 
-              <h1 className="mt-6 text-4xl font-black tracking-tight text-slate-950 sm:text-5xl">
+              <h1 className={`mt-6 text-4xl font-black tracking-tight text-slate-950 sm:text-5xl ${isHindi ? "leading-[1.4] sm:leading-[1.35]" : ""}`}>
                 {item.title}
               </h1>
 
               {item.summary || item.seoDescription ? (
                 <section
-                  aria-label="Quick answer"
+                  aria-label={copy.quickAnswer}
                   className="mt-6 rounded-3xl border border-blue-100 bg-blue-50 p-6"
                 >
                   <p className="text-sm font-black uppercase tracking-[0.18em] text-blue-700">
-                    Quick Answer
+                    {copy.quickAnswer}
                   </p>
 
-                  <p className="mt-3 text-lg leading-8 text-slate-800">
+                  <p className="mt-3 text-lg leading-9 text-slate-800">
                     {item.summary || item.seoDescription}
                   </p>
                 </section>
@@ -340,7 +300,7 @@ export default async function PublicContentDetailPage({
               <div className="mt-6 grid gap-3 rounded-3xl border border-slate-200 bg-slate-50 p-5 sm:grid-cols-3">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                    Content Type
+                    {copy.contentType}
                   </p>
                   <p className="mt-2 text-sm font-bold text-slate-950">
                     {typeLabel}
@@ -349,7 +309,7 @@ export default async function PublicContentDetailPage({
 
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                    Category
+                    {copy.category}
                   </p>
                   <p className="mt-2 text-sm font-bold text-slate-950">
                     {item.category?.name || backLabel}
@@ -358,7 +318,7 @@ export default async function PublicContentDetailPage({
 
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.16em] text-slate-500">
-                    Last Updated
+                    {copy.lastUpdated}
                   </p>
                   <p className="mt-2 text-sm font-bold text-slate-950">
                     {updatedDate}
@@ -391,7 +351,7 @@ export default async function PublicContentDetailPage({
                 <figure className="mb-8 overflow-hidden rounded-3xl border border-slate-200 bg-slate-100 shadow-sm">
                   <img
                     src={featuredImageUrl}
-                    alt={`${item.title} featured preparation image`}
+                    alt={isHindi ? `${item.title} की तैयारी से संबंधित चित्र` : `${item.title} featured preparation image`}
                     width={1672}
                     height={941}
                     loading="eager"
@@ -401,17 +361,17 @@ export default async function PublicContentDetailPage({
                 </figure>
               ) : null}
               {hasContent ? (
-                <section aria-label="Main content">
-                  <PublicContentBody content={item.content ?? ""} />
+                <section aria-label={copy.mainContent}>
+                  <PublicContentBody content={item.content ?? ""} language={language} />
                 </section>
               ) : (
                 <div className="rounded-3xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
                   <h2 className="text-2xl font-black text-slate-950">
-                    Content body will appear here
+                    {copy.emptyTitle}
                   </h2>
 
                   <p className="mt-3 text-slate-600">
-                    The published page exists, but the main content body is currently empty.
+                    {copy.emptyBody}
                   </p>
                 </div>
               )}
@@ -420,31 +380,31 @@ export default async function PublicContentDetailPage({
             <aside className="space-y-5">
               <section className="rounded-3xl border border-slate-200 bg-slate-50 p-6">
                 <h2 className="text-lg font-black text-slate-950">
-                  About this page
+                  {copy.about}
                 </h2>
 
                 <dl className="mt-5 space-y-4 text-sm">
                   <div>
                     <dt className="font-black text-slate-500">
-                      Published by
+                      {copy.publishedBy}
                     </dt>
                     <dd className="mt-1 font-semibold text-slate-900">
-                      PravixoEduTech Editorial Team
+                      {copy.editorialTeam}
                     </dd>
                   </div>
 
                   <div>
                     <dt className="font-black text-slate-500">
-                      Review status
+                      {copy.reviewStatus}
                     </dt>
                     <dd className="mt-1 font-semibold text-slate-900">
-                      Public informational content
+                      {copy.informational}
                     </dd>
                   </div>
 
                   <div>
                     <dt className="font-black text-slate-500">
-                      Updated
+                      {copy.updated}
                     </dt>
                     <dd className="mt-1 font-semibold text-slate-900">
                       {updatedDate}
@@ -455,12 +415,13 @@ export default async function PublicContentDetailPage({
 
               <section className="rounded-3xl border border-blue-100 bg-blue-50 p-6">
                 <h2 className="text-lg font-black text-slate-950">
-                  Trust note
+                  {isStudyMaterial ? copy.studyTitle : copy.trustTitle}
                 </h2>
 
                 <p className="mt-3 text-sm leading-7 text-slate-700">
-                  This page is created for exam preparation guidance and public awareness.
-                  For official dates, eligibility and final notices, always verify the official exam authority website.
+                  {isStudyMaterial ? (
+                    <>{copy.studyBody}{" "}<Link href="/correction-policy" className="font-bold text-blue-700 underline underline-offset-4">{copy.correctionPolicy}</Link>{isHindi ? "।" : "."}</>
+                  ) : copy.trustBody}
                 </p>
               </section>
             </aside>

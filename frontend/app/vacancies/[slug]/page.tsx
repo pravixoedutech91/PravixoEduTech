@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import PublicContentDetailPage from "@/components/public/PublicContentDetailPage";
-import { getPublicContentBySlug } from "@/lib/publicContent";
+import { getPublicContentMetadata } from "@/lib/publicContentMetadata";
 
 export const dynamic = "force-dynamic";
 
@@ -15,25 +15,7 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const { item } = await getPublicContentBySlug(slug);
-
-  if (!item || item.type !== "vacancy") {
-    return {
-      title: "Content Not Found",
-      robots: {
-        index: false,
-        follow: false,
-      },
-    };
-  }
-
-  return {
-    title: item.seoTitle || item.title,
-    description:
-      item.seoDescription ||
-      item.summary ||
-      `Read ${item.title} on PravixoEduTech.`,
-  };
+  return getPublicContentMetadata(slug, "vacancy");
 }
 
 export default async function Page({ params }: PageProps) {

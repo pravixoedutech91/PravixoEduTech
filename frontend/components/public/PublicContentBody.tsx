@@ -1,8 +1,11 @@
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { remarkPublicContentNavigation } from "@/lib/publicContentMarkdown";
+import type { PublicContentLanguage } from "@/lib/publicContentPresentation";
 
 type PublicContentBodyProps = {
   content: string;
+  language?: PublicContentLanguage;
 };
 
 const normalizeContent = (content: string) => {
@@ -16,7 +19,7 @@ const safeUrlTransform = (url: string) => {
   const trimmedUrl = url.trim();
 
   if (
-    trimmedUrl.startsWith("/") ||
+    (trimmedUrl.startsWith("/") && !trimmedUrl.startsWith("//")) ||
     trimmedUrl.startsWith("#")
   ) {
     return trimmedUrl;
@@ -38,33 +41,33 @@ const safeUrlTransform = (url: string) => {
   return "";
 };
 
-const markdownComponents: Components = {
-  h1: ({ children }) => (
-    <h2 className="mt-8 rounded-r-2xl border-l-4 border-blue-600 bg-blue-50 px-4 py-3 text-[1.375rem] font-black leading-7 tracking-tight text-slate-950">
+const markdownComponents = (isHindi: boolean): Components => ({
+  h1: ({ children, id }) => (
+    <h2 id={id} className="mt-8 scroll-mt-52 rounded-r-2xl border-l-4 border-blue-600 bg-blue-50 px-4 py-3 text-[1.375rem] font-black leading-9 tracking-tight text-slate-950">
       {children}
     </h2>
   ),
 
-  h2: ({ children }) => (
-    <h2 className="mt-8 rounded-r-2xl border-l-4 border-blue-600 bg-blue-50 px-4 py-3 text-[1.375rem] font-black leading-7 tracking-tight text-slate-950">
+  h2: ({ children, id }) => (
+    <h2 id={id} className="mt-8 scroll-mt-52 rounded-r-2xl border-l-4 border-blue-600 bg-blue-50 px-4 py-3 text-[1.375rem] font-black leading-9 tracking-tight text-slate-950">
       {children}
     </h2>
   ),
 
-  h3: ({ children }) => (
-    <h3 className="mt-8 text-xl font-black tracking-tight text-slate-950">
+  h3: ({ children, id }) => (
+    <h3 id={id} className="mt-8 scroll-mt-52 text-xl font-black leading-8 tracking-tight text-slate-950">
       {children}
     </h3>
   ),
 
-  h4: ({ children }) => (
-    <h4 className="mt-7 text-lg font-black text-slate-900">
+  h4: ({ children, id }) => (
+    <h4 id={id} className="mt-7 scroll-mt-52 text-lg font-black leading-8 text-slate-900">
       {children}
     </h4>
   ),
 
   p: ({ children }) => (
-    <p className="my-5 text-base leading-8 text-slate-700">
+    <p className={`my-5 text-slate-700 ${isHindi ? "text-lg leading-9" : "text-base leading-8"}`}>
       {children}
     </p>
   ),
@@ -82,13 +85,13 @@ const markdownComponents: Components = {
   ),
 
   ul: ({ children }) => (
-    <ul className="my-5 list-disc space-y-2 pl-7 text-base leading-8 text-slate-700 marker:text-blue-600">
+    <ul className={`my-5 list-disc space-y-2 pl-7 text-slate-700 marker:text-blue-600 ${isHindi ? "text-lg leading-9" : "text-base leading-8"}`}>
       {children}
     </ul>
   ),
 
   ol: ({ children }) => (
-    <ol className="my-5 list-decimal space-y-2 pl-7 text-base leading-8 text-slate-700 marker:font-black marker:text-blue-700">
+    <ol className={`my-5 list-decimal space-y-2 pl-7 text-slate-700 marker:font-black marker:text-blue-700 ${isHindi ? "text-lg leading-9" : "text-base leading-8"}`}>
       {children}
     </ol>
   ),
@@ -100,9 +103,20 @@ const markdownComponents: Components = {
   ),
 
   blockquote: ({ children }) => (
-    <blockquote className="my-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-slate-800 [&>p]:my-0 [&>p]:leading-7">
+    <blockquote className="my-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-slate-800 [&>p]:my-0 [&>p]:leading-8">
       {children}
     </blockquote>
+  ),
+
+  nav: ({ children, "aria-label": label }) => (
+    <nav aria-label={label} className="my-7 rounded-2xl border border-blue-200 bg-blue-50/60 px-5 py-4 text-slate-800 [&_ul]:mb-0 [&_ul]:mt-3 [&_ul]:list-none [&_ul]:space-y-3 [&_ul]:pl-0 [&_li]:pl-0 [&_a]:text-base [&_a]:leading-7 [&_a]:no-underline [&_a:hover]:underline">
+      <details>
+        <summary className="cursor-pointer rounded font-bold leading-7 text-blue-900 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600">
+          {label}
+        </summary>
+        {children}
+      </details>
+    </nav>
   ),
 
   a: ({ href = "", children, title }) => {
@@ -141,8 +155,8 @@ const markdownComponents: Components = {
     );
   },
   table: ({ children }) => (
-    <div className="my-5 overflow-x-auto rounded-2xl border border-slate-200">
-      <table className="min-w-full border-collapse text-left text-sm">
+    <div role="region" aria-label={isHindi ? "दाएँ-बाएँ खिसकाकर पढ़ने योग्य तालिका" : "Scrollable data table"} tabIndex={0} className="my-5 overflow-x-auto rounded-2xl border border-slate-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
+      <table className={`w-full min-w-full border-collapse text-left [&:has(th:nth-child(3))]:min-w-[36rem] ${isHindi ? "text-base" : "text-sm"}`}>
         {children}
       </table>
     </div>
@@ -155,7 +169,7 @@ const markdownComponents: Components = {
   ),
 
   tbody: ({ children }) => (
-    <tbody className="divide-y divide-slate-200 bg-white">
+    <tbody className="divide-y divide-slate-200 bg-white [&>tr:nth-child(even)]:bg-slate-50/70">
       {children}
     </tbody>
   ),
@@ -167,13 +181,13 @@ const markdownComponents: Components = {
   ),
 
   th: ({ children }) => (
-    <th className="px-3 py-2.5 font-black">
+    <th scope="col" className="px-3 py-3 font-bold leading-7">
       {children}
     </th>
   ),
 
   td: ({ children }) => (
-    <td className="px-3 py-2.5 leading-6 text-slate-700">
+    <td className={`px-3 py-3 text-slate-700 ${isHindi ? "leading-8" : "leading-6"}`}>
       {children}
     </td>
   ),
@@ -193,15 +207,16 @@ const markdownComponents: Components = {
       {children}
     </pre>
   ),
-};
+});
 
 export default function PublicContentBody({
   content,
+  language = "en-IN",
 }: PublicContentBodyProps) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={markdownComponents}
+      remarkPlugins={[remarkGfm, [remarkPublicContentNavigation, { label: language === "hi-IN" ? "इस पृष्ठ में" : "On this page" }]]}
+      components={markdownComponents(language === "hi-IN")}
       skipHtml
       disallowedElements={["img"]}
       urlTransform={safeUrlTransform}

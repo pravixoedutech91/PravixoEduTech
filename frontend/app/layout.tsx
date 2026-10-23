@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
+import { PUBLIC_SITE_URL } from "@/lib/publicContentSeo";
 
 export const metadata: Metadata = {
   title: {
@@ -26,9 +27,7 @@ export const metadata: Metadata = {
   authors: [{ name: "PravixoEduTech" }],
   creator: "PravixoEduTech",
   publisher: "PravixoEduTech",
-  metadataBase: new URL(
-    process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"
-  ),
+  metadataBase: new URL(PUBLIC_SITE_URL),
   openGraph: {
     title:
       "PravixoEduTech | Government Exam Preparation, Notes & Mock Tests",

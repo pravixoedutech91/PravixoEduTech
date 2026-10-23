@@ -7,6 +7,7 @@ type ShareStatus = "idle" | "sharing" | "copied" | "error";
 type PublicShareButtonProps = {
   title: string;
   text?: string;
+  language?: "en-IN" | "hi-IN";
 };
 
 function ShareIcon() {
@@ -74,7 +75,9 @@ async function copyToClipboard(value: string) {
 export default function PublicShareButton({
   title,
   text,
+  language = "en-IN",
 }: PublicShareButtonProps) {
+  const isHindi = language === "hi-IN";
   const [status, setStatus] = useState<ShareStatus>("idle");
 
   const resetTimerRef =
@@ -106,7 +109,7 @@ export default function PublicShareButton({
     const pageUrl = window.location.href.split("#")[0];
 
     const shareText =
-      text?.trim() || `Read ${title} on PravixoEduTech.`;
+      text?.trim() || (isHindi ? `${title} की जानकारी PravixoEduTech पर पढ़ें।` : `Read ${title} on PravixoEduTech.`);
 
     setStatus("sharing");
 
@@ -142,12 +145,12 @@ export default function PublicShareButton({
 
   const buttonLabel =
     status === "copied"
-      ? "Link copied"
+      ? (isHindi ? "लिंक कॉपी हुआ" : "Link copied")
       : status === "error"
-        ? "Copy failed"
+        ? (isHindi ? "कॉपी नहीं हुआ" : "Copy failed")
         : status === "sharing"
-          ? "Sharing..."
-          : "Share";
+          ? (isHindi ? "साझा हो रहा है..." : "Sharing...")
+          : (isHindi ? "साझा करें" : "Share");
 
   return (
     <div className="flex items-center">
@@ -155,7 +158,7 @@ export default function PublicShareButton({
         type="button"
         onClick={handleShare}
         disabled={status === "sharing"}
-        aria-label={`Share ${title}`}
+        aria-label={isHindi ? `साझा करें: ${title}` : `Share ${title}`}
         className="inline-flex min-h-10 min-w-[6.5rem] items-center justify-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 text-sm font-bold text-blue-700 shadow-sm transition hover:border-blue-300 hover:bg-blue-100 hover:text-blue-800 focus:outline-none focus:ring-4 focus:ring-blue-100 disabled:cursor-wait disabled:opacity-70"
       >
         {status === "copied" ? <CheckIcon /> : <ShareIcon />}
@@ -164,9 +167,9 @@ export default function PublicShareButton({
 
       <span className="sr-only" aria-live="polite">
         {status === "copied"
-          ? "Page link copied to clipboard."
+          ? (isHindi ? "पृष्ठ का लिंक क्लिपबोर्ड पर कॉपी हो गया।" : "Page link copied to clipboard.")
           : status === "error"
-            ? "The page link could not be copied."
+            ? (isHindi ? "पृष्ठ का लिंक कॉपी नहीं हो सका।" : "The page link could not be copied.")
             : ""}
       </span>
     </div>
