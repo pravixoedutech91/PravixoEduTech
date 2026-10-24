@@ -588,6 +588,7 @@ export default function CreateAdminContentPage() {
                             <MarkdownContentEditor
                                 id="content-body"
                                 value={form.content}
+                                language={form.slug.trim().endsWith("-hindi") ? "hi-IN" : "en-IN"}
                                 onChange={(value) => updateForm("content", value)}
                                 placeholder="Write the full public content body. Use the toolbar for headings, lists, tables and official links."
                             />

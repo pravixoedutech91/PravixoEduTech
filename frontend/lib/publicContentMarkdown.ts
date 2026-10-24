@@ -32,7 +32,7 @@ const headingText = (node: MarkdownNode): string => {
 // Parse through react-markdown's AST: code fences and table cells must never
 // become false headings. Prefix IDs and de-duplicate across all heading levels.
 export const remarkPublicContentNavigation = ({
-  label = "On this page",
+  label = "Table of contents",
 }: NavigationOptions = {}) => (tree: MarkdownNode) => {
   if (!tree.children) return;
   const usedIds = new Set<string>();

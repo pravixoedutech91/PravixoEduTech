@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 import { remarkPublicContentNavigation } from "../lib/publicContentMarkdown.ts";
 import { formatPublicContentDate, getPublicContentCopy } from "../lib/publicContentPresentation.ts";
 
-const render = (content, label = "On this page") => renderToStaticMarkup(
+const render = (content, label = "Table of contents") => renderToStaticMarkup(
   React.createElement(ReactMarkdown, {
     remarkPlugins: [remarkGfm, [remarkPublicContentNavigation, { label }]],
     skipHtml: true,
@@ -24,12 +24,12 @@ test("contents links resolve to unique real headings, including duplicates and c
   assert.equal(new Set(ids).size, ids.length);
   assert.equal(links.length, 4);
   for (const id of links) assert.ok(ids.includes(id));
-  assert.match(html, /<nav aria-label="On this page">/);
+  assert.match(html, /<nav aria-label="Table of contents">/);
 });
 
 test("Hindi heading links preserve Devanagari vowel signs and use a Hindi navigation label", () => {
-  const html = render("## भारत के वायसराय\n\n## परीक्षा के लिए अंतर\n\n## उत्तर और व्याख्या", "इस पृष्ठ में");
-  assert.match(html, /aria-label="इस पृष्ठ में"/);
+  const html = render("## भारत के वायसराय\n\n## परीक्षा के लिए अंतर\n\n## उत्तर और व्याख्या", "विषयसूची");
+  assert.match(html, /aria-label="विषयसूची"/);
   assert.match(html, /id="section-भारत-के-वायसराय"/);
   const fragments = [...html.matchAll(/href="#([^"]+)"/g)].map(m => decodeURIComponent(m[1]));
   assert.ok(fragments.includes("section-भारत-के-वायसराय"));

@@ -52,16 +52,24 @@ test("actual Markdown renderer emits a semantic quiz with a no-JavaScript self-c
   assert.match(html, /Show answer and explanation/);
   assert.doesNotMatch(html, /language-pravixo-quiz|&quot;answerIndex&quot;/);
   assert.match(html, /href="#section-company-rule"/);
+  assert.match(html, /<nav aria-label="Table of contents"/);
+  assert.match(html, />View<\/span>/);
+  assert.match(html, />Hide<\/span>/);
 });
 
 test("Hindi quiz controls use the payload language in both the article and CMS preview", () => {
   const hindi = { ...fixture, language: "hi-IN", title: "अधिनियम: पुनरावृत्ति" };
   for (const articleLanguage of ["en-IN", "hi-IN"]) {
-    const html = render(fence(hindi), articleLanguage);
+    const html = render("## पहला भाग\n\n## दूसरा भाग\n\n## तीसरा भाग\n\n" + fence(hindi), articleLanguage);
     assert.match(html, /<section lang="hi-IN"/);
     assert.match(html, /उत्तर जाँचें/);
     assert.match(html, /उत्तर और व्याख्या देखें/);
     assert.doesNotMatch(html, />Check answer</);
+    assert.match(html, articleLanguage === "hi-IN" ? /<nav aria-label="विषयसूची"/ : /<nav aria-label="Table of contents"/);
+    if (articleLanguage === "hi-IN") {
+      assert.match(html, />देखें<\/span>/);
+      assert.match(html, />छिपाएँ<\/span>/);
+    }
   }
 });
 

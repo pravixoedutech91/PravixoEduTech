@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import PublicContentBody from "@/components/public/PublicContentBody";
+import type { PublicContentLanguage } from "@/lib/publicContentPresentation";
 
 type MarkdownContentEditorProps = {
     id: string;
@@ -9,6 +10,7 @@ type MarkdownContentEditorProps = {
     onChange: (value: string) => void;
     placeholder?: string;
     rows?: number;
+    language?: PublicContentLanguage;
 };
 
 const toolbarButtonClass =
@@ -20,6 +22,7 @@ export default function MarkdownContentEditor({
     onChange,
     placeholder,
     rows = 16,
+    language = "en-IN",
 }: MarkdownContentEditorProps) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [showPreview, setShowPreview] = useState(false);
@@ -373,7 +376,7 @@ export default function MarkdownContentEditor({
             {showPreview ? (
                 <div className="min-h-80 bg-white p-5 sm:p-7">
                     {value.trim() ? (
-                        <PublicContentBody content={value} />
+                        <PublicContentBody content={value} language={language} />
                     ) : (
                         <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center text-sm font-semibold text-slate-500">
                             Write some content to see the preview.

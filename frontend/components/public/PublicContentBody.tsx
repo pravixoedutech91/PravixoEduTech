@@ -105,9 +105,12 @@ const markdownComponents = (isHindi: boolean): Components => ({
 
   nav: ({ children, "aria-label": label }) => (
     <nav aria-label={label} className="my-7 rounded-2xl border border-blue-200 bg-blue-50/60 px-5 py-4 text-slate-800 [&_ul]:mb-0 [&_ul]:mt-3 [&_ul]:list-none [&_ul]:space-y-3 [&_ul]:pl-0 [&_li]:pl-0 [&_a]:text-base [&_a]:leading-7 [&_a]:no-underline [&_a:hover]:underline">
-      <details>
+      <details className="group/contents">
         <summary className="cursor-pointer rounded font-bold leading-7 text-blue-900 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600">
-          {label}
+          {label}{" "}
+          <span aria-hidden="true" className="mx-2">—</span>{" "}
+          <span className="group-open/contents:hidden">{isHindi ? "देखें" : "View"}</span>
+          <span className="hidden group-open/contents:inline">{isHindi ? "छिपाएँ" : "Hide"}</span>
         </summary>
         {children}
       </details>
@@ -221,7 +224,7 @@ export default function PublicContentBody({
 }: PublicContentBodyProps) {
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, [remarkPublicContentNavigation, { label: language === "hi-IN" ? "इस पृष्ठ में" : "On this page" }]]}
+      remarkPlugins={[remarkGfm, [remarkPublicContentNavigation, { label: language === "hi-IN" ? "विषयसूची" : "Table of contents" }]]}
       components={markdownComponents(language === "hi-IN")}
       skipHtml
       disallowedElements={["img"]}
