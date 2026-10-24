@@ -1,18 +1,13 @@
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { remarkPublicContentNavigation } from "@/lib/publicContentMarkdown";
+import { normalizePublicContent, remarkPublicContentNavigation } from "@/lib/publicContentMarkdown";
 import type { PublicContentLanguage } from "@/lib/publicContentPresentation";
+import PublicLearningQuiz from "@/components/public/PublicLearningQuiz";
+import { parsePublicLearningQuiz, PUBLIC_QUIZ_FENCE } from "@/lib/publicLearningQuiz";
 
 type PublicContentBodyProps = {
   content: string;
   language?: PublicContentLanguage;
-};
-
-const normalizeContent = (content: string) => {
-  return content
-    .replace(/\\r\\n/g, "\n")
-    .replace(/\\n/g, "\n")
-    .replace(/\r\n/g, "\n");
 };
 
 const safeUrlTransform = (url: string) => {
@@ -202,11 +197,22 @@ const markdownComponents = (isHindi: boolean): Components => ({
     </code>
   ),
 
-  pre: ({ children }) => (
-    <pre className="my-7 overflow-x-auto rounded-2xl bg-slate-950 p-5 text-sm leading-7 text-slate-100">
-      {children}
-    </pre>
-  ),
+  pre: ({ children, node }) => {
+    const code = node?.children[0];
+    if (code?.type === "element" && code.tagName === "code" &&
+      Array.isArray(code.properties.className) &&
+      code.properties.className.includes(`language-${PUBLIC_QUIZ_FENCE}`)) {
+      const raw = code.children.map((child) => child.type === "text" ? child.value : "").join("");
+      const result = parsePublicLearningQuiz(raw);
+      if (result.ok) {
+        // Key on the full payload so editing a question in CMS preview resets
+        // its attempt. Two identical quizzes still have independent state.
+        return <PublicLearningQuiz key={raw} quiz={result.quiz} />;
+      }
+      return <p role="status" className="my-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-base leading-8 text-slate-800">{isHindi ? "क्विज़ अभी उपलब्ध नहीं है। लेख के नोट्स से पुनरावृत्ति करें।" : "This quiz is currently unavailable. You can still revise using the article notes."}</p>;
+    }
+    return <pre className="my-7 overflow-x-auto rounded-2xl bg-slate-950 p-5 text-sm leading-7 text-slate-100">{children}</pre>;
+  },
 });
 
 export default function PublicContentBody({
@@ -221,7 +227,7 @@ export default function PublicContentBody({
       disallowedElements={["img"]}
       urlTransform={safeUrlTransform}
     >
-      {normalizeContent(content)}
+      {normalizePublicContent(content)}
     </ReactMarkdown>
   );
 }

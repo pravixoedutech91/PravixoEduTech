@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "language": "en-IN",
+  "title": "British Acts: check the distinction",
+  "questions": [
+    {
+      "id": "regulating-act",
+      "kind": "practice",
+      "prompt": "Which Act created the office of Governor-General of Bengal?",
+      "options": ["Charter Act 1813", "Government of India Act 1858", "Regulating Act 1773", "Indian Councils Act 1861"],
+      "answerIndex": 2,
+      "explanation": "The Regulating Act 1773 created the office of Governor-General of Bengal. The Charter Act 1833 later made the Governor-General of Bengal the Governor-General of India.",
+      "revisionHref": "#section-company-rule"
+    },
+    {
+      "id": "dyarchy",
+      "kind": "practice",
+      "prompt": "Under the Government of India Act 1919, where was dyarchy introduced?",
+      "options": ["Only at the Centre", "In the provinces", "In every princely state", "In local municipal councils"],
+      "answerIndex": 1,
+      "explanation": "The 1919 Act introduced provincial dyarchy: subjects were divided into reserved and transferred groups. Do not confuse this with the proposed central dyarchy under the 1935 Act.",
+      "revisionHref": "#section-crown-rule"
+    },
+    {
+      "id": "federation",
+      "kind": "practice",
+      "prompt": "Which feature of the Government of India Act 1935 did not come into operation?",
+      "options": ["The proposed All-India Federation", "Provincial autonomy", "The Federal Court", "Provincial elections in 1937"],
+      "answerIndex": 0,
+      "explanation": "The proposed All-India Federation was not established. Provincial autonomy came into operation in 1937; an Act's provisions and their implementation dates must be studied separately.",
+      "revisionHref": "#section-crown-rule"
+    }
+  ]
+}

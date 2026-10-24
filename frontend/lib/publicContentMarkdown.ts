@@ -14,6 +14,16 @@ type NavigationOptions = {
   label?: string;
 };
 
+export const normalizePublicContent = (content: string) => {
+  const normalised = content.replace(/\r\n?/g, "\n");
+  // Older CMS imports can store a whole article with escaped line breaks.
+  // Real Markdown already contains line breaks: leave its JSON/code escapes
+  // intact so a quiz prompt containing \\n remains valid JSON.
+  return normalised.includes("\n")
+    ? normalised
+    : normalised.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n");
+};
+
 const headingText = (node: MarkdownNode): string => {
   if (node.type === "html" || node.type === "image") return "";
   return node.value ?? node.children?.map(headingText).join("") ?? "";
